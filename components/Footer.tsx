@@ -11,7 +11,7 @@ export default function Footer(){
           <ul className="space-y-1">
             <li><a className="underline" href="/features">Features</a></li>
             <li><a className="underline" href="/pricing">Pricing</a></li>
-            <li><a className="underline" href="/app">Dashboard</a></li>
+            <li><a className="underline" href="/about">Over ons</a></li>
           </ul>
         </div>
         <div className="space-y-2">
@@ -21,7 +21,7 @@ export default function Footer(){
           </ul>
         </div>
       </div>
-      <div className="container px-4 pb-8 text-xs text-slate-500">© {new Date().getFullYear()} PharmaGtN — Alle rechten voorbehouden.</div>
+      <div className="container px-4 pb-8 text-xs text-slate-500">© 2025 PharmaGtN — All rights reserved.</div>
     </footer>
   )
 }

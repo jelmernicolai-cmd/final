@@ -4,8 +4,14 @@
 
 :root { color-scheme: light; }
 body { @apply bg-slate-50 text-slate-900; }
-.container { @apply max-w-6xl mx-auto; }
-.card { @apply rounded-2xl border bg-white p-5 shadow-sm; }
+.container { @apply max-w-7xl mx-auto; }
+.card { @apply rounded-2xl border bg-white p-6 shadow-sm; }
+.lead { @apply text-lg md:text-xl text-slate-700; }
 .btn { @apply inline-flex items-center gap-2 rounded-xl px-4 py-2 border bg-white hover:bg-slate-50; }
 .btn-primary { @apply bg-blue-600 text-white border-blue-600 hover:bg-blue-700; }
-a { @apply underline-offset-2; }
+.kicker { @apply uppercase tracking-wide text-xs text-blue-700 font-semibold; }
+h1 { @apply text-3xl md:text-5xl font-semibold leading-tight; }
+h2 { @apply text-2xl md:text-3xl font-semibold; }
+h3 { @apply text-xl md:text-2xl font-semibold; }
+section { @apply scroll-mt-20; }
+img { @apply select-none; }

@@ -1,26 +1,29 @@
-'use client'
-import { useState } from 'react'
+export const metadata = {
+  title: 'Prijs — Licentie €2.500 per jaar | PharmaGtN',
+  description: 'Eén licentie, alle features. Inclusief dashboards, analyses en updates. ROI‑doelstelling €100.000 via optimalisatie van kortingen en voorwaarden.',
+}
 
-export default function PricingPage(){
-  const [busy,setBusy] = useState(false)
-  async function buy(){
-    setBusy(true)
-    try{
-      const res = await fetch('/api/stripe/create-checkout-session', { method:'POST' })
-      const json = await res.json()
-      if(json.ok && json.url) window.location.href = json.url
-      else alert(json.message || 'Kon Stripe sessie niet starten')
-    }catch(e){ alert('Netwerkfout'); }
-    setBusy(false)
-  }
+export default function Pricing() {
   return (
-    <section className="container px-4 py-12 space-y-6">
-      <h1 className="text-3xl font-semibold">Abonnement</h1>
-      <div className="card space-y-3 max-w-xl">
-        <div className="text-xl font-semibold">PharmaGtN Licentie</div>
-        <div className="text-sm opacity-75">€2.500 / jaar — toegang tot alle tools</div>
-        <button className="btn btn-primary" onClick={buy} disabled={busy}>{busy?'Bezig…':'Koop licentie'}</button>
-        <div className="text-xs opacity-60">Zorg dat STRIPE_SECRET_KEY & NEXT_PUBLIC_STRIPE_PRICE_ID in Vercel env staan.</div>
+    <section className="container px-4 py-12 space-y-8">
+      <h1>Licentie & prijzen</h1>
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="card space-y-2">
+          <div className="text-xl font-semibold">PharmaGtN Licentie</div>
+          <div className="text-3xl font-bold">€2.500<span className="text-base font-medium"> / jaar</span></div>
+          <ul className="list-disc pl-5 text-sm opacity-80 space-y-1">
+            <li>Toegang tot alle tools (waterfall, consistentie, parallelle druk)</li>
+            <li>Datasjablonen en automatische validatie</li>
+            <li>Regelmatige updates & verbeteringen</li>
+            <li>Email support</li>
+          </ul>
+          <a className="btn btn-primary" href="/contact">Offerte / Inkoop</a>
+        </div>
+        <div className="card">
+          <h3>ROI‑doelstelling</h3>
+          <p className="text-sm opacity-80 mt-1">Ons motto: minimaal €100.000 ROI door optimalisatie van het commerciële beleid en kortingen. Resultaten zijn afhankelijk van datakwaliteit en implementatie.</p>
+          <img src="/images/hero-graph.svg" alt="ROI visual" className="mt-3 w-full h-32 object-contain" />
+        </div>
       </div>
     </section>
   )
