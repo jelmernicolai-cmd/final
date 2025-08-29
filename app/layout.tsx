@@ -1,19 +1,12 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import './globals.css';
-import Nav from '../components/Nav';
+import Nav from '@/components/Nav';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.pharmgtn.com'),
   title: { default: 'PharmaGtN', template: '%s | PharmaGtN' },
-  description: 'PharmaGtN helpt farmafabrikanten hun gross-to-net en kortingsbeleid te optimaliseren met self-service analyses.',
-  openGraph: {
-    title: 'PharmaGtN',
-    description: 'Optimaliseer gross-to-net en kortingsbeleid. Self-service platform voor farma.',
-    url: 'https://www.pharmgtn.com',
-    siteName: 'PharmaGtN',
-    type: 'website',
-  },
+  description: 'PharmaGtN helpt farmafabrikanten hun gross-to-net en kortingsbeleid te optimaliseren.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -22,7 +15,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     '@type': 'Organization',
     name: 'PharmaGtN',
     url: 'https://www.pharmgtn.com',
-    logo: 'https://www.pharmgtn.com/icons/icon-512.png',
   };
 
   return (
@@ -35,7 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main id="main" className="flex-1">{children}</main>
         <footer className="border-t">
           <div className="mx-auto max-w-6xl px-4 py-6 text-sm text-gray-600">
-            © {new Date().getFullYear()} PharmaGtN · All rights reserved
+            © {new Date().getFullYear()} PharmaGtN • Build debug page: <a className="underline" href="/debug">/debug</a>
           </div>
         </footer>
         <Script id="org-jsonld" type="application/ld+json" strategy="afterInteractive"
