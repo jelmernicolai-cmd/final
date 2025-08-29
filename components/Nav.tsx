@@ -22,7 +22,8 @@ export default function Nav() {
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-6">
         <Link href="/" className="text-lg font-semibold">PharmaGtN</Link>
         <nav className="ml-auto flex items-center gap-2 text-sm">
-          <Item href="/features" label="Functionaliteit" />
+        <Item href="/features" label="Functionaliteit" />
+<Item href="/en/features" label="Features (EN)" />
           <Item href="/pricing" label="Prijzen" />
           <Item href="/about" label="Over" />
           <Item href="/contact" label="Contact" />
