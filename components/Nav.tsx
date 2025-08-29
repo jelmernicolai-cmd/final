@@ -14,6 +14,7 @@ export default function Nav() {
           <Link href="/pricing" className="hover:underline">Prijzen</Link>
           <Link href="/about" className="hover:underline">Over</Link>
           <Link href="/contact" className="hover:underline">Contact</Link>
+          <Link href="/app" className="hover:underline">App</Link>
           <LanguageSwitch />
         </nav>
       </div>
