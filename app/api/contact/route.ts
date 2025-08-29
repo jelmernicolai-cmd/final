@@ -1,13 +1,16 @@
-export async function POST(request: Request) {
+import { NextResponse } from 'next/server';
+
+export async function POST(req: Request) {
   try {
-    // In productie: stuur door naar e-mail / CRM / webhook
-    const form = await request.formData()
-    const name = String(form.get('name')||'')
-    const email = String(form.get('email')||'')
-    const message = String(form.get('message')||'')
-    if(!name || !email || !message) throw new Error('Missing fields')
-    return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type':'application/json' } })
-  } catch (e:any) {
-    return new Response(JSON.stringify({ ok: false, message: e?.message || 'Failed' }), { status: 400, headers: { 'content-type':'application/json' } })
+    const body = await req.json();
+    // TODO: hier kun je e-mail of database-insert integreren.
+    // Voor nu altijd succesvol antwoorden om timeouts te voorkomen:
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch {
+    return NextResponse.json({ ok: false }, { status: 400 });
   }
+}
+
+export async function GET() {
+  return NextResponse.json({ ok: true });
 }
