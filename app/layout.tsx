@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import './globals.css';
-import Nav from '@/components/Nav';
+import Nav from '../components/Nav';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.pharmgtn.com'),
