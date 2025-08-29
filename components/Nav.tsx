@@ -1,36 +1,22 @@
-'use client'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import Link from 'next/link';
+import LanguageSwitch from '@/components/LanguageSwitch';
 
-function toLocalePath(pathname: string, target: 'nl'|'en'){
-  if(!pathname) return target === 'en' ? '/en' : '/'
-  const isEn = pathname.startsWith('/en')
-  if(target === 'en'){
-    return isEn ? pathname : '/en' + (pathname === '/' ? '' : pathname)
-  } else {
-    return isEn ? (pathname.replace('/en','') || '/') : pathname
-  }
-}
-
-export default function Nav(){
-  const pathname = usePathname() || '/'
-  const isEn = pathname.startsWith('/en')
-  const base = isEn ? '/en' : ''
+export default function Nav() {
   return (
-    <header className="sticky top-0 z-40 border-b bg-white/80 backdrop-blur">
-      <nav className="container px-4 py-3 flex items-center gap-4 justify-between">
-        <Link href={isEn?'/en':'/'} className="font-semibold text-lg flex items-center gap-2">
-          <img src="/images/logo.svg" alt="PharmaGtN" className="h-6 w-6" />
-          PharmaGtN
+    <header className="border-b">
+      <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-6">
+        <Link href="/" className="flex items-center gap-2">
+          <img src="/images/logo.svg" alt="PharmaGtN" className="h-7 w-auto" />
+          <span className="font-semibold">PharmaGtN</span>
         </Link>
-        <div className="flex items-center gap-3 text-sm">
-          <Link href={base + '/features'} className="hover:underline">Features</Link>
-          <Link href={base + '/pricing'} className="hover:underline">Pricing</Link>
-          <Link href={base + '/about'} className="hover:underline">{isEn?'About':'Over ons'}</Link>
-          <Link href={base + '/contact'} className="hover:underline">Contact</Link>
-          <Link href={toLocalePath(pathname, isEn?'nl':'en')} className="ml-2 rounded-xl px-3 py-1.5 border bg-white hover:bg-slate-50">{isEn?'NL':'EN'}</Link>
-        </div>
-      </nav>
+        <nav className="ml-auto flex items-center gap-5 text-sm">
+          <Link href="/features" className="hover:underline">Functionaliteit</Link>
+          <Link href="/pricing" className="hover:underline">Prijzen</Link>
+          <Link href="/about" className="hover:underline">Over</Link>
+          <Link href="/contact" className="hover:underline">Contact</Link>
+          <LanguageSwitch />
+        </nav>
+      </div>
     </header>
-  )
+  );
 }
