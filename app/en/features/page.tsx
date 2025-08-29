@@ -1,19 +1,17 @@
-import Image from "next/image";
-
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: "Features | PharmaGtN",
-  description:
-    "Discover how PharmaGtN helps pharma manufacturers optimize gross-to-net, pricing strategies, and margins with transparent analytics.",
+  description: "Discover how PharmaGtN helps pharma manufacturers optimize discounts, pricing and gross-to-net.",
 };
 
 const features = [
-  { title: "End-to-End Gross-to-Net Insight", description: "Transparent waterfall across discounts, rebates, and price components.", icon: "/images/icons/waterfall.png" },
-  { title: "Scenario Modeling & Forecasting", description: "Simulate pricing/discount changes and forecast impact on net revenue and margins.", icon: "/images/icons/scenario.png" },
-  { title: "Consistency & Compliance", description: "Automatic input validation and consistent reporting per channel and customer.", icon: "/images/icons/compliance.png" },
-  { title: "Parallel Pressure Analysis", description: "Understand parallel trade and locate pressure points with portfolio heatmaps.", icon: "/images/icons/heatmap.png" },
-  { title: "Frictionless Uploads", description: "Upload Excel/CSV using templates and get interactive dashboards instantly.", icon: "/images/icons/dashboard.png" },
+  { title: "End-to-End Gross-to-Net Insight", description: "Transparent waterfall from gross to net by segment and product." },
+  { title: "Scenario Modeling & Forecasting", description: "Simulate policy options and see impact on net revenue and margins." },
+  { title: "Consistency & Compliance", description: "Automatic detection of discount outliers by channel and customer segment." },
+  { title: "Parallel Pressure Analysis", description: "Understand internal cannibalization with simple portfolio heatmaps." },
+  { title: "Frictionless Uploads", description: "Upload Excel/CSV and instantly get interactive dashboards." },
+  { title: "Audit Trail", description: "Every change documented for governance and insight." },
 ];
 
 export default function FeaturesPageEN() {
@@ -28,11 +26,6 @@ export default function FeaturesPageEN() {
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
         {features.map((f, i) => (
           <div key={i} className="rounded-xl border bg-white p-6 shadow-sm hover:shadow-md transition">
-            {f.icon && (
-              <div className="mb-4">
-                <Image src={f.icon} alt={f.title} width={48} height={48} className="mx-auto" />
-              </div>
-            )}
             <h2 className="text-xl font-semibold mb-2 text-center">{f.title}</h2>
             <p className="text-gray-600 text-sm text-center">{f.description}</p>
           </div>

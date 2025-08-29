@@ -1,19 +1,17 @@
-import Image from "next/image";
-
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: "Functionaliteiten | PharmaGtN",
-  description:
-    "Ontdek hoe PharmaGtN farma-fabrikanten helpt om gross-to-net optimalisatie, prijsstrategie en marges te verbeteren.",
+  description: "Ontdek hoe PharmaGtN farma-fabrikanten helpt om gross-to-net, prijsstrategie en marges te verbeteren.",
 };
 
 const features = [
-  { title: "Volledige Gross-to-Net Inzicht", description: "Analyseer alle kortingen, rebates en prijscomponenten in één transparant waterfall-model.", icon: "/images/icons/waterfall.png" },
-  { title: "Scenario Analyse & Forecasting", description: "Simuleer nieuwe prijspunten/discounts en zie direct impact op netto-omzet en marges.", icon: "/images/icons/scenario.png" },
-  { title: "Consistentie & Compliance", description: "Automatische validatie van inputdata en uniforme rapportage per kanaal en klantsegment.", icon: "/images/icons/compliance.png" },
-  { title: "Parallelle Druk Analyse", description: "Begrijp parallelle handelsstromen en identificeer drukpunten via portfolio-heatmaps.", icon: "/images/icons/heatmap.png" },
-  { title: "Eenvoudige Uploads", description: "Upload Excel/CSV in standaard template en krijg direct interactieve dashboards.", icon: "/images/icons/dashboard.png" },
+  { title: "Volledige Gross-to-Net Inzicht", description: "Transparant waterfall-model van bruto naar netto per segment en product." },
+  { title: "Scenario Analyse & Forecasting", description: "Simuleer beleidsopties en zie het effect op netto-omzet en marge." },
+  { title: "Consistentie & Compliance", description: "Automatische signalering van afwijkende kortingen per kanaal en klantsegment." },
+  { title: "Parallelle Druk Analyse", description: "Begrijp interne kannibalisatie met eenvoudige portfolio-heatmaps." },
+  { title: "Snelle Uploads", description: "Upload Excel/CSV en krijg direct interactieve dashboards." },
+  { title: "Audit Trail", description: "Elke wijziging gedocumenteerd voor inzicht en governance." },
 ];
 
 export default function FeaturesPage() {
@@ -30,11 +28,6 @@ export default function FeaturesPage() {
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
         {features.map((f, i) => (
           <div key={i} className="rounded-xl border bg-white p-6 shadow-sm hover:shadow-md transition">
-            {f.icon && (
-              <div className="mb-4">
-                <Image src={f.icon} alt={f.title} width={48} height={48} className="mx-auto" />
-              </div>
-            )}
             <h2 className="text-xl font-semibold mb-2 text-center">{f.title}</h2>
             <p className="text-gray-600 text-sm text-center">{f.description}</p>
           </div>

@@ -8,7 +8,9 @@ export default function ContactForm() {
     e.preventDefault();
     setStatus('sending');
     try {
-      await new Promise((r) => setTimeout(r, 400)); // mock
+      const fd = new FormData(e.currentTarget);
+      const res = await fetch('/api/contact', { method: 'POST', body: JSON.stringify(Object.fromEntries(fd)) });
+      if (!res.ok) throw new Error('Failed');
       setStatus('ok');
     } catch {
       setStatus('error');
@@ -23,9 +25,9 @@ export default function ContactForm() {
       <button
         type="submit"
         disabled={status==='sending'}
-        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded disabled:opacity-60"
       >
-        {status==='sending' ? 'Verzenden…' : 'Verzenden'}
+        {status==='sending' ? 'Verzenden...' : 'Verzenden'}
       </button>
       {status==='ok' && <p className="text-green-600 text-sm">Dank! We nemen snel contact op.</p>}
       {status==='error' && <p className="text-red-600 text-sm">Er ging iets mis, probeer later opnieuw.</p>}

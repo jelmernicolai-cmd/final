@@ -6,7 +6,7 @@ export const metadata = {
   metadataBase: new URL('https://www.pharmgtn.com'),
   title: {
     default: 'PharmaGtN | Gross-to-Net optimization for pharma',
-    template: '%s | PharmaGtN'
+    template: '%s | PharmaGtN',
   },
   description: 'Data-driven tools to optimize discounts, contracts and gross-to-net. Target ROI: €100,000+.',
 };

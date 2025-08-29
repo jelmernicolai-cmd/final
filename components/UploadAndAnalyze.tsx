@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { parse } from 'csv-parse/browser/esm/sync';
 
-// ---------- Kleine utils ----------
 type Row = Record<string, number | string | null | undefined>;
 
 const toNum = (v: unknown): number => {
@@ -17,52 +16,44 @@ const toNum = (v: unknown): number => {
   return 0;
 };
 
-const fmt = (n: number) =>
-  n.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const fmt = (n: number) => new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 0 }).format(Math.round(n));
 
-const sumSafe = (rows: Row[], colAmount: string, colQty?: string) => {
-  if (!rows?.length) return 0;
-  if (colQty) {
-    // gewogen som: bedrag * aantal
+function sumSafe(rows: Row[], colAmount: string, colQty?: string) {
+  if (colQty && rows.some(r => r[colQty] !== undefined)) {
     return rows.reduce((acc, r) => acc + toNum(r[colAmount]) * toNum(r[colQty]), 0);
   }
   return rows.reduce((acc, r) => acc + toNum(r[colAmount]), 0);
-};
+}
 
-// ---------- Component ----------
 export default function UploadAndAnalyze({
+  tool,
   title = 'Upload & Analyse',
+  helperText,
   expectedColumns = ['Klant', 'Product', 'Bruto', 'Korting', 'Bonus', 'Fee', 'Aantal'],
+  defaultStrict = true,
 }: {
+  tool: 'gtn' | 'consistency' | 'parallel';
   title?: string;
+  helperText?: string;
   expectedColumns?: string[];
+  defaultStrict?: boolean;
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
+  const [strict] = useState<boolean>(defaultStrict);
 
-  // Parsing van XLSX/CSV
   async function handleFile(file: File) {
     setError(null);
     setRows([]);
     setFileName(file.name);
-
     const buf = await file.arrayBuffer();
-
     if (file.name.toLowerCase().endsWith('.csv')) {
-      // CSV
       const text = new TextDecoder().decode(new Uint8Array(buf));
-      const records = parse(text, {
-        columns: true,
-        skip_empty_lines: true,
-        delimiter: /[,;|\t]/, // flexibel
-        trim: true,
-      }) as Row[];
-      setRows(records);
+      const records = parse(text, { columns: true, skip_empty_lines: true });
+      setRows(records as Row[]);
       return;
     }
-
-    // Excel
     const wb = XLSX.read(buf, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json<Row>(ws, { defval: null });
@@ -72,129 +63,102 @@ export default function UploadAndAnalyze({
   function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
-    handleFile(f).catch((err) => {
-      console.error(err);
+    handleFile(f).catch(() => {
       setError('Bestand kon niet gelezen worden. Controleer het formaat (.xlsx of .csv).');
     });
   }
 
-  // KPI’s en “Gross to Net” quick metrics
-  const { metrics, kpis } = useMemo(() => {
-    if (!rows.length) return { metrics: [] as string[], kpis: null as null | {
-      bruto: number; korting: number; bonus: number; fee: number; netto: number;
-    } };
-
+  const { kpis, metrics, headerSample } = useMemo(() => {
+    const header = rows[0] ? Object.keys(rows[0]) : [];
     const bruto   = sumSafe(rows, 'Bruto', 'Aantal');
     const korting = sumSafe(rows, 'Korting', 'Aantal');
     const bonus   = sumSafe(rows, 'Bonus', 'Aantal');
     const fee     = sumSafe(rows, 'Fee', 'Aantal');
     const netto   = bruto - korting - bonus - fee;
-
-    const m: string[] = [];
-    m.push(`Bruto omzet (geschat): €${fmt(bruto)}`);
-    m.push(`Korting (gewogen): €${fmt(korting)}`);
-    m.push(`Bonus (gewogen): €${fmt(bonus)}`);
-    m.push(`Fee (gewogen): €${fmt(fee)}`);
-    m.push(`Netto omzet (geschat): €${fmt(netto)}`);
-
-    return { metrics: m, kpis: { bruto, korting, bonus, fee, netto } };
+    const metrics = [
+      { label: 'Bruto', value: bruto },
+      { label: 'Korting', value: -korting },
+      { label: 'Bonus', value: -bonus },
+      { label: 'Fee', value: -fee },
+      { label: 'Netto', value: netto },
+    ];
+    const kpis = [
+      { label: 'Bruto omzet (geschat)', value: `€${fmt(bruto)}` },
+      { label: 'Kortingen (gewogen)', value: `€${fmt(korting)}` },
+      { label: 'Bonussen (gewogen)', value: `€${fmt(bonus)}` },
+      { label: 'Fees (gewogen)', value: `€${fmt(fee)}` },
+      { label: 'Netto omzet', value: `€${fmt(netto)}` },
+    ];
+    return { kpis, metrics, headerSample: header };
   }, [rows]);
 
-  // Validatie: tonen welke kolommen verwacht worden
-  const headerSample = useMemo(() => {
-    if (!rows.length) return [] as string[];
-    const keys = Object.keys(rows[0] || {});
-    return keys;
-  }, [rows]);
+  const templateHref = tool === 'gtn' ? '/templates/gtn-template.xlsx'
+                     : tool === 'consistency' ? '/templates/consistency-template.xlsx'
+                     : '/templates/parallel-template.xlsx';
+
+  const base = Math.max(Math.abs(metrics.reduce((m, s) => Math.max(m, Math.abs(s.value)), 0)), 1);
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-8">
-      <h2 className="text-2xl md:text-3xl font-bold mb-4">{title}</h2>
+    <section className="mx-auto max-w-6xl px-4 py-12 space-y-6">
+      <header>
+        <h1 className="text-2xl md:text-3xl font-semibold">{title}</h1>
+        {helperText && <p className="mt-2 text-gray-600">{helperText}</p>}
+      </header>
 
-      <div className="grid gap-4 md:grid-cols-2 mb-6">
-        <div className="border rounded p-4">
-          <p className="text-sm text-gray-600 mb-3">
-            Upload een <strong>.xlsx</strong> of <strong>.csv</strong> volgens het standaard template.
-          </p>
-          <input
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={onChange}
-            className="block w-full text-sm file:mr-4 file:rounded file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-white hover:file:bg-blue-700"
-          />
-          {fileName && <p className="mt-2 text-xs text-gray-500">Bestand: {fileName}</p>}
-
-          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-
-          <div className="mt-4">
-            <h3 className="font-semibold mb-2">Verwachte kolommen</h3>
-            <ul className="text-sm text-gray-700 list-disc pl-5">
-              {expectedColumns.map((c) => (
-                <li key={c}>{c}</li>
-              ))}
-            </ul>
-          </div>
-
-          {!!headerSample.length && (
-            <div className="mt-4">
-              <h3 className="font-semibold mb-2">Gedetecteerde kolommen (eerste rij)</h3>
-              <p className="text-sm text-gray-700 break-words">
-                {headerSample.join(' · ')}
-              </p>
-            </div>
-          )}
-
-          <div className="mt-4">
-            <a
-              href="/templates/pharmgtn-template-nl.xlsx"
-              download
-              className="text-sm underline text-blue-700 hover:text-blue-900"
-            >
-              Download NL template
-            </a>
-            <span className="mx-2 text-gray-400">|</span>
-            <a
-              href="/templates/pharmgtn-template-en.xlsx"
-              download
-              className="text-sm underline text-blue-700 hover:text-blue-900"
-            >
-              Download EN template
-            </a>
-          </div>
-        </div>
-
-        <div className="border rounded p-4">
-          <h3 className="font-semibold mb-3">Quick metrics</h3>
-          {metrics.length === 0 ? (
-            <p className="text-sm text-gray-600">Upload eerst een bestand om resultaten te zien.</p>
-          ) : (
-            <ul className="text-sm text-gray-800 space-y-1">
-              {metrics.map((m, i) => (
-                <li key={i}>• {m}</li>
-              ))}
-            </ul>
-          )}
+      <div className="rounded border p-4 bg-white">
+        <label className="block text-sm font-medium">Upload .xlsx of .csv</label>
+        <input type="file" accept=".xlsx,.csv" onChange={onChange} className="mt-2 block" />
+        {fileName && <p className="text-xs text-gray-500 mt-1">Bestand: {fileName}</p>}
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        <div className="mt-3 text-sm">
+          <a href={templateHref} download className="underline text-blue-700 hover:text-blue-900">
+            Download sjabloon
+          </a>
+          <span className="mx-2 text-gray-400">|</span>
+          <a href="/api/health" className="underline">API health</a>
         </div>
       </div>
 
-      {/* (optioneel) eenvoudige pseudo-waterfall weergave als tekstbalken */}
-      {kpis && (
-        <div className="border rounded p-4">
-          <h3 className="font-semibold mb-3">Gross → Net (indicatief)</h3>
-          <div className="space-y-2 text-sm">
-            <Bar label="Bruto" value={kpis.bruto} base={kpis.bruto} />
-            <Bar label="– Korting" value={-kpis.korting} base={kpis.bruto} />
-            <Bar label="– Bonus" value={-kpis.bonus} base={kpis.bruto} />
-            <Bar label="– Fee" value={-kpis.fee} base={kpis.bruto} />
-            <Bar label="= Netto" value={kpis.netto} base={kpis.bruto} highlight />
+      {!!rows.length && (
+        <div className="space-y-6">
+          <div>
+            <h3 className="font-semibold mb-2">KPI’s</h3>
+            <div className="grid sm:grid-cols-2 md:grid-cols-5 gap-3">
+              {kpis.map((k) => (
+                <div key={k.label} className="rounded border p-3">
+                  <div className="text-xs text-gray-500">{k.label}</div>
+                  <div className="text-lg font-semibold">{k.value}</div>
+                </div>
+              ))}
+            </div>
           </div>
+
+          <div className="space-y-2">
+            <h3 className="font-semibold">Gross to Net</h3>
+            <div className="space-y-2">
+              {metrics.map((m) => <Bar key={m.label} label={m.label} value={m.value} base={base} highlight={m.label==='Netto'} />)}
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="font-semibold mb-2">Gedetecteerde kolommen (eerste rij)</h3>
+            <p className="text-sm text-gray-700 break-words">{headerSample.join(' · ')}</p>
+          </div>
+        </div>
+      )}
+
+      {strict && !rows.length && (
+        <div className="text-sm text-gray-600">
+          <h3 className="font-semibold mb-2">Verwachte kolommen</h3>
+          <ul className="list-disc pl-5">
+            {expectedColumns.map((c) => <li key={c}>{c}</li>)}
+          </ul>
         </div>
       )}
     </section>
   );
 }
 
-// Eenvoudige horizontale “bar” renderer (zonder externe lib)
 function Bar({ label, value, base, highlight }: { label: string; value: number; base: number; highlight?: boolean }) {
   const pct = Math.max(0, Math.min(100, (Math.abs(value) / (base || 1)) * 100));
   const positive = value >= 0;
@@ -207,7 +171,7 @@ function Bar({ label, value, base, highlight }: { label: string; value: number; 
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className={`w-32 text-right ${highlight ? 'font-semibold' : ''}`}>€{fmt(value)}</div>
+      <div className={`w-32 text-right ${highlight ? 'font-semibold' : ''}`}>{value >= 0 ? '€' : '€'}{new Intl.NumberFormat('nl-NL').format(Math.round(value))}</div>
     </div>
   );
 }

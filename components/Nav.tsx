@@ -3,21 +3,20 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-export default function Nav() {
+function Item({ href, label }: { href: string; label: string }) {
   const pathname = usePathname();
+  const active = pathname === href;
+  return (
+    <Link
+      href={href}
+      className={`px-3 py-2 rounded ${active ? 'font-semibold underline' : 'hover:underline'}`}
+    >
+      {label}
+    </Link>
+  );
+}
 
-  const Item = ({ href, label }: { href: string; label: string }) => {
-    const active = pathname === href;
-    return (
-      <Link
-        href={href}
-        className={`px-3 py-2 rounded ${active ? 'font-semibold underline' : 'hover:underline'}`}
-      >
-        {label}
-      </Link>
-    );
-  };
-
+export default function Nav() {
   return (
     <header className="border-b bg-white/90 backdrop-blur">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-6">

@@ -16,10 +16,11 @@ export function mockGtnUploadExample() {
 }
 
 export function mockConsistencyExample() {
-  const scatter = [
-    { x: 50, y: 2.5 }, { x: 120, y: 3.0 }, { x: 300, y: 5.5 },
-    { x: 800, y: 7.0 }, { x: 1300, y: 9.5 }, { x: 2000, y: 12.0 },
-  ];
+  const scatter = Array.from({ length: 42 }).map((_x, i) => ({
+    x: Math.round((Math.sin(i) * 0.5 + 0.5) * 1000),
+    y: Math.round((Math.cos(i / 2) * 5 + 7) * 10) / 10,
+    label: `Acc ${i + 1}`,
+  }));
   return {
     kpis: [
       { label: 'Accounts', value: '126' },
@@ -45,4 +46,3 @@ export function mockParallelExample() {
     heatmap: { rows, cols, values },
   };
 }
-sampleData.ts

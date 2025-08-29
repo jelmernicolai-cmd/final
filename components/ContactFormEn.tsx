@@ -8,24 +8,11 @@ export default function ContactFormEn() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setStatus('sending');
-    const fd = new FormData(e.currentTarget);
-    const payload = {
-      name: String(fd.get('name') || ''),
-      email: String(fd.get('email') || ''),
-      company: String(fd.get('company') || ''),
-      message: String(fd.get('message') || ''),
-      locale: 'en',
-    };
-
     try {
-      const res = await fetch('/api/contact', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(payload),
-      });
+      const fd = new FormData(e.currentTarget);
+      const res = await fetch('/api/contact', { method: 'POST', body: JSON.stringify(Object.fromEntries(fd)) });
       if (!res.ok) throw new Error('Failed');
       setStatus('ok');
-      e.currentTarget.reset();
     } catch {
       setStatus('error');
     }
@@ -50,7 +37,7 @@ export default function ContactFormEn() {
         <textarea name="message" rows={5} required className="mt-1 w-full rounded border p-2" />
       </div>
       <button type="submit" disabled={status==='sending'} className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50">
-        {status==='sending' ? 'Sending…' : 'Send'}
+        {status==='sending' ? 'Sending...' : 'Send'}
       </button>
       {status==='ok' && <p className="text-green-700">Thanks! We’ll be in touch.</p>}
       {status==='error' && <p className="text-red-700">Something went wrong. Please try again.</p>}
