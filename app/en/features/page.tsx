@@ -1,41 +1,46 @@
 export const metadata = {
-  title: 'Features — GTN dashboards, waterfall & consistency analysis',
-  description: 'PharmaGtN provides GTN waterfall, consistency checks, portfolio pressure insights, validated templates and governance tools.',
-}
+  title: 'Features',
+  description: 'GTN waterfall, consistency analysis, parallel pressure and more—for pharma.',
+};
 
-export default function Features() {
+export default function FeaturesEn() {
   return (
-    <section className="container px-4 py-12 space-y-8">
-      <h1>Features</h1>
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="card">
-          <h3>GTN Waterfall</h3>
-          <p className="text-sm opacity-80 mt-1">Gross → Net breakdown into discounts, rebates and fees. Identify leakages and opportunities.</p>
-          <img src="/images/waterfall.svg" alt="GTN Waterfall" className="mt-3 w-full h-40 object-contain" />
+    <section className="mx-auto max-w-6xl px-4 py-12 space-y-10">
+      <header>
+        <h1 className="text-3xl font-semibold">Features</h1>
+        <p className="text-gray-700 mt-2 max-w-3xl">
+          Insights from your own data, automatically validated and translated into GTN steering.
+        </p>
+      </header>
+
+      <div className="grid md:grid-cols-2 gap-8 items-start">
+        <div>
+          <h2 className="font-semibold text-xl">GTN Waterfall</h2>
+          <p className="text-gray-700 mt-2">From list price to net realization including discounts, bonuses and fees.</p>
+          <img src="/images/waterfall.svg" alt="GTN waterfall" className="mt-4 rounded border" />
         </div>
-        <div className="card">
-          <h3>Consistency Analysis</h3>
-          <p className="text-sm opacity-80 mt-1">Discount% vs purchase value per customer group. Spot inconsistencies and unwanted variations.</p>
-          <img src="/images/consistency-scatter.svg" alt="Consistency Scatter" className="mt-3 w-full h-40 object-contain" />
+        <div>
+          <h2 className="font-semibold text-xl">Consistency Analysis</h2>
+          <p className="text-gray-700 mt-2">Discount% vs. purchase value; detect outliers and harmonize policy.</p>
+          <img src="/images/consistency-scatter.svg" alt="Consistency scatter" className="mt-4 rounded border" />
         </div>
-        <div className="card">
-          <h3>Parallel Pressure</h3>
-          <p className="text-sm opacity-80 mt-1">Visualize overlap between portfolio products. Support price and discount decisions.</p>
-          <img src="/images/heatmap.svg" alt="Parallel Pressure Heatmap" className="mt-3 w-full h-40 object-contain" />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-8 items-start">
+        <div>
+          <h2 className="font-semibold text-xl">Parallel Pressure</h2>
+          <p className="text-gray-700 mt-2">Heatmap of portfolio cannibalization; steer discounts per product/account.</p>
+          <img src="/images/heatmap.svg" alt="Parallel pressure heatmap" className="mt-4 rounded border" />
         </div>
-        <div className="card">
-          <h3>Data templates & validation</h3>
-          <p className="text-sm opacity-80 mt-1">Standard upload format, automatic checks and clear error messages.</p>
-        </div>
-        <div className="card">
-          <h3>Governance & Compliance</h3>
-          <p className="text-sm opacity-80 mt-1">Traceability, access control and audit trails support internal and external audits.</p>
-        </div>
-        <div className="card">
-          <h3>Integrations</h3>
-          <p className="text-sm opacity-80 mt-1">Connect to ERP/CRM/BI tools. Export to financial reporting and planning.</p>
+        <div>
+          <h2 className="font-semibold text-xl">Data Workflow</h2>
+          <ul className="mt-2 list-disc pl-5 text-gray-700 space-y-1">
+            <li>Standard templates (CSV/XLSX) + validation</li>
+            <li>Privacy by design (no PII required)</li>
+            <li>Export to dashboard/report</li>
+          </ul>
         </div>
       </div>
     </section>
-  )
+  );
 }
