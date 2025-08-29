@@ -1,30 +1,33 @@
-export const metadata = {
-  title: 'Pricing — License €2,500 per year | PharmaGtN',
-  description: 'One license, all features. Includes dashboards, analyses and updates. ROI target €100,000 via optimization of discounts and terms.',
-}
+import Link from 'next/link';
 
-export default function Pricing() {
+export const metadata = {
+  title: 'Pricing',
+  description: 'Simple license model: €2,500 per year per tenant.',
+};
+
+export default function PricingEn() {
   return (
-    <section className="container px-4 py-12 space-y-8">
-      <h1>License & Pricing</h1>
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="card space-y-2">
-          <div className="text-xl font-semibold">PharmaGtN License</div>
-          <div className="text-3xl font-bold">€2,500<span className="text-base font-medium"> / year</span></div>
-          <ul className="list-disc pl-5 text-sm opacity-80 space-y-1">
-            <li>Access to all tools (waterfall, consistency, portfolio pressure)</li>
-            <li>Standard templates & automatic validation</li>
-            <li>Regular updates & improvements</li>
-            <li>Email support</li>
+    <section className="mx-auto max-w-6xl px-4 py-12">
+      <h1 className="text-3xl font-semibold">Pricing</h1>
+      <p className="text-gray-700 mt-2 max-w-3xl">
+        One transparent annual fee. Includes updates, support and access to all analyses.
+      </p>
+
+      <div className="mt-8 grid md:grid-cols-3 gap-6">
+        <div className="rounded border p-6">
+          <h3 className="font-semibold text-xl">PharmaGtN License</h3>
+          <p className="text-gray-700 mt-2">€2,500 / year</p>
+          <ul className="text-sm mt-4 space-y-1 list-disc pl-5">
+            <li>GTN Waterfall</li>
+            <li>Consistency Analysis</li>
+            <li>Parallel Pressure Heatmap</li>
+            <li>Template upload + validation</li>
           </ul>
-          <a className="btn btn-primary" href="/en/contact">Request quote</a>
-        </div>
-        <div className="card">
-          <h3>ROI target</h3>
-          <p className="text-sm opacity-80 mt-1">We aim for at least €100,000 ROI through optimization of commercial policy and discounts. Results depend on data quality and implementation.</p>
-          <img src="/images/hero-graph.svg" alt="ROI visual" className="mt-3 w-full h-32 object-contain" />
+          <Link href="/en/contact" className="inline-block mt-6 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+            Request demo
+          </Link>
         </div>
       </div>
     </section>
-  )
+  );
 }
