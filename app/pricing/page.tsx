@@ -1,30 +1,33 @@
+import Link from 'next/link';
+
 export const metadata = {
-  title: 'Prijs — Licentie €2.500 per jaar | PharmaGtN',
-  description: 'Eén licentie, alle features. Inclusief dashboards, analyses en updates. ROI‑doelstelling €100.000 via optimalisatie van kortingen en voorwaarden.',
-}
+  title: 'Prijzen',
+  description: 'Eenvoudig licentiemodel: €2.500 per jaar per tenant.',
+};
 
 export default function Pricing() {
   return (
-    <section className="container px-4 py-12 space-y-8">
-      <h1>Licentie & prijzen</h1>
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="card space-y-2">
-          <div className="text-xl font-semibold">PharmaGtN Licentie</div>
-          <div className="text-3xl font-bold">€2.500<span className="text-base font-medium"> / jaar</span></div>
-          <ul className="list-disc pl-5 text-sm opacity-80 space-y-1">
-            <li>Toegang tot alle tools (waterfall, consistentie, parallelle druk)</li>
-            <li>Datasjablonen en automatische validatie</li>
-            <li>Regelmatige updates & verbeteringen</li>
-            <li>Email support</li>
+    <section className="mx-auto max-w-6xl px-4 py-12">
+      <h1 className="text-3xl font-semibold">Prijzen</h1>
+      <p className="text-gray-700 mt-2 max-w-3xl">
+        Eén transparant tarief per jaar. Inclusief updates, support en toegang tot alle analyses.
+      </p>
+
+      <div className="mt-8 grid md:grid-cols-3 gap-6">
+        <div className="rounded border p-6">
+          <h3 className="font-semibold text-xl">PharmaGtN Licentie</h3>
+          <p className="text-gray-700 mt-2">€2.500 per jaar</p>
+          <ul className="text-sm mt-4 space-y-1 list-disc pl-5">
+            <li>GTN-waterfall</li>
+            <li>Consistentie-analyse</li>
+            <li>Paralleldruk heatmap</li>
+            <li>Template upload + validatie</li>
           </ul>
-          <a className="btn btn-primary" href="/contact">Offerte / Inkoop</a>
-        </div>
-        <div className="card">
-          <h3>ROI‑doelstelling</h3>
-          <p className="text-sm opacity-80 mt-1">Ons motto: minimaal €100.000 ROI door optimalisatie van het commerciële beleid en kortingen. Resultaten zijn afhankelijk van datakwaliteit en implementatie.</p>
-          <img src="/images/hero-graph.svg" alt="ROI visual" className="mt-3 w-full h-32 object-contain" />
+          <Link href="/contact" className="inline-block mt-6 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+            Vraag demo aan
+          </Link>
         </div>
       </div>
     </section>
-  )
+  );
 }
