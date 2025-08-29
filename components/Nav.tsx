@@ -32,10 +32,7 @@ export default function Nav() {
           <Item href="/app" label="App" />
         </nav>
 
-        {/* Tijdelijke debug zodat je zéker weet dat deze Nav live is */}
-        <div className="text-[10px] text-gray-400">
-          NAV v2 • path: {typeof window !== 'undefined' ? window.location.pathname : '(ssr)'}
-        </div>
+        <span className="text-[10px] text-gray-400">NAV v2</span>
       </div>
     </header>
   );
