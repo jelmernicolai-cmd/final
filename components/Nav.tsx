@@ -32,9 +32,9 @@ export default function Nav() {
           <Item href="/app" label="App" />
         </nav>
 
-        {/* Debug: tijdelijk zichtbaar houden voor controle */}
+        {/* Tijdelijke debug zodat je zéker weet dat deze Nav live is */}
         <div className="text-[10px] text-gray-400">
-          DEBUG path: {typeof window !== 'undefined' ? window.location.pathname : '(ssr)'}
+          NAV v2 • path: {typeof window !== 'undefined' ? window.location.pathname : '(ssr)'}
         </div>
       </div>
     </header>
