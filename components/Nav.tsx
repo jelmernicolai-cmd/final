@@ -26,7 +26,7 @@ export default function Nav() {
           <Item href="/pricing" label="Prijzen" />
           <Item href="/about" label="Over" />
           <Item href="/contact" label="Contact" />
-          <Item href="/app" label="App" /> {/* ← deze zorgt voor de App-link */}
+          <Item href="/app" label="App" />
         </nav>
       </div>
     </header>
