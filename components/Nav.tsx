@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 
 export default function Nav() {
   const pathname = usePathname();
-  const LinkItem = ({ href, label }: { href: string; label: string }) => {
+  const Item = ({ href, label }: { href: string; label: string }) => {
     const active = pathname === href;
     return (
       <Link
@@ -22,11 +22,11 @@ export default function Nav() {
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-6">
         <Link href="/" className="text-lg font-semibold">PharmaGtN</Link>
         <nav className="ml-auto flex items-center gap-2 text-sm">
-          <LinkItem href="/features" label="Functionaliteit" />
-          <LinkItem href="/pricing" label="Prijzen" />
-          <LinkItem href="/about" label="Over" />
-          <LinkItem href="/contact" label="Contact" />
-          <LinkItem href="/app" label="App" /> {/* ← deze link zie je nu */}
+          <Item href="/features" label="Functionaliteit" />
+          <Item href="/pricing" label="Prijzen" />
+          <Item href="/about" label="Over" />
+          <Item href="/contact" label="Contact" />
+          <Item href="/app" label="App" /> {/* ← deze zorgt voor de App-link */}
         </nav>
       </div>
     </header>
