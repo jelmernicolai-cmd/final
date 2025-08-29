@@ -27,6 +27,8 @@ export default function Nav() {
           <Item href="/about" label="Over" />
           <Item href="/contact" label="Contact" />
           <Item href="/app" label="App" />
+          <div className="text-[10px] text-gray-400">
+  DEBUG path: {typeof window !== 'undefined' ? window.location.pathname : '(ssr)'}
         </nav>
       </div>
     </header>
