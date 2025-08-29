@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 
 export default function Nav() {
   const pathname = usePathname();
+
   const Item = ({ href, label }: { href: string; label: string }) => {
     const active = pathname === href;
     return (
@@ -18,19 +19,23 @@ export default function Nav() {
   };
 
   return (
-    <header className="border-b">
+    <header className="border-b bg-white/90 backdrop-blur">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-6">
         <Link href="/" className="text-lg font-semibold">PharmaGtN</Link>
+
         <nav className="ml-auto flex items-center gap-2 text-sm">
-        <Item href="/features" label="Functionaliteit" />
-<Item href="/en/features" label="Features (EN)" />
+          <Item href="/features" label="Functionaliteit" />
+          <Item href="/en/features" label="Features (EN)" />
           <Item href="/pricing" label="Prijzen" />
           <Item href="/about" label="Over" />
           <Item href="/contact" label="Contact" />
           <Item href="/app" label="App" />
-          <div className="text-[10px] text-gray-400">
-  DEBUG path: {typeof window !== 'undefined' ? window.location.pathname : '(ssr)'}
         </nav>
+
+        {/* Debug: tijdelijk zichtbaar houden voor controle */}
+        <div className="text-[10px] text-gray-400">
+          DEBUG path: {typeof window !== 'undefined' ? window.location.pathname : '(ssr)'}
+        </div>
       </div>
     </header>
   );
