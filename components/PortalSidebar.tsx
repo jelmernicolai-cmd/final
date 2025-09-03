@@ -8,7 +8,7 @@ import { useState, useMemo } from "react";
 /** Kleine inline icon helpers (geen extra deps) */
 function ArrowLeftIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M19 12H5" />
       <path d="M12 19l-7-7 7-7" />
     </svg>
@@ -16,7 +16,7 @@ function ArrowLeftIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 function GaugeIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M12 14l4-4" />
       <path d="M6.7 6.7A9 9 0 1 1 17.3 6.7" />
     </svg>
@@ -24,11 +24,12 @@ function GaugeIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 function ChartBarIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
-      <path d="M3 3v18h18" />
-      <path d="M7 15v-6" />
-      <path d="M12 19v-10" />
-      <path d="M17 11v-2" />
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M3 21V3" />
+      <path d="M3 21h18" />
+      <path d="M7 15V9" />
+      <path d="M12 21V7" />
+      <path d="M17 13V11" />
     </svg>
   );
 }
@@ -44,7 +45,7 @@ function ScatterIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 function DownloadIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M12 3v12" />
       <path d="M7 10l5 5 5-5" />
       <path d="M5 21h14" />
@@ -53,7 +54,7 @@ function DownloadIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 function PhoneIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.08 4.18 2 2 0 0 1 4.06 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.64 2.63a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.45-1.16a2 2 0 0 1 2.11-.45c.85.31 1.73.52 2.63.64A2 2 0 0 1 22 16.92z"/>
     </svg>
   );
@@ -97,10 +98,9 @@ export default function PortalSidebar() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
-  // Eenvoudige breadcrumb uit /app/... (alleen weergave — echte breadcrumbs in Nav kunnen ook)
+  // Breadcrumb-tekst op basis van /app/...
   const crumb = useMemo(() => {
     const parts = pathname?.split("/").filter(Boolean) ?? [];
-    // ["app", "waterfall"] -> "waterfall"
     const last = parts[1] ?? "overzicht";
     return last.charAt(0).toUpperCase() + last.slice(1);
   }, [pathname]);
@@ -118,8 +118,9 @@ export default function PortalSidebar() {
         <div className="px-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
           Analyses
         </div>
-        <NavItem href="/app/waterfall" label="GtN Waterfall" icon={<ChartBarIcon />} badge="NEW" />
+        <NavItem href="/app/waterfall" label="GtN Waterfall" icon={<ChartBarIcon />} />
         <NavItem href="/app/consistency" label="Consistency Tool" icon={<ScatterIcon />} />
+        <NavItem href="/app/parallel" label="Parallel Pressure" icon={<ChartBarIcon />} />
       </section>
 
       <section>
@@ -133,7 +134,7 @@ export default function PortalSidebar() {
   );
 
   return (
-    <aside className="bg-white border-r">
+    <aside className="bg-white border-r flex flex-col min-h-screen" role="navigation" aria-label="Portal navigatie">
       {/* Header */}
       <div className="px-4 py-3 border-b flex items-center gap-2">
         <Link href="/" className="inline-flex items-center gap-2 text-xs text-gray-600 hover:text-gray-900">
