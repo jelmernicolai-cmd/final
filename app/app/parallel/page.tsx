@@ -1,11 +1,10 @@
-import UploadAndAnalyze from '@/components/UploadAndAnalyze';
+// app/app/parallel/page.tsx
+import UploadAndAnalyze from "@/components/UploadAndAnalyze";
 
-export const dynamic = 'force-dynamic';
-
-export default function Page() {
+export default function ParallelPage() {
   return (
     <UploadAndAnalyze
-      tool="parallel"
+      mode="parallel"
       title="Parallel Pressure Analyse"
       helperText="Identificeer interne prijsdruk tussen portfolio-producten."
       defaultStrict={false} // mag losser starten
