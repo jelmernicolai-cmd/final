@@ -12,8 +12,6 @@ const NAV_LEFT: Item[] = [
   { href: '/pricing', label: 'Prijzen' },
   { href: '/about', label: 'Over' },
   { href: '/contact', label: 'Contact' },
-  // Optioneel: Engelstalige features
-  { href: '/en/features', label: 'Features (EN)' },
 ];
 
 function NavLink({
