@@ -1,78 +1,64 @@
-"use client";
+// components/Nav.tsx
+'use client';
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useState } from 'react';
+
+function NavItem({ href, label }: { href: string; label: string }) {
+  const pathname = usePathname();
+  const active = pathname === href;
+  return (
+    <Link
+      href={href}
+      className={`px-3 py-2 rounded ${active ? 'font-semibold underline' : 'hover:underline'}`}
+    >
+      {label}
+    </Link>
+  );
+}
 
 export default function Nav() {
-  const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  const Item = ({ href, label }: { href: string; label: string }) => {
-    const active = pathname === href;
-    return (
-      <Link
-        href={href}
-        className={`block px-3 py-2 rounded ${
-          active ? "font-semibold underline" : "hover:underline"
-        }`}
-        onClick={() => setOpen(false)}
-      >
-        {label}
-      </Link>
-    );
-  };
-
   return (
-    <header className="border-b bg-white sticky top-0 z-50">
-      <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-        {/* Logo */}
-        <Link href="/" className="text-lg font-bold text-sky-700">
-          PharmaGtN
-        </Link>
+    <header className="border-b bg-white">
+      <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-4">
+        <Link href="/" className="text-lg font-semibold">PharmaGtN</Link>
+
+        {/* Mobile burger */}
+        <button
+          className="ml-auto md:hidden rounded border px-3 py-2 text-sm"
+          onClick={() => setOpen(v => !v)}
+          aria-label="Toggle menu"
+        >
+          Menu
+        </button>
 
         {/* Desktop menu */}
-        <nav className="hidden md:flex items-center gap-4 text-sm">
-          <Item href="/features" label="Functionaliteit" />
-          <Item href="/en/features" label="Features (EN)" />
-          <Item href="/pricing" label="Prijzen" />
-          <Item href="/about" label="Over" />
-          <Item href="/contact" label="Contact" />
-          <Item href="/app" label="GtN Portal" />
-          <Link
-            href="/login"
-            className="ml-2 bg-sky-600 text-white px-4 py-2 rounded-lg hover:bg-sky-700"
-          >
-            Login
-          </Link>
+        <nav className="ml-auto hidden md:flex items-center gap-2 text-sm">
+          <NavItem href="/features" label="Functionaliteit" />
+          <NavItem href="/en/features" label="Features (EN)" />
+          <NavItem href="/pricing" label="Prijzen" />
+          <NavItem href="/about" label="Over" />
+          <NavItem href="/contact" label="Contact" />
+          <NavItem href="/app" label="GtN Portal" />
+          <NavItem href="/login" label="Login" />
         </nav>
-
-        {/* Mobile hamburger */}
-        <button
-          className="md:hidden p-2"
-          onClick={() => setOpen((prev) => !prev)}
-        >
-          {open ? <X size={24} /> : <Menu size={24} />}
-        </button>
       </div>
 
       {/* Mobile dropdown */}
       {open && (
-        <div className="md:hidden border-t bg-white px-4 py-3 space-y-2">
-          <Item href="/features" label="Functionaliteit" />
-          <Item href="/en/features" label="Features (EN)" />
-          <Item href="/pricing" label="Prijzen" />
-          <Item href="/about" label="Over" />
-          <Item href="/contact" label="Contact" />
-          <Item href="/app" label="GtN Portal" />
-          <Link
-            href="/login"
-            className="block bg-sky-600 text-white px-4 py-2 rounded-lg hover:bg-sky-700 text-center"
-            onClick={() => setOpen(false)}
-          >
-            Login
-          </Link>
+        <div className="md:hidden border-t bg-white">
+          <nav className="mx-auto max-w-6xl px-4 py-3 grid gap-2 text-sm">
+            <NavItem href="/features" label="Functionaliteit" />
+            <NavItem href="/en/features" label="Features (EN)" />
+            <NavItem href="/pricing" label="Prijzen" />
+            <NavItem href="/about" label="Over" />
+            <NavItem href="/contact" label="Contact" />
+            <NavItem href="/app" label="GtN Portal" />
+            <NavItem href="/login" label="Login" />
+          </nav>
         </div>
       )}
     </header>
