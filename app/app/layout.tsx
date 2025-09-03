@@ -1,24 +1,28 @@
 // app/app/layout.tsx
-'use client';
+import type { Metadata } from "next";
+import "../globals.css";
+import PortalSidebar from "@/components/PortalSidebar";
 
-import '@/app/globals.css';
-import { PortalProvider } from '@/components/portal/PortalProvider';
-import Sidebar from '@/components/portal/Sidebar';
+export const metadata: Metadata = {
+  title: "GtN Portal | PharmaGtN",
+  description:
+    "Upload data en krijg direct inzicht: Gross-to-Net Waterfall, Consistency, en optimalisatiesuggesties.",
+};
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <PortalProvider>
-      <div className="min-h-[calc(100vh-0px)] bg-gray-50">
-        <div className="mx-auto max-w-7xl px-4 py-6 grid grid-cols-1 md:grid-cols-[260px,1fr] gap-6">
-          {/* Left task pane */}
-          <aside className="md:sticky md:top-4 h-fit">
-            <Sidebar />
-          </aside>
+    <html lang="nl">
+      <body className="min-h-screen bg-gray-50 text-gray-900">
+        <div className="min-h-screen grid grid-cols-1 md:grid-cols-[260px_1fr]">
+          {/* Sidebar (client) */}
+          <PortalSidebar />
 
-          {/* Main workspace */}
-          <section className="min-h-[60vh]">{children}</section>
+          {/* Main content */}
+          <main className="min-h-screen bg-white border-l">
+            {children}
+          </main>
         </div>
-      </div>
-    </PortalProvider>
+      </body>
+    </html>
   );
 }
