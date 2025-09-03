@@ -1,30 +1,28 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-options";
+// app/app/page.tsx
 import Link from "next/link";
 
-export default async function PortalHome() {
-  const session = await getServerSession(authOptions);
-  const hasSub = (session?.user as any)?.hasActiveSub === true;
+export const metadata = {
+  title: "Portal dashboard | PharmaGtN",
+};
 
-  if (!hasSub) {
-    return (
-      <div className="rounded-xl border p-6 bg-yellow-50">
-        <h1 className="text-xl font-semibold">Abonnement vereist</h1>
-        <p className="mt-2 text-gray-700">
-          Er is geen actief abonnement gevonden voor <strong>{session?.user?.email}</strong>.
-        </p>
-        <p className="mt-2">
-          Ga naar <Link href="/billing" className="underline">Billing</Link> om je abonnement te starten of te beheren.
-        </p>
-      </div>
-    );
-  }
-
+export default function AppHome() {
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold">Portal overzicht</h1>
-      <p className="text-gray-700">Kies een analyse in het menu links om te starten.</p>
-      {/* hier kun je tiles zetten naar /app/waterfall en /app/consistency */}
+      <h1 className="text-xl font-bold">Dashboard</h1>
+      <p className="text-gray-600 text-sm">
+        Kies een analyse of upload nieuwe data om direct inzichten te krijgen.
+      </p>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        <Link href="/app/waterfall" className="rounded border p-4 hover:bg-gray-50">
+          <div className="font-semibold">GtN Waterfall</div>
+          <div className="text-sm text-gray-600">Waterfall van bruto naar netto per kanaal en klanttype.</div>
+        </Link>
+        <Link href="/app/consistency" className="rounded border p-4 hover:bg-gray-50">
+          <div className="font-semibold">Consistency</div>
+          <div className="text-sm text-gray-600">Top klanten op incentives en procentuele incentive-last.</div>
+        </Link>
+      </div>
     </div>
   );
 }
