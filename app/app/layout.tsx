@@ -1,37 +1,38 @@
-// app/app/layout.tsx
 import type { Metadata } from "next";
+import "../globals.css";
 import PortalSidebar from "@/components/PortalSidebar";
+import Breadcrumbs from "@/components/Breadcrumbs";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "GtN Portal | PharmaGtN",
-  description:
-    "Upload data en krijg direct inzicht: Gross-to-Net Waterfall, Consistency, en optimalisatiesuggesties.",
+  description: "Upload data en krijg direct inzicht: Gross-to-Net Waterfall, Consistency, en optimalisatiesuggesties.",
 };
 
-// Belangrijk: GEEN <html>/<body> hier renderen – dat doet app/layout.tsx.
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      {/* Grid: sidebar + hoofdcontent */}
-      <div className="mx-auto max-w-7xl grid grid-cols-1 md:grid-cols-[260px_1fr]">
-        {/* Sidebar (client component) */}
-        <aside className="border-r bg-white md:sticky md:top-14 md:h-[calc(100vh-56px)] md:overflow-y-auto">
-          {/* top-14 = hoogte van je hoofd-nav (h-14). 
-             Als je ooit de hoofd-navhoogte wijzigt, pas dit aan. */}
+    <html lang="nl">
+      <body className="min-h-screen bg-gray-50 text-gray-900">
+        <div className="min-h-screen grid grid-cols-1 md:grid-cols-[260px_1fr]">
           <PortalSidebar />
-        </aside>
 
-        {/* Content */}
-        <main
-          role="main"
-          className="min-h-screen bg-white"
-        >
-          {/* Wat lucht rondom de inhoud */}
-          <div className="px-4 py-6 sm:px-6 lg:px-8">
-            {children}
-          </div>
-        </main>
-      </div>
-    </div>
+          <main className="min-h-screen bg-white border-l">
+            {/* Topbar */}
+            <div className="sticky top-0 z-20 border-b bg-white/80 backdrop-blur">
+              <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+                <Breadcrumbs />
+                <Link href="/" className="text-sm rounded-lg border px-3 py-1.5 hover:bg-gray-50">
+                  ← Terug naar website
+                </Link>
+              </div>
+            </div>
+
+            <div className="mx-auto max-w-6xl px-4 py-6">
+              {children}
+            </div>
+          </main>
+        </div>
+      </body>
+    </html>
   );
 }
