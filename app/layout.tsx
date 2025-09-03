@@ -8,6 +8,14 @@ export const metadata: Metadata = {
   title: { default: 'PharmaGtN', template: '%s | PharmaGtN' },
   description: 'PharmaGtN helpt farma-fabrikanten hun gross-to-net en kortingsbeleid te optimaliseren.',
 };
+export const metadata = {
+  title: 'PharmaGtN',
+  description: 'Gross-to-Net optimalisatieplatform voor farma',
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+  },
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
