@@ -1,177 +1,347 @@
-'use client';
+// components/UploadAndAnalyze.tsx
+"use client";
 
-import { useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
-import { parse } from 'csv-parse/browser/esm/sync';
+import { useMemo, useState } from "react";
 
-type Row = Record<string, number | string | null | undefined>;
+type Mode = "waterfall" | "consistency";
 
-const toNum = (v: unknown): number => {
-  if (v === null || v === undefined) return 0;
-  if (typeof v === 'number') return isFinite(v) ? v : 0;
-  if (typeof v === 'string') {
-    const n = Number(String(v).replace(',', '.'));
-    return isNaN(n) ? 0 : n;
-  }
-  return 0;
-};
+type Row = Record<string, string>;
 
-const fmt = (n: number) => new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 0 }).format(Math.round(n));
+function parseCSV(text: string): Row[] {
+  // ondersteunt ; of , als delimiter, dubbele quotes, en \n of \r\n
+  // Simpele, robuuste parser zonder externe libs
+  const firstLine = text.split(/\r?\n/)[0] || "";
+  const delimiter = (firstLine.match(/;/g)?.length || 0) > (firstLine.match(/,/g)?.length || 0) ? ";" : ",";
+  // Split in regels, filter lege
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return [];
 
-function sumSafe(rows: Row[], colAmount: string, colQty?: string) {
-  if (colQty && rows.some(r => r[colQty] !== undefined)) {
-    return rows.reduce((acc, r) => acc + toNum(r[colAmount]) * toNum(r[colQty]), 0);
-  }
-  return rows.reduce((acc, r) => acc + toNum(r[colAmount]), 0);
+  // Header parsing met quote-ondersteuning
+  const parseLine = (line: string): string[] => {
+    const out: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"'; i++; // escaped quote
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch === delimiter && !inQuotes) {
+        out.push(cur); cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out.map((s) => s.trim());
+  };
+
+  const headers = parseLine(lines[0]);
+  return lines.slice(1).map((ln) => {
+    const cols = parseLine(ln);
+    const obj: Row = {};
+    headers.forEach((h, i) => (obj[h] = (cols[i] ?? "").trim()));
+    return obj;
+  });
 }
 
-export default function UploadAndAnalyze({
-  tool,
-  title = 'Upload & Analyse',
-  helperText,
-  expectedColumns = ['Klant', 'Product', 'Bruto', 'Korting', 'Bonus', 'Fee', 'Aantal'],
-  defaultStrict = true,
-}: {
-  tool: 'gtn' | 'consistency' | 'parallel';
-  title?: string;
-  helperText?: string;
-  expectedColumns?: string[];
-  defaultStrict?: boolean;
-}) {
+function toNum(v: string): number {
+  // Ondersteunt 1.234,56 of 1,234.56 of "1 234,56"
+  if (!v) return 0;
+  const s = v.replace(/\s/g, "").replace(/€/g, "");
+  // als er zowel . als , inzitten, beslis waarschijnlijk decimal
+  if (s.includes(",") && s.includes(".")) {
+    // Neem laatste scheidingsteken als decimal
+    const lastComma = s.lastIndexOf(",");
+    const lastDot = s.lastIndexOf(".");
+    const decIsComma = lastComma > lastDot;
+    if (decIsComma) return parseFloat(s.replace(/\./g, "").replace(",", "."));
+    return parseFloat(s.replace(/,/g, ""));
+  }
+  // Alleen komma → vervang door punt
+  if (s.includes(",") && !s.includes(".")) return parseFloat(s.replace(",", "."));
+  return parseFloat(s);
+}
+
+function fmtEUR(n: number): string {
+  return n.toLocaleString("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+}
+function fmtPct(n: number): string {
+  return (n * 100).toLocaleString("nl-NL", { maximumFractionDigits: 1 }) + "%";
+}
+
+export default function UploadAndAnalyze({ mode }: { mode: Mode }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string>('');
-  const [strict] = useState<boolean>(defaultStrict);
 
-  async function handleFile(file: File) {
-    setError(null);
-    setRows([]);
-    setFileName(file.name);
-    const buf = await file.arrayBuffer();
-    if (file.name.toLowerCase().endsWith('.csv')) {
-      const text = new TextDecoder().decode(new Uint8Array(buf));
-      const records = parse(text, { columns: true, skip_empty_lines: true });
-      setRows(records as Row[]);
-      return;
-    }
-    const wb = XLSX.read(buf, { type: 'array' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const json = XLSX.utils.sheet_to_json<Row>(ws, { defval: null });
-    setRows(json);
-  }
-
-  function onChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
+  const onFile = async (f?: File) => {
     if (!f) return;
-    handleFile(f).catch(() => {
-      setError('Bestand kon niet gelezen worden. Controleer het formaat (.xlsx of .csv).');
+    setError(null);
+    try {
+      const txt = await f.text();
+      const data = parseCSV(txt);
+      if (!data.length) {
+        setError("Geen data gevonden. Klopt het CSV-formaat en de headers?");
+        setRows([]);
+        return;
+      }
+      setRows(data);
+    } catch (e: any) {
+      setError("Kon bestand niet lezen: " + e?.message);
+      setRows([]);
+    }
+  };
+
+  // WATERFALL-berekeningen
+  const wf = useMemo(() => {
+    if (mode !== "waterfall" || rows.length === 0) return null;
+
+    const num = (r: Row, k: string) => toNum(r[k] || "0");
+
+    let gross = 0;
+    let chDisc = 0, custDisc = 0, prodDisc = 0, volDisc = 0, valDisc = 0, otherDisc = 0, mandDisc = 0, localDisc = 0;
+    let invoiced = 0;
+    let directReb = 0, promptReb = 0, indReb = 0, mandReb = 0, localReb = 0;
+    let royalty = 0, otherInc = 0;
+    let net = 0;
+
+    rows.forEach((r) => {
+      gross += num(r, "Sum of Gross Sales");
+      chDisc += num(r, "Sum of Channel Discounts");
+      custDisc += num(r, "Sum of Customer Discounts");
+      prodDisc += num(r, "Sum of Product Discounts");
+      volDisc += num(r, "Sum of Volume Discounts");
+      valDisc += num(r, "Sum of Value Discounts");
+      otherDisc += num(r, "Sum of Other Sales Discounts");
+      mandDisc += num(r, "Sum of Mandatory Discounts");
+      localDisc += num(r, "Sum of Discount Local");
+      invoiced += num(r, "Sum of Invoiced Sales");
+      directReb += num(r, "Sum of Direct Rebates");
+      promptReb += num(r, "Sum of Prompt Payment Rebates");
+      indReb += num(r, "Sum of Indirect Rebates");
+      mandReb += num(r, "Sum of Mandatory Rebates");
+      localReb += num(r, "Sum of Rebate Local");
+      royalty += num(r, "Sum of Royalty Income");
+      otherInc += num(r, "Sum of Other Income");
+      net += num(r, "Sum of Net Sales");
     });
-  }
 
-  const { kpis, metrics, headerSample } = useMemo(() => {
-    const header = rows[0] ? Object.keys(rows[0]) : [];
-    const bruto   = sumSafe(rows, 'Bruto', 'Aantal');
-    const korting = sumSafe(rows, 'Korting', 'Aantal');
-    const bonus   = sumSafe(rows, 'Bonus', 'Aantal');
-    const fee     = sumSafe(rows, 'Fee', 'Aantal');
-    const netto   = bruto - korting - bonus - fee;
-    const metrics = [
-      { label: 'Bruto', value: bruto },
-      { label: 'Korting', value: -korting },
-      { label: 'Bonus', value: -bonus },
-      { label: 'Fee', value: -fee },
-      { label: 'Netto', value: netto },
-    ];
-    const kpis = [
-      { label: 'Bruto omzet (geschat)', value: `€${fmt(bruto)}` },
-      { label: 'Kortingen (gewogen)', value: `€${fmt(korting)}` },
-      { label: 'Bonussen (gewogen)', value: `€${fmt(bonus)}` },
-      { label: 'Fees (gewogen)', value: `€${fmt(fee)}` },
-      { label: 'Netto omzet', value: `€${fmt(netto)}` },
-    ];
-    return { kpis, metrics, headerSample: header };
-  }, [rows]);
+    const totalDiscounts =
+      chDisc + custDisc + prodDisc + volDisc + valDisc + otherDisc + mandDisc + localDisc;
 
-  const templateHref = tool === 'gtn' ? '/templates/gtn-template.xlsx'
-                     : tool === 'consistency' ? '/templates/consistency-template.xlsx'
-                     : '/templates/parallel-template.xlsx';
+    const totalRebates =
+      directReb + promptReb + indReb + mandReb + localReb;
 
-  const base = Math.max(Math.abs(metrics.reduce((m, s) => Math.max(m, Math.abs(s.value)), 0)), 1);
+    const gtnSpend = Math.abs(totalDiscounts) + Math.abs(totalRebates); // absolute spend
+    const gtnPct = gross ? gtnSpend / gross : 0;
+
+    // Top 3 klanten & SKU’s op GtN spend
+    const byKeySum = (key: string) => {
+      const m = new Map<string, number>();
+      rows.forEach((r) => {
+        const k = (r[key] || "").trim() || "(onbekend)";
+        const v =
+          Math.abs(num(r, "Sum of Channel Discounts")) +
+          Math.abs(num(r, "Sum of Customer Discounts")) +
+          Math.abs(num(r, "Sum of Product Discounts")) +
+          Math.abs(num(r, "Sum of Volume Discounts")) +
+          Math.abs(num(r, "Sum of Value Discounts")) +
+          Math.abs(num(r, "Sum of Other Sales Discounts")) +
+          Math.abs(num(r, "Sum of Mandatory Discounts")) +
+          Math.abs(num(r, "Sum of Discount Local")) +
+          Math.abs(num(r, "Sum of Direct Rebates")) +
+          Math.abs(num(r, "Sum of Prompt Payment Rebates")) +
+          Math.abs(num(r, "Sum of Indirect Rebates")) +
+          Math.abs(num(r, "Sum of Mandatory Rebates")) +
+          Math.abs(num(r, "Sum of Rebate Local"));
+        m.set(k, (m.get(k) || 0) + v);
+      });
+      return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    };
+
+    const topCustomers = byKeySum("Customer Name (Sold-to)");
+    const topSkus = byKeySum("SKU Name");
+
+    return {
+      gross,
+      invoiced,
+      net,
+      totalDiscounts,
+      totalRebates,
+      gtnSpend,
+      gtnPct,
+      topCustomers,
+      topSkus,
+      components: {
+        chDisc, custDisc, prodDisc, volDisc, valDisc, otherDisc, mandDisc, localDisc,
+        directReb, promptReb, indReb, mandReb, localReb, royalty, otherInc
+      }
+    };
+  }, [mode, rows]);
+
+  // CONSISTENCY-berekeningen
+  const cs = useMemo(() => {
+    if (mode !== "consistency" || rows.length === 0) return null;
+    const num = (r: Row, k: string) => toNum(r[k] || "0");
+
+    let totalGross = 0, totalIncent = 0;
+    const byCustomer: Array<{ cust: string; gross: number; incent: number; pct: number }> = [];
+
+    const agg = new Map<string, { gross: number; incent: number }>();
+    rows.forEach((r) => {
+      const c = (r["Customer Name (Sold-to)"] || "").trim() || "(onbekend)";
+      const gross = num(r, "Sum of Gross Sales");
+      const incent = num(r, "Sum of Total GtN Spend");
+      totalGross += gross;
+      totalIncent += incent;
+      const prev = agg.get(c) || { gross: 0, incent: 0 };
+      prev.gross += gross;
+      prev.incent += incent;
+      agg.set(c, prev);
+    });
+
+    agg.forEach((v, k) => {
+      byCustomer.push({ cust: k, gross: v.gross, incent: v.incent, pct: v.gross ? v.incent / v.gross : 0 });
+    });
+
+    byCustomer.sort((a, b) => b.incent - a.incent);
+
+    return {
+      totalGross,
+      totalIncent,
+      totalPct: totalGross ? totalIncent / totalGross : 0,
+      top15: byCustomer.slice(0, 15),
+    };
+  }, [mode, rows]);
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-12 space-y-6">
-      <header>
-        <h1 className="text-2xl md:text-3xl font-semibold">{title}</h1>
-        {helperText && <p className="mt-2 text-gray-600">{helperText}</p>}
-      </header>
-
-      <div className="rounded border p-4 bg-white">
-        <label className="block text-sm font-medium">Upload .xlsx of .csv</label>
-        <input type="file" accept=".xlsx,.csv" onChange={onChange} className="mt-2 block" />
-        {fileName && <p className="text-xs text-gray-500 mt-1">Bestand: {fileName}</p>}
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-        <div className="mt-3 text-sm">
-          <a href={templateHref} download className="underline text-blue-700 hover:text-blue-900">
-            Download sjabloon
-          </a>
-          <span className="mx-2 text-gray-400">|</span>
-          <a href="/api/health" className="underline">API health</a>
-        </div>
+    <div className="rounded-xl border bg-white p-4 space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-sm font-medium">
+          Upload {mode === "waterfall" ? "Waterfall" : "Consistency"} CSV:
+        </label>
+        <input
+          type="file"
+          accept=".csv,text/csv"
+          onChange={(e) => onFile(e.target.files?.[0])}
+          className="text-sm"
+        />
+        <a
+          className="text-xs underline text-sky-700"
+          href={mode === "waterfall" ? "/templates/PharmaGtN_Waterfall_Template.csv" : "/templates/PharmaGtN_Consistency_Template.csv"}
+          download
+        >
+          Download CSV-template
+        </a>
       </div>
 
-      {!!rows.length && (
-        <div className="space-y-6">
-          <div>
-            <h3 className="font-semibold mb-2">KPI’s</h3>
-            <div className="grid sm:grid-cols-2 md:grid-cols-5 gap-3">
-              {kpis.map((k) => (
-                <div key={k.label} className="rounded border p-3">
-                  <div className="text-xs text-gray-500">{k.label}</div>
-                  <div className="text-lg font-semibold">{k.value}</div>
-                </div>
+      {error && (
+        <div className="text-sm text-red-600">{error}</div>
+      )}
+
+      {/* Resultaatblokken */}
+      {mode === "waterfall" && wf && (
+        <div className="space-y-4">
+          <div className="grid sm:grid-cols-3 gap-3">
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-gray-500">TOTAL GtN SPEND (€)</div>
+              <div className="font-semibold">{fmtEUR(wf.gtnSpend)}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-gray-500">TOTAL GtN SPEND (%)</div>
+              <div className="font-semibold">{fmtPct(wf.gtnPct)}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-gray-500">TOTAL DISCOUNT (€)</div>
+              <div className="font-semibold">{fmtEUR(Math.abs(wf.totalDiscounts))}</div>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3 text-sm">
+            <div className="rounded-lg border p-3">
+              <div className="font-semibold mb-2">Customer — Highest 3 (GtN spend)</div>
+              {wf.topCustomers.map(([c, v]) => (
+                <div key={c}>{c} — {fmtEUR(v)} {wf.gross ? `(${fmtPct(v / wf.gross)})` : ""}</div>
+              ))}
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="font-semibold mb-2">SKU — Highest 3 (GtN spend)</div>
+              {wf.topSkus.map(([s, v]) => (
+                <div key={s}>{s} — {fmtEUR(v)} {wf.gross ? `(${fmtPct(v / wf.gross)})` : ""}</div>
               ))}
             </div>
           </div>
 
-          <div className="space-y-2">
-            <h3 className="font-semibold">Gross to Net</h3>
-            <div className="space-y-2">
-              {metrics.map((m) => <Bar key={m.label} label={m.label} value={m.value} base={base} highlight={m.label==='Netto'} />)}
+          <div className="rounded-lg border p-3 bg-emerald-50">
+            <div className="font-semibold">Optimalisatiesuggesties</div>
+            <ul className="list-disc pl-5 mt-2 space-y-1 text-emerald-900">
+              <li>Herijk Value Discounts (bandbreedtes per productgroep) — grootste driver in spend.</li>
+              <li>Pak top-3 klanten/SKU’s met hoogste GtN spend eerst aan.</li>
+              <li>Onderzoek verschuiving kortingen → rebates als dat governance verbetert.</li>
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {mode === "consistency" && cs && (
+        <div className="space-y-4">
+          <div className="grid sm:grid-cols-3 gap-3">
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-gray-500">TOTAL GROSS SALES</div>
+              <div className="font-semibold">{fmtEUR(cs.totalGross)}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-gray-500">TOTAL INCENTIVES (€)</div>
+              <div className="font-semibold">{fmtEUR(cs.totalIncent)}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-gray-500">TOTAL INCENTIVES (%)</div>
+              <div className="font-semibold">{fmtPct(cs.totalPct)}</div>
             </div>
           </div>
 
-          <div className="mt-4">
-            <h3 className="font-semibold mb-2">Gedetecteerde kolommen (eerste rij)</h3>
-            <p className="text-sm text-gray-700 break-words">{headerSample.join(' · ')}</p>
+          <div className="rounded-lg border p-3 overflow-auto">
+            <div className="font-semibold mb-2 text-sm">
+              CONSISTENCY OVERVIEW TABLE — Highest 15 customers
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b">
+                  <th className="py-2 pr-3">Customer Name</th>
+                  <th className="py-2 pr-3">Gross Sales (€)</th>
+                  <th className="py-2 pr-3">Total Incentive (€)</th>
+                  <th className="py-2">Total Incentive (%)</th>
+                </tr>
+              </thead>
+              <tbody className="[&_td]:py-1">
+                {cs.top15.map((r) => (
+                  <tr key={r.cust} className="border-b last:border-0">
+                    <td className="pr-3">{r.cust}</td>
+                    <td className="pr-3">{fmtEUR(r.gross)}</td>
+                    <td className="pr-3">{fmtEUR(r.incent)}</td>
+                    <td>{fmtPct(r.pct)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="text-xs text-gray-500 mt-2">
+              TOTAL — {fmtEUR(cs.totalGross)} | {fmtEUR(cs.totalIncent)} | {fmtPct(cs.totalPct)}
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-3 bg-emerald-50">
+            <div className="font-semibold">Optimalisatiesuggesties</div>
+            <ul className="list-disc pl-5 mt-2 space-y-1 text-emerald-900">
+              <li>Breng outliers (hoog % incentive) terug naar peer-bandbreedte per productgroep.</li>
+              <li>Introduceer volumestaffels: incentive % daalt bij hogere afzet.</li>
+              <li>Combineer nettoprijs + productmix om margedoelen te halen per klantcluster.</li>
+            </ul>
           </div>
         </div>
       )}
-
-      {strict && !rows.length && (
-        <div className="text-sm text-gray-600">
-          <h3 className="font-semibold mb-2">Verwachte kolommen</h3>
-          <ul className="list-disc pl-5">
-            {expectedColumns.map((c) => <li key={c}>{c}</li>)}
-          </ul>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function Bar({ label, value, base, highlight }: { label: string; value: number; base: number; highlight?: boolean }) {
-  const pct = Math.max(0, Math.min(100, (Math.abs(value) / (base || 1)) * 100));
-  const positive = value >= 0;
-  return (
-    <div className="flex items-center gap-3">
-      <div className="w-36 shrink-0">{label}</div>
-      <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
-        <div
-          className={`h-4 ${highlight ? 'bg-emerald-600' : positive ? 'bg-blue-600' : 'bg-red-600'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className={`w-32 text-right ${highlight ? 'font-semibold' : ''}`}>{value >= 0 ? '€' : '€'}{new Intl.NumberFormat('nl-NL').format(Math.round(value))}</div>
     </div>
   );
 }
