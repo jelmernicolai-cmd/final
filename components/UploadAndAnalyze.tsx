@@ -5,7 +5,7 @@ import { useState } from "react";
 import { parse } from "csv-parse/browser/esm/sync";
 import * as XLSX from "xlsx";
 
-export type Mode = "waterfall" | "consistency";
+export type Mode = "waterfall" | "consistency" | "parallel";
 
 function fmtEUR(n: number) {
   return new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n || 0);
