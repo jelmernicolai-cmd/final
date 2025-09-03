@@ -1,4 +1,5 @@
 // app/app/waterfall/page.tsx
+"use client";
 import UploadAndAnalyze from "@/components/UploadAndAnalyze";
 
 export default function Page() {
