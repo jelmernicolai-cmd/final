@@ -16,10 +16,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <body className="min-h-screen bg-gray-50 text-gray-900">
         <div className="min-h-screen grid grid-cols-1 md:grid-cols-[260px_1fr]">
           <PortalSidebar />
-          <main className="min-h-screen bg-white border-l">
+          <div className="min-h-screen bg-white border-l flex flex-col">
             <PortalTopbar />
-            <div className="p-4 md:p-6">{children}</div>
-          </main>
+            <main className="flex-1 mx-auto w-full max-w-6xl px-4 py-6">
+              {children}
+            </main>
+          </div>
         </div>
       </body>
     </html>
