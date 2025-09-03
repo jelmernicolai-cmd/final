@@ -74,7 +74,7 @@ export default function Nav() {
             aria-label="Login naar GtN Portal"
             title="Login naar GtN Portal"
           >
-            Login · GtN Portal
+            Login
           </Link>
 
           {/* Mobile toggle */}
@@ -121,7 +121,7 @@ export default function Nav() {
             aria-label="Login naar GtN Portal"
             title="Login naar GtN Portal"
           >
-            Login · GtN Portal
+            Login
           </Link>
         </nav>
       </div>
