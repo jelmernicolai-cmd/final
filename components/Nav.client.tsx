@@ -3,6 +3,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useSession, signOut } from "next-auth/react";
 
 type LeftItemProps = { href: string; label: string };
 function LeftItem({ href, label }: LeftItemProps) {
@@ -15,13 +16,12 @@ function LeftItem({ href, label }: LeftItemProps) {
 
 export default function Nav() {
   const [open, setOpen] = useState(false);
+  const { data: session, status } = useSession();
 
   return (
     <header className="border-b bg-white/70 backdrop-blur sticky top-0 z-40">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-4">
-        <Link href="/" className="text-lg font-semibold">
-          PharmaGtN
-        </Link>
+        <Link href="/" className="text-lg font-semibold">PharmaGtN</Link>
 
         {/* Desktop links */}
         <nav className="hidden md:flex items-center gap-1">
@@ -34,14 +34,27 @@ export default function Nav() {
 
         <div className="ml-auto" />
 
-        {/* Desktop CTA */}
-        <div className="hidden md:block">
-          <Link
-            href="/login"
-            className="inline-flex items-center rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:bg-sky-700"
-          >
-            Login
-          </Link>
+        {/* Rechts: login status */}
+        <div className="hidden md:flex items-center gap-3">
+          {status === "authenticated" ? (
+            <>
+              <span className="text-sm text-gray-600">{session?.user?.email}</span>
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className="inline-flex items-center rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+              >
+                Log uit
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/login"
+              className="inline-flex items-center rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:bg-sky-700"
+            >
+              Login
+            </Link>
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -73,12 +86,23 @@ export default function Nav() {
           <LeftItem href="/about" label="Over ons" />
           <LeftItem href="/contact" label="Contact" />
           <LeftItem href="/portal" label="Portal" />
-          <Link
-            href="/login"
-            className="mt-2 inline-flex items-center w-fit rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:bg-sky-700"
-          >
-            Login
-          </Link>
+
+          {status === "authenticated" ? (
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: "/" })}
+              className="mt-2 inline-flex items-center w-fit rounded-lg border px-4 py-2 hover:bg-gray-50"
+            >
+              Log uit
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="mt-2 inline-flex items-center w-fit rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:bg-sky-700"
+            >
+              Login
+            </Link>
+          )}
         </div>
       </div>
     </header>
