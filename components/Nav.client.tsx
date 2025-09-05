@@ -32,7 +32,6 @@ export default function Nav() {
           <LeftItem href="/portal" label="Portal" />
         </nav>
 
-        {/* Spacer */}
         <div className="ml-auto" />
 
         {/* Desktop CTA */}
