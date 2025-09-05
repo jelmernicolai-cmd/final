@@ -1,4 +1,4 @@
-import Stripe from "stripe";
-
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {});
-// of zelfs: new Stripe(process.env.STRIPE_SECRET_KEY as string);
+git checkout -b hotfix/stripe-apiversion
+sed -i '' -e 's/"2024-06-20"/"2023-10-16"/' lib/stripe.ts
+git commit -am "fix(stripe): align apiVersion to installed SDK types"
+git push
