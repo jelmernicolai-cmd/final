@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import WaterfallChart from "@/components/waterfall/WaterfallChart.client";
-import { WF_STORE_KEY } from "@/components/waterfall/UploadAndParse.client";
+import { WF_STORE_KEY } from "@/components/waterfall/UploadAndParse";
 
 type Row = {
   pg: string; sku: string; cust: string; period: string;
