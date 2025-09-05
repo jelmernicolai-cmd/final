@@ -1,12 +1,32 @@
 // app/login/page.tsx
 'use client';
 
-import { FormEvent, useState } from "react";
+import { Suspense, FormEvent, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { LogIn } from "lucide-react";
 
+// voorkom prerender-issues; forceer runtime evaluatie
+export const dynamic = "force-dynamic";
+
 export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[70vh] grid place-items-center px-4">
+          <div className="w-full max-w-md rounded-xl border bg-white p-6 shadow-sm">
+            <div className="h-6 w-40 bg-gray-200 rounded animate-pulse" />
+            <div className="mt-4 h-4 w-64 bg-gray-100 rounded animate-pulse" />
+          </div>
+        </div>
+      }
+    >
+      <LoginInner />
+    </Suspense>
+  );
+}
+
+function LoginInner() {
   const sp = useSearchParams();
   const callbackUrl = sp.get("callbackUrl") || "/app";
   const initialErr = sp.get("error") ? "Inloggen mislukt. Controleer je gegevens." : null;
