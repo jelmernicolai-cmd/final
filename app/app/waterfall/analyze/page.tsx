@@ -31,7 +31,7 @@ function eur(num: number) {
 
 export default function AnalyzePage() {
   const [data, setData] = useState<{ meta: any; rows: Row[] } | null>(null);
-  const [pg, setPg]   = useState('All');
+  const [pg, setPg] = useState('All');
   const [sku, setSku] = useState('All');
   const [cust, setCust] = useState('All');
 
@@ -45,42 +45,44 @@ export default function AnalyzePage() {
   const rows = data?.rows || [];
   const validation = data?.meta?.validation || { warnings: [], corrected: 0 };
 
-  const pgs  = useMemo(() => Array.from(new Set(rows.map(r => r.pg))).sort(), [rows]);
+  const pgs = useMemo(() => Array.from(new Set(rows.map(r => r.pg))).sort(), [rows]);
   const skus = useMemo(
     () => Array.from(new Set(rows.filter(r => pg === 'All' || r.pg === pg).map(r => r.sku))).sort(),
     [rows, pg]
   );
-  const custs= useMemo(() => Array.from(new Set(rows.map(r => r.cust))).sort(), [rows]);
+  const custs = useMemo(() => Array.from(new Set(rows.map(r => r.cust))).sort(), [rows]);
 
-  const filtered = rows.filter(r =>
-    (pg === 'All' || r.pg === pg) &&
-    (sku === 'All' || r.sku === sku) &&
-    (cust === 'All' || r.cust === cust)
+  const filtered = rows.filter(
+    r =>
+      (pg === 'All' || r.pg === pg) &&
+      (sku === 'All' || r.sku === sku) &&
+      (cust === 'All' || r.cust === cust)
   );
 
   // Aggregates
-  const gross          = sum(filtered, 'gross');
-  const d_channel      = sum(filtered, 'd_channel');
-  const d_customer     = sum(filtered, 'd_customer');
-  const d_product      = sum(filtered, 'd_product');
-  const d_volume       = sum(filtered, 'd_volume');
-  const d_value        = sum(filtered, 'd_value');
-  const d_other_sales  = sum(filtered, 'd_other_sales');
-  const d_mandatory    = sum(filtered, 'd_mandatory');
-  const d_local        = sum(filtered, 'd_local');
-  const invoiced       = sum(filtered, 'invoiced');
-  const r_direct       = sum(filtered, 'r_direct');
-  const r_prompt       = sum(filtered, 'r_prompt');
-  const r_indirect     = sum(filtered, 'r_indirect');
-  const r_mandatory    = sum(filtered, 'r_mandatory');
-  const r_local        = sum(filtered, 'r_local');
-  const inc_royalty    = sum(filtered, 'inc_royalty');
-  const inc_other      = sum(filtered, 'inc_other');
-  const net            = sum(filtered, 'net');
+  const gross = sum(filtered, 'gross');
+  const d_channel = sum(filtered, 'd_channel');
+  const d_customer = sum(filtered, 'd_customer');
+  const d_product = sum(filtered, 'd_product');
+  const d_volume = sum(filtered, 'd_volume');
+  const d_value = sum(filtered, 'd_value');
+  const d_other_sales = sum(filtered, 'd_other_sales');
+  const d_mandatory = sum(filtered, 'd_mandatory');
+  const d_local = sum(filtered, 'd_local');
+  const invoiced = sum(filtered, 'invoiced');
+  const r_direct = sum(filtered, 'r_direct');
+  const r_prompt = sum(filtered, 'r_prompt');
+  const r_indirect = sum(filtered, 'r_indirect');
+  const r_mandatory = sum(filtered, 'r_mandatory');
+  const r_local = sum(filtered, 'r_local');
+  const inc_royalty = sum(filtered, 'inc_royalty');
+  const inc_other = sum(filtered, 'inc_other');
+  const net = sum(filtered, 'net');
 
-  const totalDiscounts = d_channel + d_customer + d_product + d_volume + d_value + d_other_sales + d_mandatory + d_local;
-  const totalRebates   = r_direct + r_prompt + r_indirect + r_mandatory + r_local;
-  const totalIncomes   = inc_royalty + inc_other;
+  const totalDiscounts =
+    d_channel + d_customer + d_product + d_volume + d_value + d_other_sales + d_mandatory + d_local;
+  const totalRebates = r_direct + r_prompt + r_indirect + r_mandatory + r_local;
+  const totalIncomes = inc_royalty + inc_other;
 
   // "GtN spend" = discounts + rebates
   const gtnSpendEUR = totalDiscounts + totalRebates;
@@ -111,21 +113,47 @@ export default function AnalyzePage() {
   const byCustomer = new Map<string, number>();
   const bySku = new Map<string, number>();
   for (const r of filtered) {
-    const gtn = (r.d_channel + r.d_customer + r.d_product + r.d_volume + r.d_value + r.d_other_sales + r.d_mandatory + r.d_local)
-              + (r.r_direct + r.r_prompt + r.r_indirect + r.r_mandatory + r.r_local);
+    const gtn =
+      r.d_channel +
+      r.d_customer +
+      r.d_product +
+      r.d_volume +
+      r.d_value +
+      r.d_other_sales +
+      r.d_mandatory +
+      r.d_local +
+      r.r_direct +
+      r.r_prompt +
+      r.r_indirect +
+      r.r_mandatory +
+      r.r_local;
     byCustomer.set(r.cust, (byCustomer.get(r.cust) || 0) + gtn);
     bySku.set(r.sku, (bySku.get(r.sku) || 0) + gtn);
   }
-  const top3Cust = Array.from(byCustomer.entries()).sort((a,b)=>b[1]-a[1]).slice(0,3);
-  const top3Sku  = Array.from(bySku.entries()).sort((a,b)=>b[1]-a[1]).slice(0,3);
-  const gtnTotalForShare = Math.max(1, Array.from(byCustomer.values()).reduce((a,b)=>a+b,0)); // avoid /0
+  const top3Cust = Array.from(byCustomer.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  const top3Sku = Array.from(bySku.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  const gtnTotalForShare = Math.max(
+    1,
+    Array.from(byCustomer.values()).reduce((a, b) => a + b, 0)
+  ); // avoid /0
 
   if (!rows.length) {
     return (
       <div className="rounded-2xl border bg-white p-6">
         <h1 className="text-xl font-semibold">Waterfall analyse</h1>
-        <p className="text-sm text-gray-600 mt-1">Er is nog geen dataset geladen. Ga terug naar het dashboard om een Excel te uploaden.</p>
-        <Link className="inline-block mt-4 rounded-lg border px-4 py-2 hover:bg-gray-50" href="/app">Terug naar dashboard</Link>
+        <p className="text-sm text-gray-600 mt-1">
+          Er is nog geen dataset geladen. Ga terug naar het dashboard om een Excel te uploaden.
+        </p>
+        <Link
+          className="inline-block mt-4 rounded-lg border px-4 py-2 hover:bg-gray-50"
+          href="/app"
+        >
+          Terug naar dashboard
+        </Link>
       </div>
     );
   }
@@ -143,9 +171,13 @@ export default function AnalyzePage() {
             ) : null}
             {(validation.warnings?.length ?? 0) > 0 && (
               <details className="mt-1">
-                <summary className="cursor-pointer">{validation.warnings.length} waarschuwing(en) bekijken</summary>
+                <summary className="cursor-pointer">
+                  {validation.warnings.length} waarschuwing(en) bekijken
+                </summary>
                 <ul className="list-disc ml-5 mt-1 max-h-40 overflow-auto text-gray-700">
-                  {validation.warnings.map((m: string, i: number) => <li key={i}>{m}</li>)}
+                  {validation.warnings.map((m: string, i: number) => (
+                    <li key={i}>{m}</li>
+                  ))}
                 </ul>
               </details>
             )}
@@ -155,13 +187,21 @@ export default function AnalyzePage() {
 
       {/* HERO STRIP + KPI's */}
       <div className="rounded-2xl border overflow-hidden">
-        <div className="bg-slate-800 text-white px-6 py-4 text-sm font-semibold">Gross-to-Net Waterfall</div>
+        <div className="bg-slate-800 text-white px-6 py-4 text-sm font-semibold">
+          Gross-to-Net Waterfall
+        </div>
         <div className="bg-gray-100 px-6 py-4">
           <div className="grid md:grid-cols-4 gap-4">
             <KpiBig label="TOTAL GtN SPEND (€)" value={eur(gtnSpendEUR)} />
             <KpiBig label="TOTAL GtN SPEND (%)" value={gtnSpendPct} />
-            <KpiBig label="TOTAL DISCOUNT" value={`${eur(totalDiscounts)} · ${pct(totalDiscounts, gross)}`} />
-            <KpiBig label="TOTAL REBATE" value={`${eur(totalRebates)} · ${pct(totalRebates, gross)}`} />
+            <KpiBig
+              label="TOTAL DISCOUNT"
+              value={`${eur(totalDiscounts)} · ${pct(totalDiscounts, gross)}`}
+            />
+            <KpiBig
+              label="TOTAL REBATE"
+              value={`${eur(totalRebates)} · ${pct(totalRebates, gross)}`}
+            />
           </div>
         </div>
       </div>
@@ -169,17 +209,44 @@ export default function AnalyzePage() {
       {/* FILTERS */}
       <div className="rounded-2xl border bg-white p-4">
         <div className="grid md:grid-cols-3 gap-2">
-          <select value={pg} onChange={e=>{setPg(e.target.value); setSku('All');}} className="rounded-lg border px-3 py-2 text-sm">
+          <select
+            value={pg}
+            onChange={e => {
+              setPg(e.target.value);
+              setSku('All');
+            }}
+            className="rounded-lg border px-3 py-2 text-sm"
+          >
             <option value="All">Alle productgroepen</option>
-            {pgs.map(v => <option key={v} value={v}>{v}</option>)}
+            {pgs.map(v => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
           </select>
-          <select value={sku} onChange={e=>setSku(e.target.value)} className="rounded-lg border px-3 py-2 text-sm">
+          <select
+            value={sku}
+            onChange={e => setSku(e.target.value)}
+            className="rounded-lg border px-3 py-2 text-sm"
+          >
             <option value="All">Alle SKU’s</option>
-            {skus.map(v => <option key={v} value={v}>{v}</option>)}
+            {skus.map(v => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
           </select>
-          <select value={cust} onChange={e=>setCust(e.target.value)} className="rounded-lg border px-3 py-2 text-sm">
+          <select
+            value={cust}
+            onChange={e => setCust(e.target.value)}
+            className="rounded-lg border px-3 py-2 text-sm"
+          >
             <option value="All">Alle klanten</option>
-            {custs.map(v => <option key={v} value={v}>{v}</option>)}
+            {custs.map(v => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -240,6 +307,29 @@ export default function AnalyzePage() {
           rows={top3Sku.map(([name, v]) => ({ name, value: v, pct: pct(v, gtnTotalForShare) }))}
         />
       </div>
+
+      {/* ✅ DIT HOORT BINNEN DE RETURN */}
+      <ActionTips
+        gross={gross}
+        d_channel={d_channel}
+        d_customer={d_customer}
+        d_product={d_product}
+        d_volume={d_volume}
+        d_value={d_value}
+        d_other_sales={d_other_sales}
+        d_mandatory={d_mandatory}
+        d_local={d_local}
+        invoiced={invoiced}
+        r_direct={r_direct}
+        r_prompt={r_prompt}
+        r_indirect={r_indirect}
+        r_mandatory={r_mandatory}
+        r_local={r_local}
+        inc_royalty={inc_royalty}
+        inc_other={inc_other}
+        top3Cust={top3Cust.map(([name, v]) => ({ name, gtn: v }))}
+        top3Sku={top3Sku.map(([name, v]) => ({ name, gtn: v }))}
+      />
     </div>
   );
 }
@@ -253,11 +343,20 @@ function KpiBig({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Tr({ name, value, base, bold, shaded }: { name: string; value: number; base: number; bold?: boolean; shaded?: boolean }) {
-  const classes = [
-    shaded ? 'bg-gray-50' : '',
-    bold ? 'font-semibold' : '',
-  ].join(' ');
+function Tr({
+  name,
+  value,
+  base,
+  bold,
+  shaded,
+}: {
+  name: string;
+  value: number;
+  base: number;
+  bold?: boolean;
+  shaded?: boolean;
+}) {
+  const classes = [shaded ? 'bg-gray-50' : '', bold ? 'font-semibold' : ''].join(' ');
   return (
     <tr className={classes}>
       <td className="px-4 py-2">{name}</td>
@@ -267,7 +366,13 @@ function Tr({ name, value, base, bold, shaded }: { name: string; value: number; 
   );
 }
 
-function Top3Panel({ title, rows }: { title: string; rows: { name: string; value: number; pct: string }[] }) {
+function Top3Panel({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: { name: string; value: number; pct: string }[];
+}) {
   return (
     <div className="rounded-2xl border bg-white p-4">
       <div className="font-medium mb-2">{title}</div>
@@ -275,22 +380,15 @@ function Top3Panel({ title, rows }: { title: string; rows: { name: string; value
         {rows.map((r, i) => (
           <div key={i} className="flex items-center justify-between rounded-lg border px-3 py-2">
             <div className="truncate">{r.name}</div>
-            <div className="text-sm tabular-nums">{eur(Math.round(r.value))} <span className="text-gray-500">· {r.pct}</span></div>
+            <div className="text-sm tabular-nums">
+              {eur(Math.round(r.value))} <span className="text-gray-500">· {r.pct}</span>
+            </div>
           </div>
         ))}
-        {rows.length === 0 && <div className="text-sm text-gray-500">Geen data voor deze selectie.</div>}
+        {rows.length === 0 && (
+          <div className="text-sm text-gray-500">Geen data voor deze selectie.</div>
+        )}
       </div>
     </div>
   );
-}
-<ActionTips
-  gross={gross}
-  d_channel={d_channel} d_customer={d_customer} d_product={d_product} d_volume={d_volume} d_value={d_value}
-  d_other_sales={d_other_sales} d_mandatory={d_mandatory} d_local={d_local}
-  invoiced={invoiced}
-  r_direct={r_direct} r_prompt={r_prompt} r_indirect={r_indirect} r_mandatory={r_mandatory} r_local={r_local}
-  inc_royalty={inc_royalty} inc_other={inc_other}
-  top3Cust={top3Cust.map(([name, v]) => ({ name, gtn: v }))}
-  top3Sku={top3Sku.map(([name, v]) => ({ name, gtn: v }))}
- />
 }
