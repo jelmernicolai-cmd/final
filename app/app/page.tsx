@@ -2,7 +2,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import Link from "next/link";
-import UploadAndParse from "@/components/waterfall/UploadAndParse";
+import { WF_STORE_KEY } from "@/components/waterfall/UploadAndParse";
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
