@@ -2,7 +2,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import Link from "next/link";
-import UploadMock from "@/components/portal/UploadMock.client";
+import UploadAndParse from "@/components/waterfall/UploadAndParse.client";
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -65,6 +65,18 @@ export default async function AppDashboard() {
         <QuickAction href="/app/parallel" label="Open Paralleldruk" desc="Signalen van parallelimport en druk" />
       </div>
 
+      {/* Upload (client component) */}
+      <div className="rounded-2xl border bg-white p-4">
+        <div className="font-medium">Snel uploaden</div>
+        <p className="text-sm text-gray-600">
+          Upload je Excel (eerste tabblad wordt gelezen). Daarna kun je filteren en de Waterfall zien.
+        </p>
+        <UploadAndParse />
+        <div className="mt-2 text-xs text-gray-500">
+          Vereiste kolommen: “Product Group Name”, “SKU Name”, “Customer Name (Sold-to)”, “Fiscal year / period” en alle “Sum of …” velden.
+        </div>
+      </div>
+
       {/* Recent activity (mock) */}
       <div className="rounded-2xl border bg-white">
         <div className="px-4 py-3 border-b font-medium">Recente activiteiten</div>
@@ -80,13 +92,6 @@ export default async function AppDashboard() {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Upload (client component) */}
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="font-medium">Snel uploaden</div>
-        <p className="text-sm text-gray-600">Sleep een Excel hierheen (mock). Voor echte opslag koppel je later S3/Azure Blob.</p>
-        <UploadMock />
       </div>
     </div>
   );
