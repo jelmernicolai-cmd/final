@@ -8,8 +8,6 @@ import { LogIn } from "lucide-react";
 export default function LoginPage() {
   const sp = useSearchParams();
   const callbackUrl = sp.get("callbackUrl") || "/app";
-
-  // Toon nette fout als NextAuth een error query meegeeft (bijv. "CredentialsSignin")
   const initialErr = sp.get("error") ? "Inloggen mislukt. Controleer je gegevens." : null;
 
   const [loading, setLoading] = useState(false);
@@ -37,7 +35,6 @@ export default function LoginPage() {
       setErr("Inloggen mislukt. Controleer je e-mail en wachtwoord.");
       return;
     }
-    // Succes -> door naar portal (of callbackUrl)
     window.location.href = callbackUrl;
   }
 
@@ -74,7 +71,7 @@ export default function LoginPage() {
             />
           </div>
 
-          {err && <p className="text-sm text-red-600">{err}</p>}
+        {err && <p className="text-sm text-red-600">{err}</p>}
 
           <button
             type="submit"
