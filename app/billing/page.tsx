@@ -5,11 +5,9 @@ import Link from "next/link";
 
 export const metadata = {
   title: "Billing & Subscription | PharmaGtN",
-  description:
-    "Beheer je PharmaGtN-licentie: abonneren, facturen en instellingen via Stripe Billing.",
+  description: "Beheer je PharmaGtN-licentie: abonneren, facturen en instellingen via Stripe Billing.",
 };
 
-// Kleine helper voor rijtjes
 function Bullet({ children }: { children: React.ReactNode }) {
   return <li className="flex gap-2"><span>•</span><span className="text-sm text-gray-700">{children}</span></li>;
 }
@@ -19,7 +17,6 @@ export default async function BillingPage() {
   const email = session?.user?.email ?? "";
   const hasActiveSub = Boolean((session?.user as any)?.hasActiveSub);
 
-  // Server-side check (optioneel): toon zachte waarschuwing als checkout niet kan
   const canCheckout = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRICE_ID);
   const successUrl = process.env.STRIPE_SUCCESS_URL || `${process.env.NEXTAUTH_URL || ""}/app`;
   const cancelUrl = process.env.STRIPE_CANCEL_URL || `${process.env.NEXTAUTH_URL || ""}/billing`;
@@ -28,27 +25,18 @@ export default async function BillingPage() {
     <div className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="text-2xl md:text-3xl font-bold">Billing & Subscription</h1>
 
-      {/* Niet ingelogd */}
       {!session && (
         <div className="mt-6 rounded-xl border bg-white p-6">
-          <p className="text-gray-700">
-            Log eerst in om je abonnement te beheren of te starten.
-          </p>
+          <p className="text-gray-700">Log eerst in om je abonnement te beheren of te starten.</p>
           <div className="mt-4 flex gap-3">
-            <Link href="/login" className="rounded-lg bg-sky-600 px-4 py-2 text-white hover:bg-sky-700">
-              Login
-            </Link>
-            <Link href="/pricing" className="rounded-lg border px-4 py-2 hover:bg-gray-50">
-              Bekijk prijzen
-            </Link>
+            <Link href="/login" className="rounded-lg bg-sky-600 px-4 py-2 text-white hover:bg-sky-700">Login</Link>
+            <Link href="/pricing" className="rounded-lg border px-4 py-2 hover:bg-gray-50">Bekijk prijzen</Link>
           </div>
         </div>
       )}
 
-      {/* Ingelogd: status + acties */}
       {session && (
         <div className="mt-6 grid gap-6 md:grid-cols-3">
-          {/* Kolom 1+2: kaart met plan en acties */}
           <div className="md:col-span-2 rounded-2xl border bg-white p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -80,77 +68,50 @@ export default async function BillingPage() {
             </ul>
 
             <div className="mt-8 flex flex-wrap gap-3">
-              {/* Als geen sub → Checkout */}
               {!hasActiveSub ? (
                 <form action="/api/stripe/create-checkout-session" method="POST" className="inline">
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-sky-600 px-5 py-3 text-white hover:bg-sky-700 disabled:opacity-50"
-                    disabled={!canCheckout}
-                    aria-disabled={!canCheckout}
-                  >
+                  <button type="submit" className="rounded-lg bg-sky-600 px-5 py-3 text-white hover:bg-sky-700 disabled:opacity-50" disabled={!canCheckout} aria-disabled={!canCheckout}>
                     Abonneer (Stripe Checkout)
                   </button>
                 </form>
               ) : (
                 <>
-                  <Link href="/app" className="rounded-lg bg-sky-600 px-5 py-3 text-white hover:bg-sky-700">
-                    Naar de Portal
-                  </Link>
+                  <Link href="/app" className="rounded-lg bg-sky-600 px-5 py-3 text-white hover:bg-sky-700">Naar de Portal</Link>
                   <form action="/api/stripe/create-portal-session" method="POST" className="inline">
-                    <button className="rounded-lg border px-5 py-3 hover:bg-gray-50">
-                      Beheer abonnement
-                    </button>
+                    <button className="rounded-lg border px-5 py-3 hover:bg-gray-50">Beheer abonnement</button>
                   </form>
                 </>
               )}
 
-              <Link href="/contact" className="rounded-lg border px-5 py-3 hover:bg-gray-50">
-                Enterprise-opties
-              </Link>
+              <Link href="/contact" className="rounded-lg border px-5 py-3 hover:bg-gray-50">Enterprise-opties</Link>
             </div>
 
             {!canCheckout && (
               <p className="mt-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-3">
-                Let op: Checkout staat uit. Zet <code>STRIPE_SECRET_KEY</code> en <code>STRIPE_PRICE_ID</code> in je server
-                environment. (Succes/Cancel: <code>{successUrl || "—"}</code> / <code>{cancelUrl || "—"}</code>)
+                Zet <code>STRIPE_SECRET_KEY</code> en <code>STRIPE_PRICE_ID</code> in je server-env. (Succes/Cancel: <code>{successUrl || "—"}</code> / <code>{cancelUrl || "—"}</code>)
               </p>
             )}
 
             <p className="mt-6 text-xs text-gray-500">
-              Ingelogd als: <span className="font-medium">{email}</span>. Betalingen verlopen via Stripe (PCI-DSS).
-              Je kunt op elk moment je abonnement beheren of opzeggen via het Stripe-portaal.
+              Ingelogd als: <span className="font-medium">{email}</span>. Betalingen via Stripe (PCI-DSS).
             </p>
           </div>
 
-          {/* Kolom 3: hulp en veelgestelde vragen */}
           <aside className="rounded-2xl border bg-white p-6">
             <h3 className="font-semibold">Veelgestelde vragen</h3>
             <div className="mt-3 space-y-3 text-sm text-gray-700">
               <details className="rounded border p-3">
                 <summary className="cursor-pointer font-medium">Wat valt onder “entiteit”?</summary>
-                <p className="mt-2">
-                  Eén juridische entiteit (bijv. landorganisatie). Meerdere entiteiten? Neem contact op voor bundelkorting.
-                </p>
+                <p className="mt-2">Eén juridische entiteit (bijv. landorganisatie). Voor meerdere entiteiten: bundelkorting op aanvraag.</p>
               </details>
               <details className="rounded border p-3">
                 <summary className="cursor-pointer font-medium">Zijn er implementatiekosten?</summary>
-                <p className="mt-2">
-                  Self-service onboarding is inbegrepen. Begeleide implementatie & data-ops zijn optioneel.
-                </p>
+                <p className="mt-2">Self-service onboarding inbegrepen. Begeleide implementatie & data-ops optioneel.</p>
               </details>
               <details className="rounded border p-3">
                 <summary className="cursor-pointer font-medium">Facturen & beheer</summary>
-                <p className="mt-2">
-                  Al geabonneerd? Gebruik <em>Beheer abonnement</em> om facturen te downloaden, betaalmethode te wijzigen of op te zeggen.
-                </p>
+                <p className="mt-2">Gebruik <em>Beheer abonnement</em> voor facturen, betaalmethode en opzegging.</p>
               </details>
-            </div>
-
-            <div className="mt-6 rounded-lg bg-gray-50 p-4 text-xs text-gray-600">
-              Prijzen excl. btw. Jaarlijks verlengend. Succes-URL: <code>{successUrl || "—"}</code>
-              <br />
-              Support: <Link href="/contact" className="underline">neem contact op</Link>
             </div>
           </aside>
         </div>
