@@ -24,9 +24,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "STRIPE_PRICE_ID ontbreekt." }, { status: 500 });
   }
 
-  const successUrl = process.env.STRIPE_SUCCESS_URL || `${base}/app`;
+  // Succes: via secure post-checkout route die Stripe sessie controleert
+  const successUrl = `${base}/api/stripe/post-checkout?session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = process.env.STRIPE_CANCEL_URL || `${base}/billing`;
 
+  // Stripe customer vinden of maken
   const found = await stripe.customers.list({ email, limit: 1 });
   const customer = found.data[0] ?? (await stripe.customers.create({ email }));
 
@@ -34,7 +36,7 @@ export async function POST(req: NextRequest) {
     mode: "subscription",
     customer: customer.id,
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: successUrl,
+    success_url: successUrl,  // << belangrijk!
     cancel_url: cancelUrl,
     allow_promotion_codes: true,
   });
