@@ -1,3 +1,4 @@
+// app/app/waterfall/analyze/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -18,7 +19,6 @@ type Row = {
 function sum(rows: Row[], key: keyof Row) {
   return rows.reduce((a, r) => a + (Number(r[key]) || 0), 0);
 }
-
 function pct(n: number, d: number) {
   if (!d) return "—";
   return (100 * n / d).toFixed(1) + "%";
@@ -31,14 +31,22 @@ export default function Analyze() {
   const [cust, setCust] = useState("All");
 
   useEffect(() => {
-    const raw = localStorage.getItem(WF_STORE_KEY);
-    if (raw) setData(JSON.parse(raw));
+    try {
+      const raw = localStorage.getItem(WF_STORE_KEY);
+      if (raw) setData(JSON.parse(raw));
+    } catch {
+      // ignore parse errors
+    }
   }, []);
 
   const rows = data?.rows || [];
+  const validation = data?.meta?.validation || { warnings: [], corrected: 0 };
 
   const pgs = useMemo(() => Array.from(new Set(rows.map(r => r.pg))).sort(), [rows]);
-  const skus = useMemo(() => Array.from(new Set(rows.filter(r => pg === "All" || r.pg === pg).map(r => r.sku))).sort(), [rows, pg]);
+  const skus = useMemo(
+    () => Array.from(new Set(rows.filter(r => pg === "All" || r.pg === pg).map(r => r.sku))).sort(),
+    [rows, pg]
+  );
   const custs = useMemo(() => Array.from(new Set(rows.map(r => r.cust))).sort(), [rows]);
 
   const filtered = rows.filter(r =>
@@ -67,7 +75,7 @@ export default function Analyze() {
   const net = sum(filtered, "net");
 
   const steps = [
-    { label: "Gross Sales", amount: gross, color: "#0ea5e9" },       // blauw voor start
+    { label: "Gross Sales", amount: gross, color: "#0ea5e9" },       // start
     { label: "Channel Disc.", amount: -d_channel },
     { label: "Customer Disc.", amount: -d_customer },
     { label: "Product Disc.", amount: -d_product },
@@ -91,7 +99,122 @@ export default function Analyze() {
   const totalRebates = r_direct + r_prompt + r_indirect + r_mandatory + r_local;
   const incomes = inc_royalty + inc_other;
 
-  // Simpele optimalisatie-schatting: 10% reductie op Value Discounts
+  // Eenvoudig optimalisatie-scenario: 10% reductie op Value Discounts
   const valueDiscUplift = 0.10 * d_value;
   const netIfOptimized = net + valueDiscUplift;
-  const upliftPctGross = gross ? (100 * valueDiscUplift / gross).toF*
+  const upliftPctGross = gross ? (100 * valueDiscUplift / gross).toFixed(2) + "%" : "—";
+
+  if (!rows.length) {
+    return (
+      <div className="rounded-2xl border bg-white p-6">
+        <h1 className="text-xl font-semibold">Waterfall analyse</h1>
+        <p className="text-sm text-gray-600 mt-1">
+          Er is nog geen dataset geladen. Ga terug naar het dashboard om een Excel te uploaden.
+        </p>
+        <Link className="inline-block mt-4 rounded-lg border px-4 py-2 hover:bg-gray-50" href="/app">
+          Terug naar dashboard
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* VALIDATIE-BANNER */}
+      {(validation.corrected || (validation.warnings?.length ?? 0) > 0) && (
+        <div className="rounded-lg border bg-white p-4">
+          <div className="text-sm">
+            {validation.corrected ? (
+              <div className="text-amber-700">
+                Auto-correcties toegepast: <strong>{validation.corrected}</strong> (negatieve kortingen → positief, valuta/parsing).
+              </div>
+            ) : null}
+            {(validation.warnings?.length ?? 0) > 0 && (
+              <details className="mt-1">
+                <summary className="cursor-pointer">
+                  {validation.warnings.length} waarschuwing(en) bekijken
+                </summary>
+                <ul className="list-disc ml-5 mt-1 max-h-40 overflow-auto text-gray-700">
+                  {validation.warnings.map((m: string, i: number) => <li key={i}>{m}</li>)}
+                </ul>
+              </details>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Header + filters */}
+      <div className="rounded-2xl border bg-white p-6">
+        <div className="flex flex-col md:flex-row md:items-end gap-3">
+          <div>
+            <h1 className="text-xl font-semibold">Waterfall analyse</h1>
+            <p className="text-sm text-gray-600">
+              Kies een Product Group / SKU / Customer om te aggregeren.
+            </p>
+          </div>
+          <div className="md:ml-auto grid grid-cols-1 md:grid-cols-3 gap-2">
+            <select
+              value={pg}
+              onChange={e => { setPg(e.target.value); setSku("All"); }}
+              className="rounded-lg border px-3 py-2 text-sm"
+            >
+              <option value="All">Alle productgroepen</option>
+              {pgs.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+            <select
+              value={sku}
+              onChange={e => setSku(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm"
+            >
+              <option value="All">Alle SKU’s</option>
+              {skus.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+            <select
+              value={cust}
+              onChange={e => setCust(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm"
+            >
+              <option value="All">Alle klanten</option>
+              {custs.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* KPI’s */}
+      <div className="grid md:grid-cols-4 gap-4">
+        <KpiCard label="Discounts / Gross" value={pct(totalDiscounts, gross)} hint={`Totaal: €${Math.round(totalDiscounts).toLocaleString("nl-NL")}`} />
+        <KpiCard label="Rebates / Invoiced" value={pct(totalRebates, invoiced)} hint={`Totaal: €${Math.round(totalRebates).toLocaleString("nl-NL")}`} />
+        <KpiCard label="Incomes / Invoiced" value={pct(incomes, invoiced)} hint={`Totaal: €${Math.round(incomes).toLocaleString("nl-NL")}`} />
+        <KpiCard label="Net / Gross" value={pct(net, gross)} hint={`Net: €${Math.round(net).toLocaleString("nl-NL")}`} />
+      </div>
+
+      {/* Chart */}
+      <div className="rounded-2xl border bg-white p-4">
+        <WaterfallChart steps={steps} />
+      </div>
+
+      {/* Optimalisatie-scenario */}
+      <div className="rounded-2xl border bg-white p-6">
+        <div className="font-medium">Schatting marge-uplift (scenario)</div>
+        <p className="text-sm text-gray-600">
+          Als je <strong>Value Discounts</strong> met 10% verlaagt: +{upliftPctGross} van Gross Sales
+          ({valueDiscUplift.toLocaleString("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 0 })}).
+        </p>
+        <div className="text-sm text-gray-600 mt-1">
+          Nieuwe Net Sales ≈ {netIfOptimized.toLocaleString("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 0 })}.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className="mt-1 text-2xl font-semibold">{value}</div>
+      {hint && <div className="mt-1 text-xs text-gray-500">{hint}</div>}
+    </div>
+  );
+}
