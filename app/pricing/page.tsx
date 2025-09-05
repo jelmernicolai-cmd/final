@@ -39,14 +39,27 @@ export default function PricingNL() {
               <li>• EU-hosting optie, encryptie in transit/at rest</li>
               <li>• Support & onboarding guidelines</li>
             </ul>
+
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/app" className="bg-sky-600 text-white px-5 py-3 rounded-lg hover:bg-sky-700">
-                Start nu
-              </Link>
+              {/* KNOP NAAR STRIPE CHECKOUT */}
+              <form action="/api/stripe/create-checkout-session" method="POST">
+                <button
+                  type="submit"
+                  className="bg-sky-600 text-white px-5 py-3 rounded-lg hover:bg-sky-700"
+                >
+                  Start nu
+                </button>
+              </form>
+
               <Link href="/contact" className="px-5 py-3 rounded-lg border hover:bg-gray-50">
                 Vraag enterprise-opties aan
               </Link>
             </div>
+
+            <p className="mt-3 text-xs text-gray-500">
+              Je wordt doorgestuurd naar een beveiligde Stripe-checkout. Nog geen account?
+              Log in na betaling met hetzelfde e-mailadres. (Niet ingelogd? Dan ga je eerst naar /login.)
+            </p>
           </div>
 
           <div className="rounded-2xl border p-6 md:p-8 bg-white">
