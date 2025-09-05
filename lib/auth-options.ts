@@ -1,10 +1,27 @@
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import GithubProvider from "next-auth/providers/github";
+import CredentialsProvider from "next-auth/providers/credentials";
 import { stripe } from "@/lib/stripe";
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    // Email/password for local dev or simple staging login
+    CredentialsProvider({
+      name: "Credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const allowedEmail = process.env.NEXTAUTH_CRED_EMAIL || "demo@pharmagtn.local";
+        const allowedPassword = process.env.NEXTAUTH_CRED_PASSWORD || "demo123";
+        if (credentials?.email === allowedEmail && credentials?.password === allowedPassword) {
+          return { id: 'dev-user', name: 'Demo User', email: allowedEmail };
+        }
+        return null
+      },
+    },
     ...(process.env.GOOGLE_ID && process.env.GOOGLE_SECRET
       ? [GoogleProvider({
           clientId: process.env.GOOGLE_ID!,
