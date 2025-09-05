@@ -1,3 +1,4 @@
+// app/login/page.tsx
 'use client';
 
 import { FormEvent, useState } from "react";
@@ -22,13 +23,7 @@ export default function LoginPage() {
     const email = String(fd.get("email") || "").trim();
     const password = String(fd.get("password") || "");
 
-    const res = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-      callbackUrl,
-    });
-
+    const res = await signIn("credentials", { email, password, redirect: false, callbackUrl });
     setLoading(false);
 
     if (res?.error) {
@@ -49,37 +44,15 @@ export default function LoginPage() {
         <form onSubmit={onSubmit} className="mt-6 space-y-3">
           <div>
             <label className="block text-sm font-medium">E-mail</label>
-            <input
-              name="email"
-              type="email"
-              required
-              className="mt-1 w-full rounded-lg border px-3 py-2"
-              placeholder="jij@bedrijf.com"
-              autoComplete="email"
-            />
+            <input name="email" type="email" required className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="jij@bedrijf.com" autoComplete="email" />
           </div>
-
           <div>
             <label className="block text-sm font-medium">Wachtwoord</label>
-            <input
-              name="password"
-              type="password"
-              required
-              className="mt-1 w-full rounded-lg border px-3 py-2"
-              placeholder="••••••••"
-              autoComplete="current-password"
-            />
+            <input name="password" type="password" required className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="••••••••" autoComplete="current-password" />
           </div>
-
-        {err && <p className="text-sm text-red-600">{err}</p>}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg border px-4 py-2 hover:bg-gray-50 flex items-center justify-center gap-2"
-          >
-            <LogIn className="size-4" />
-            {loading ? "Bezig..." : "Log in"}
+          {err && <p className="text-sm text-red-600">{err}</p>}
+          <button type="submit" disabled={loading} className="w-full rounded-lg border px-4 py-2 hover:bg-gray-50 flex items-center justify-center gap-2">
+            <LogIn className="size-4" /> {loading ? "Bezig..." : "Log in"}
           </button>
         </form>
 
