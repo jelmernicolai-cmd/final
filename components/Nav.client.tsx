@@ -55,7 +55,7 @@ export default function Nav() {
           onClick={() => setOpen((v) => !v)}
         >
           <span className="sr-only">Open menu</span>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path d="M3 6h18M3 12h18M3 18h18" />
           </svg>
         </button>
