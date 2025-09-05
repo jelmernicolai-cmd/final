@@ -12,8 +12,10 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         const allowedEmail = (process.env.NEXTAUTH_CRED_EMAIL || "demo@pharmagtn.local").toLowerCase();
         const allowedPassword = process.env.NEXTAUTH_CRED_PASSWORD || "demo123";
+
         const email = String(credentials?.email || "").toLowerCase().trim();
         const password = String(credentials?.password || "");
+
         if (email === allowedEmail && password === allowedPassword) {
           return { id: "user-" + email, name: email.split("@")[0], email };
         }
@@ -21,6 +23,6 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
-  secret: process.env.NEXTAUTH_SECRET,
   pages: { signIn: "/login" },
+  secret: process.env.NEXTAUTH_SECRET,
 };
