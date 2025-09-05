@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import WaterfallChart from '@/components/waterfall/WaterfallChart.client';
 import { WF_STORE_KEY } from '@/components/waterfall/UploadAndParse';
+import ActionTips from '@/components/waterfall/ActionTips';
 
 type Row = {
   pg: string; sku: string; cust: string; period: string;
@@ -281,4 +282,15 @@ function Top3Panel({ title, rows }: { title: string; rows: { name: string; value
       </div>
     </div>
   );
+}
+<ActionTips
+  gross={gross}
+  d_channel={d_channel} d_customer={d_customer} d_product={d_product} d_volume={d_volume} d_value={d_value}
+  d_other_sales={d_other_sales} d_mandatory={d_mandatory} d_local={d_local}
+  invoiced={invoiced}
+  r_direct={r_direct} r_prompt={r_prompt} r_indirect={r_indirect} r_mandatory={r_mandatory} r_local={r_local}
+  inc_royalty={inc_royalty} inc_other={inc_other}
+  top3Cust={top3Cust.map(([name, v]) => ({ name, gtn: v }))}
+  top3Sku={top3Sku.map(([name, v]) => ({ name, gtn: v }))}
+ />
 }
