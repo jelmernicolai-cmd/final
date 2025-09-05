@@ -1,9 +1,9 @@
 // components/portal/Sidebar.tsx
 "use client";
 
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
 import {
   LayoutGrid, LineChart, Layers, GitBranch, FileSpreadsheet, Settings, CreditCard, ChevronDown, ChevronRight
 } from "lucide-react";
@@ -32,8 +32,9 @@ export default function Sidebar({ mobile = false }: { mobile?: boolean }) {
     return (
       <Link
         href={item.href}
-        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm border
-          ${active ? "bg-sky-50 text-sky-700 border-sky-200" : "hover:bg-gray-50 border-transparent"}`}
+        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm border ${
+          active ? "bg-sky-50 text-sky-700 border-sky-200" : "hover:bg-gray-50 border-transparent"
+        }`}
       >
         {item.icon}
         <span>{item.label}</span>
@@ -70,3 +71,9 @@ export default function Sidebar({ mobile = false }: { mobile?: boolean }) {
       </div>
 
       <div className="text-xs uppercase tracking-wide text-gray-500 px-2 mt-4">Beheer</div>
+      <div className="grid gap-1">
+        {ADMIN.map((i) => <Item key={i.href} item={i} />)}
+      </div>
+    </div>
+  );
+}
