@@ -1,17 +1,17 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { validateAndNormalize } from './validation';
+import React, {useState} from 'react';
+import {useRouter} from 'next/navigation';
+import {validateAndNormalize} from './validation';
 
 export const WF_STORE_KEY = 'pharmagtn_waterfall_v1';
 
 type Report = { warnings: string[]; errors: string[]; corrected: number };
 
 export default function UploadAndParse(): JSX.Element {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [report, setReport] = useState<Report | null>(null);
+  const [busy,setBusy] = useState(false);
+  const [err,setErr] = useState<string|null>(null);
+  const [report,setReport] = useState<Report|null>(null);
   const router = useRouter();
 
   async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -23,7 +23,6 @@ export default function UploadAndParse(): JSX.Element {
     setBusy(true);
 
     try {
-      // Lazy import van xlsx
       const mod: any = await import('xlsx');
       const XLSX = mod.default || mod;
 
@@ -31,9 +30,10 @@ export default function UploadAndParse(): JSX.Element {
       const wb = XLSX.read(buf, { type: 'array' });
       const sheetName: string = wb.SheetNames[0];
       const ws = wb.Sheets[sheetName];
-      const raw = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: null });
 
-      // Valideren & normaliseren
+      // ✅ Geen generics op untyped functie; cast achteraf
+      const raw = XLSX.utils.sheet_to_json(ws, { defval: null }) as unknown as Array<Record<string, any>>;
+
       const res = validateAndNormalize(raw);
       setReport({ warnings: res.warnings, errors: res.errors, corrected: res.correctedCount });
 
@@ -41,28 +41,25 @@ export default function UploadAndParse(): JSX.Element {
         throw new Error('Template bevat fouten die upload blokkeren. Corrigeer en probeer opnieuw.');
       }
 
-      const payload = {
-        meta: {
-          uploadedAt: Date.now(),
-          sheet: sheetName,
-          rows: res.rows.length,
-          validation: {
-            warnings: res.warnings,
-            corrected: res.correctedCount,
+      localStorage.setItem(
+        WF_STORE_KEY,
+        JSON.stringify({
+          meta: {
+            uploadedAt: Date.now(),
+            sheet: sheetName,
+            rows: res.rows.length,
+            validation: { warnings: res.warnings, corrected: res.correctedCount },
           },
-        },
-        rows: res.rows,
-      };
+          rows: res.rows,
+        })
+      );
 
-      // Opslaan en door naar analyze
-      localStorage.setItem(WF_STORE_KEY, JSON.stringify(payload));
       router.push('/app/waterfall/analyze');
     } catch (ex: any) {
       console.error(ex);
       setErr(ex?.message || 'Kon bestand niet verwerken.');
     } finally {
       setBusy(false);
-      // reset zodat je opnieuw hetzelfde bestand kunt kiezen
       try { e.currentTarget.value = ''; } catch {}
     }
   }
@@ -85,42 +82,4 @@ export default function UploadAndParse(): JSX.Element {
           <div className="px-3 py-2 border-b text-sm font-medium">Validatie-rapport</div>
           <div className="p-3 text-sm">
             {report.corrected ? (
-              <div className="text-amber-700 mb-2">
-                Auto-correcties toegepast: <strong>{report.corrected}</strong>
-              </div>
-            ) : null}
-
-            {report.errors.length > 0 ? (
-              <div className="text-red-700 mb-2">
-                Fouten die upload blokkeren:
-                <ul className="list-disc ml-5">
-                  {report.errors.slice(0, 6).map((m, i) => (
-                    <li key={i}>{m}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {report.warnings.length > 0 ? (
-              <details className="mt-2">
-                <summary className="cursor-pointer">
-                  Waarschuwingen tonen ({report.warnings.length})
-                </summary>
-                <ul className="list-disc ml-5 mt-1 max-h-40 overflow-auto">
-                  {report.warnings.map((m, i) => (
-                    <li key={i}>{m}</li>
-                  ))}
-                </ul>
-              </details>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
-        Tip: stem de Excel-template af met je Financial Business Partner zodat kolomnamen en definities goed aansluiten.
-        Gebruik bij voorkeur de standaard template op <a className="underline" href="/templates">/templates</a>.
-      </div>
-    </div>
-  );
-}
+              <div classN
