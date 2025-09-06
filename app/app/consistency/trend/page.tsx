@@ -14,7 +14,7 @@ type Row = {
   net: number;
 };
 
-const STORE_KEYS = ['pharmagtn_wf_session'];
+const STORE_KEYS = ['pharmagtn_wf_session']; // of importeer WF_STORE_KEY
 
 function loadRows(): Row[] {
   try {
@@ -26,8 +26,12 @@ function loadRows(): Row[] {
   return [];
 }
 
-function eur(n: number) { return n.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }); }
-function pct(n: number) { return n.toFixed(1).replace('.', ',') + '%'; }
+function eur(n: number) {
+  return n.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+}
+function pctStr(n: number) {
+  return n.toFixed(1).replace('.', ',') + '%';
+}
 
 type Dim = 'CUSTOMER' | 'SKU';
 
@@ -47,16 +51,17 @@ function colorFromPct(v: number, min: number, max: number) {
 function Spark({ values }: { values: number[] }) {
   if (!values.length) return null;
   const w = 240, h = 60, pad = 6;
-  const xs = values.map((_, i) => i);
   const min = Math.min(...values), max = Math.max(...values);
-  const mapX = (i: number) => pad + (i / Math.max(1, values.length - 1)) * (w - 2*pad);
-  const mapY = (v: number) => pad + (1 - (v - min) / Math.max(1e-9, max - min || 1)) * (h - 2*pad);
+  const mapX = (i: number) => pad + (i / Math.max(1, values.length - 1)) * (w - 2 * pad);
+  const mapY = (v: number) => pad + (1 - (v - min) / Math.max(1e-9, max - min || 1)) * (h - 2 * pad);
   const d = values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${mapX(i)} ${mapY(v)}`).join(' ');
   return (
     <svg width={w} height={h} className="shrink-0">
       <rect x={0} y={0} width={w} height={h} fill="#ffffff" />
       <path d={d} stroke="#0ea5e9" strokeWidth={2} fill="none" />
-      {values.map((v,i)=><circle key={i} cx={mapX(i)} cy={mapY(v)} r={2.5} fill="#10b981" />)}
+      {values.map((v, i) => (
+        <circle key={i} cx={mapX(i)} cy={mapY(v)} r={2.5} fill="#10b981" />
+      ))}
     </svg>
   );
 }
@@ -69,7 +74,10 @@ export default function ConsistencyTrendPage() {
   const [topN, setTopN] = useState<number>(20);
   const [selected, setSelected] = useState<string | null>(null);
 
-  useEffect(() => { setRows(loadRows()); }, []);
+  useEffect(() => {
+    setRows(loadRows());
+  }, []);
+
   if (!rows.length) {
     return (
       <div className="rounded-2xl border bg-white p-6">
@@ -92,7 +100,6 @@ export default function ConsistencyTrendPage() {
 
   // Aggregatie per dim & periode
   const keyOf = (r: Row) => (dim === 'CUSTOMER' ? r.cust : r.sku);
-  const labelOf = keyOf;
 
   const grossByKey: Record<string, number> = {};
   const grossByKeyPeriod: Record<string, Record<string, number>> = {};
@@ -101,49 +108,52 @@ export default function ConsistencyTrendPage() {
   for (const r of scoped) {
     const k = keyOf(r);
     const p = r.period;
+
     const discounts = r.d_channel + r.d_customer + r.d_product + r.d_volume + r.d_value + r.d_other_sales + r.d_mandatory + r.d_local;
     const rebates   = r.r_direct + r.r_prompt + r.r_indirect + r.r_mandatory + r.r_local;
     const gspend    = includeRebates ? (discounts + rebates) : discounts;
 
     grossByKey[k] = (grossByKey[k] || 0) + r.gross;
-    grossByKeyPeriod[k] = grossByKeyPeriod[k] || {};
+
+    if (!grossByKeyPeriod[k]) grossByKeyPeriod[k] = {};
     grossByKeyPeriod[k][p] = (grossByKeyPeriod[k][p] || 0) + r.gross;
 
-    spendPctByKeyPeriod[k] = spendPctByKeyPeriod[k] || {};
+    if (!spendPctByKeyPeriod[k]) spendPctByKeyPeriod[k] = {};
+    // % per rij en periode (gesommeerd; kan ook gewogen gemiddeld worden indien gewenst)
     const pctVal = r.gross ? (100 * gspend / r.gross) : 0;
-    spendPctByKeyPeriod[k][p] = (spendPctByKeyPeriod[k][p] || 0) + pctVal; // als meerdere records zelfde key/period, sommeren
+    spendPctByKeyPeriod[k][p] = (spendPctByKeyPeriod[k][p] || 0) + pctVal;
   }
 
-  // Maak rijen
+  // Tabel opbouwen
   let table: RowAgg[] = Object.keys(grossByKey).map(k => {
     const cells: Cell[] = periods.map(p => ({
       period: p,
-      valuePct: (spendPctByKeyPeriod[k]?.[p] ?? 0), // al geaggregeerd over rijen
-      gross: (grossByKeyPeriod[k]?.[p] ?? 0),
+      valuePct: spendPctByKeyPeriod[k]?.[p] ?? 0,
+      gross: grossByKeyPeriod[k]?.[p] ?? 0,
     }));
-    return { key: k, label: labelOf({} as any as Row), totalGross: grossByKey[k], cells };
+    return { key: k, label: k, totalGross: grossByKey[k], cells };
   });
 
-  // sorteer op totale omzet (share) en neem topN
-  table.sort((a,b)=>b.totalGross - a.totalGross);
+  // sorteer op totale omzet en beperk tot topN
+  table.sort((a, b) => b.totalGross - a.totalGross);
   table = table.slice(0, topN);
 
-  // kleur-schaal voor heatmap
+  // kleurenschalen
   const allVals = table.flatMap(r => r.cells.map(c => c.valuePct));
   const minV = Math.min(...allVals, 0);
   const maxV = Math.max(...allVals, 0);
 
-  // geselecteerde entity voor sparkline (eerste rij default)
+  // selectie voor sparkline
   const selKey = selected ?? (table[0]?.key ?? null);
   const sel = table.find(r => r.key === selKey) || null;
   const series = sel ? sel.cells.map(c => c.valuePct) : [];
 
-  // eenvoudige stabiliteit: coefficient of variation
+  // stabiliteit
   const stability = (() => {
     if (!series.length) return { mean: 0, std: 0, cv: 0 };
-    const mean = series.reduce((a,b)=>a+b,0) / series.length;
-    const std = Math.sqrt(series.reduce((s,v)=>s+(v-mean)*(v-mean),0) / Math.max(1, series.length-1));
-    return { mean, std, cv: mean ? std/mean : 0 };
+    const mean = series.reduce((a, b) => a + b, 0) / series.length;
+    const std = Math.sqrt(series.reduce((s, v) => s + (v - mean) * (v - mean), 0) / Math.max(1, series.length - 1));
+    return { mean, std, cv: mean ? std / mean : 0 };
   })();
 
   return (
@@ -153,38 +163,65 @@ export default function ConsistencyTrendPage() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold">Consistency — Trend & Heatmap</h1>
-            <p className="text-sm text-gray-600">Bekijk stabiliteit van discount/GtN% per periode en vergelijk top {topN} {dim === 'CUSTOMER' ? 'klanten' : 'SKU’s'}.</p>
+            <p className="text-sm text-gray-600">
+              Bekijk stabiliteit van {includeRebates ? 'GtN%' : 'discount%'} per periode en vergelijk top {topN} {dim === 'CUSTOMER' ? 'klanten' : 'SKU’s'}.
+            </p>
           </div>
           <div className="flex items-center gap-2">
-            <Link href="/app/consistency/upload" className="rounded-lg bg-sky-600 px-3 py-2 text-white text-sm hover:bg-sky-700">Upload/Replace Excel</Link>
+            <Link href="/app/consistency/upload" className="rounded-lg bg-sky-600 px-3 py-2 text-white text-sm hover:bg-sky-700">
+              Upload/Replace Excel
+            </Link>
             <Link href="/app" className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">Terug naar dashboard</Link>
           </div>
         </div>
       </div>
 
-      {/* filters + KPI's */}
+      {/* filters */}
       <div className="rounded-2xl border bg-white p-4">
         <div className="grid md:grid-cols-5 gap-2">
-          <select value={dim} onChange={e=>{ setDim(e.target.value as Dim); setSelected(null); }} className="rounded-lg border px-3 py-2 text-sm">
+          <select
+            value={dim}
+            onChange={(e) => { setDim(e.target.value as Dim); setSelected(null); }}
+            className="rounded-lg border px-3 py-2 text-sm"
+          >
             <option value="CUSTOMER">Groepering: Customer</option>
             <option value="SKU">Groepering: SKU</option>
           </select>
-          <select value={pg} onChange={e=>{ setPg(e.target.value); setSelected(null); }} className="rounded-lg border px-3 py-2 text-sm">
+
+          <select
+            value={pg}
+            onChange={(e) => { setPg(e.target.value); setSelected(null); }}
+            className="rounded-lg border px-3 py-2 text-sm"
+          >
             <option value="All">Alle productgroepen</option>
             {pgs.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
+
           <label className="flex items-center gap-2 text-sm px-2">
-            <input type="checkbox" checked={includeRebates} onChange={e=>{ setIncludeRebates(e.target.checked); setSelected(null); }} />
+            <input
+              type="checkbox"
+              checked={includeRebates}
+              onChange={(e) => { setIncludeRebates(e.target.checked); setSelected(null); }}
+            />
             Neem rebates mee (GtN%)
           </label>
+
           <label className="flex items-center gap-2 text-sm px-2">
             Top N:
-            <input type="number" min={5} max={100} step={1} value={topN}
-              onChange={e=>setTopN(Math.max(5, Math.min(100, Number(e.target.value))))}
+            <input
+              type="number"
+              min={5}
+              max={100}
+              step={1}
+              value={topN}
+              onChange={(e) => setTopN(Math.max(5, Math.min(100, Number(e.target.value))))}
               className="w-20 rounded border px-2 py-1"
             />
           </label>
-          <div className="self-center text-xs text-gray-500">Periodes: {periods[0]} → {periods[periods.length-1]}</div>
+
+          <div className="self-center text-xs text-gray-500">
+            Periodes: {periods[0]} → {periods[periods.length - 1]}
+          </div>
         </div>
       </div>
 
@@ -195,7 +232,7 @@ export default function ConsistencyTrendPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-3 py-2 text-left sticky left-0 bg-gray-50">{" "}{dim === 'CUSTOMER' ? 'Klant' : 'SKU'}{" "}</th>
+                <th className="px-3 py-2 text-left sticky left-0 bg-gray-50">{dim === 'CUSTOMER' ? 'Klant' : 'SKU'}</th>
                 {periods.map(p => (
                   <th key={p} className="px-3 py-2 text-right">{p}</th>
                 ))}
@@ -206,4 +243,75 @@ export default function ConsistencyTrendPage() {
               {table.map(r => (
                 <tr key={r.key} className="border-t">
                   <td
-                    className={`px-3 py-2 sticky left-0 bg-white cursor-pointer ${r.key===selKey ? 'font-semibol
+                    className={`px-3 py-2 sticky left-0 bg-white cursor-pointer ${r.key === selKey ? 'font-semibold' : ''}`}
+                    title="Klik voor trend"
+                    onClick={() => setSelected(r.key)}
+                  >
+                    {r.label}
+                  </td>
+                  {r.cells.map(c => (
+                    <td key={c.period} className="px-1 py-1 text-right">
+                      <div
+                        className="rounded px-2 py-1 inline-block"
+                        style={{ backgroundColor: colorFromPct(c.valuePct, minV, maxV) }}
+                        title={`${c.period}: ${pctStr(c.valuePct)} · omzet ${eur(c.gross)}`}
+                      >
+                        {pctStr(c.valuePct)}
+                      </div>
+                    </td>
+                  ))}
+                  <td className="px-3 py-2 text-right tabular-nums">{eur(r.totalGross)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!table.length && (
+          <div className="text-sm text-gray-500">Geen rijen binnen je selectie.</div>
+        )}
+      </div>
+
+      {/* detail: sparkline + stabiliteit */}
+      {sel && (
+        <div className="rounded-2xl border bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="font-medium">
+              Trend — {dim === 'CUSTOMER' ? 'Klant' : 'SKU'}: {sel.key}
+            </div>
+            <div className="text-xs text-gray-500">Klik een naam in de eerste kolom om te wisselen.</div>
+          </div>
+          <div className="mt-3 flex items-center gap-4">
+            <Spark values={sel.cells.map(c => c.valuePct)} />
+            <StabilityCard values={sel.cells.map(c => c.valuePct)} />
+          </div>
+          <div className="mt-2 text-xs text-gray-600">
+            CV = std/mean. Hoger = volatieler. Tip: borg periodieke voorwaarden en gebruik KPI-gebonden (retro/tiered) rebates om schommelingen te dempen.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StabilityCard({ values }: { values: number[] }) {
+  if (!values.length) return null;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const std = Math.sqrt(values.reduce((s, v) => s + (v - mean) * (v - mean), 0) / Math.max(1, values.length - 1));
+  const cv = mean ? std / mean : 0;
+  return (
+    <div className="grid grid-cols-3 gap-3 text-sm">
+      <div className="rounded-lg border p-3">
+        <div className="text-xs text-gray-500">Gemiddelde %</div>
+        <div className="mt-1 font-semibold">{pctStr(mean)}</div>
+      </div>
+      <div className="rounded-lg border p-3">
+        <div className="text-xs text-gray-500">Standaarddeviatie</div>
+        <div className="mt-1 font-semibold">{pctStr(std)}</div>
+      </div>
+      <div className="rounded-lg border p-3">
+        <div className="text-xs text-gray-500">Stabiliteit (CV)</div>
+        <div className="mt-1 font-semibold">{(100 * cv).toFixed(0)}%</div>
+      </div>
+    </div>
+  );
+}
