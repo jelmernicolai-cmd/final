@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { WF_STORE_KEY } from '@/components/waterfall/UploadAndParse';
 
 type Row = {
   pg: string; sku: string; cust: string; period: string;
@@ -13,18 +14,12 @@ type Row = {
   net: number;
 };
 
-function parseStore(): { meta: any; rows: Row[] } | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const k = 'pharmagtn_wf_session'; // zelfde key als Waterfall
-    const s = sessionStorage.getItem(k) || localStorage.getItem(k);
-    return s ? JSON.parse(s) : null;
-  } catch { return null; }
-}
 function sum<T extends Record<string, any>>(rows: T[], key: keyof T) {
   return rows.reduce((a, r) => a + (Number(r[key]) || 0), 0);
 }
-function eur(n: number) { return n.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }); }
+function eur(n: number) {
+  return n.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+}
 
 type CustAgg = {
   cust: string;
@@ -34,28 +29,55 @@ type CustAgg = {
   discRatePct: number; // discounts/gross *100
   gtnRatePct: number;  // (discounts+rebates)/gross *100
   sharePct: number;    // gross / totalGross *100
-  residualPP: number;  // t.o.v. verwachte discount% (trend)
+  residualPP: number;  // afwijking t.o.v. verwachte discount% (trend)
 };
 
 export default function ConsistencyHubPage() {
-  const [data, setData] = useState<{ meta: any; rows: Row[] } | null>(null);
+  const [rows, setRows] = useState<Row[]>([]);
   const [pg, setPg] = useState('All');
   const [includeRebates, setIncludeRebates] = useState(false);
   const [minShare, setMinShare] = useState(0.2); // negeer mini-klanten <0.2% omzet
 
-  useEffect(() => { const d = parseStore(); if (d) setData(d); }, []);
-  const rows = data?.rows || [];
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(WF_STORE_KEY) || localStorage.getItem(WF_STORE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { rows: Row[] };
+        setRows(parsed.rows || []);
+      }
+    } catch {}
+  }, []);
 
   if (!rows.length) {
     return (
-      <div className="rounded-2xl border bg-white p-6">
-        <h1 className="text-xl font-semibold">Consistency</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          Er is nog geen dataset geladen. Upload een Excel via het dashboard (Waterfall).
-        </p>
-        <Link href="/app" className="inline-block mt-4 rounded-lg border px-4 py-2 hover:bg-gray-50">
-          Terug naar dashboard
-        </Link>
+      <div className="space-y-6">
+        <div className="rounded-2xl border bg-white p-6">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h1 className="text-xl font-semibold">Consistency</h1>
+              <p className="text-sm text-gray-600">
+                Upload een Excel om de Consistency-analyses te openen.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link href="/app/consistency/upload" className="rounded-lg bg-sky-600 px-3 py-2 text-white text-sm hover:bg-sky-700">
+                Upload Excel
+              </Link>
+              <Link href="/app" className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
+                Terug naar dashboard
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-6">
+          <div className="font-medium mb-2">Zo werkt het</div>
+          <ol className="list-decimal ml-5 text-sm text-gray-700 space-y-1">
+            <li>Ga naar <code>/app/consistency/upload</code> en kies je Excel (eerste tabblad wordt gelezen).</li>
+            <li>Na parsing wordt de dataset lokaal opgeslagen in je browser (geen serverupload).</li>
+            <li>Keer terug naar deze pagina voor KPI’s & outliers, of open direct de Customers-analyse.</li>
+          </ol>
+        </div>
       </div>
     );
   }
@@ -71,7 +93,7 @@ export default function ConsistencyHubPage() {
                    + sum(scoped, 'd_mandatory') + sum(scoped, 'd_local');
   const totalReb   = sum(scoped, 'r_direct') + sum(scoped, 'r_prompt') + sum(scoped, 'r_indirect')
                    + sum(scoped, 'r_mandatory') + sum(scoped, 'r_local');
-  const gtnPctAll  = totalGross ? ((totalDisc + (includeRebates?totalReb:0)) / totalGross) * 100 : 0;
+  const gtnPctAll  = totalGross ? ((totalDisc + (includeRebates ? totalReb : 0)) / totalGross) * 100 : 0;
 
   // aggregatie per klant
   const map = new Map<string, CustAgg>();
@@ -128,9 +150,10 @@ export default function ConsistencyHubPage() {
 
   // Outliers: > +2.0 p.p. boven verwachting
   const OUTLIER_PP = 2.0;
-  const highOutliers = aggs.filter(a => a.residualPP > OUTLIER_PP)
-                           .sort((a,b)=>b.residualPP-a.residualPP)
-                           .slice(0,5);
+  const highOutliers = aggs
+    .filter(a => a.residualPP > OUTLIER_PP)
+    .sort((a,b)=>b.residualPP-a.residualPP)
+    .slice(0,5);
 
   return (
     <div className="space-y-6">
@@ -143,14 +166,21 @@ export default function ConsistencyHubPage() {
               Check per klant hoe <strong>discount% t.o.v. omzet</strong> zich verhoudt tot peers en of kleine klanten niet relatief het meest krijgen.
             </p>
           </div>
-          <Link href="/app" className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">Terug naar dashboard</Link>
+          <div className="flex items-center gap-2">
+            <Link href="/app/consistency/upload" className="rounded-lg bg-sky-600 px-3 py-2 text-white text-sm hover:bg-sky-700">
+              Upload/Replace Excel
+            </Link>
+            <Link href="/app" className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
+              Terug naar dashboard
+            </Link>
+          </div>
         </div>
       </div>
 
       {/* KPI’s */}
       <div className="grid md:grid-cols-4 gap-4">
         <Kpi label="Scope omzet" value={eur(totalGross)} />
-        <Kpi label={includeRebates ? 'Gem. GtN% (scope)' : 'Gem. Discount% (scope)'} value={`${gtnPctAll.toFixed(1).replace('.', ',')}%`} />
+        <Kpi label={includeRebates ? 'Gem. GtN% (scope)' : 'Gem. Discount% (scope)'} value={`${(totalGross ? ((totalDisc + (includeRebates? totalReb : 0)) / totalGross) * 100 : 0).toFixed(1).replace('.', ',')}%`} />
         <Kpi label="Rang-correlatie (size vs %)" value={rho.toFixed(2)} hint=">0: kleinere klanten relatief meer korting" />
         <Kpi label="Outliers (>+2,0 p.p.)" value={String(highOutliers.length)} />
       </div>
@@ -188,7 +218,7 @@ export default function ConsistencyHubPage() {
               <li key={i} className="rounded-lg border px-3 py-2 leading-relaxed">
                 <div className="font-medium">{a.cust}</div>
                 <div className="text-gray-700">
-                  Aandeel {a.sharePct.toFixed(1).replace('.', ',')}% — Discount {a.discRatePct.toFixed(1).replace('.', ',')}% 
+                  Aandeel {a.sharePct.toFixed(1).replace('.', ',')}% — Discount {a.discRatePct.toFixed(1).replace('.', ',')}%
                   {includeRebates && <> · GtN {a.gtnRatePct.toFixed(1).replace('.', ',')}%</>} — 
                   +{a.residualPP.toFixed(1).replace('.', ',')} p.p. t.o.v. verwacht.
                 </div>
@@ -206,7 +236,7 @@ export default function ConsistencyHubPage() {
       {/* CTA-kaarten */}
       <div className="grid md:grid-cols-2 gap-6">
         <Card
-          title="Customers – Scatter & acties"
+          title="Customers — Scatter & acties"
           desc="Discount% vs omzet-aandeel per klant, met trendlijn, outliers en concrete suggesties."
           href="/app/consistency/customers"
           cta="Open Customers-analyse"
