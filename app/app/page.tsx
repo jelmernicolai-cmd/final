@@ -1,97 +1,92 @@
-// app/app/page.tsx
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-options";
-import Link from "next/link";
-import UploadAndParse from "@/components/waterfall/UploadAndParse"; // ✅ juiste import
+import Link from 'next/link';
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="rounded-xl border bg-white p-4">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold">{value}</div>
-      {hint && <div className="mt-1 text-xs text-gray-500">{hint}</div>}
-    </div>
-  );
-}
+export const metadata = {
+  title: 'Portal',
+  description: 'PharmaGtN Portal dashboard',
+};
 
-function QuickAction({ href, label, desc }: { href: string; label: string; desc: string }) {
-  return (
-    <Link href={href} className="rounded-xl border bg-white p-4 hover:bg-gray-50 transition-colors block">
-      <div className="font-medium">{label}</div>
-      <div className="text-sm text-gray-600">{desc}</div>
-    </Link>
-  );
-}
-
-export const dynamic = "force-dynamic";
-
-export default async function AppDashboard() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email || "";
-
+export default async function AppHome() {
   return (
     <div className="space-y-6">
       {/* Hero */}
       <div className="rounded-2xl border bg-white p-6">
-        <div className="flex flex-col md:flex-row md:items-center gap-2">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
-            <h1 className="text-xl md:text-2xl font-bold">Welkom terug{email ? `, ${email}` : ""}</h1>
-            <p className="text-gray-600 text-sm">
-              Je portal is actief. Upload je data en start met Waterfall, Consistency en Paralleldruk analyses.
+            <h1 className="text-xl font-semibold">Welkom in de GtN Portal</h1>
+            <p className="text-sm text-gray-600">
+              Upload je Excel en open je analyses. Data blijft lokaal in de browser (client-side parsing).
             </p>
           </div>
-          <div className="md:ml-auto flex gap-2">
-            <form action="/api/stripe/create-portal-session" method="POST">
-              <button className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-50">Billing portal</button>
-            </form>
-            <Link href="/templates" className="rounded-lg bg-sky-600 text-white px-4 py-2 text-sm hover:bg-sky-700">
-              Templates
+          <div className="flex items-center gap-2">
+            <Link href="/app/consistency/upload" className="rounded-lg bg-sky-600 px-4 py-2 text-white hover:bg-sky-700 text-sm">
+              Upload/Replace Excel
+            </Link>
+            <Link href="/app/consistency" className="rounded-lg border px-4 py-2 hover:bg-gray-50 text-sm">
+              Naar Consistency Hub
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid md:grid-cols-3 gap-4">
-        <Stat label="GtN datasets" value="3" hint="Laatste upload: 4 dagen geleden" />
-        <Stat label="Producten geanalyseerd" value="27" hint="Top 5 in dashboard" />
-        <Stat label="Besparingspotentieel" value="€ 140.000" hint="Op basis van huidige mix" />
+      {/* Kaarten */}
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Waterfall */}
+        <div className="rounded-2xl border bg-white p-6 flex flex-col">
+          <div className="font-semibold">Waterfall</div>
+          <p className="text-sm text-gray-600 mt-1 flex-1">
+            Bekijk Gross→Net, totale kortingen & rebates, en top-drivers per klant/SKU. Inclusief KPI’s en waterfall-grafiek.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/app/waterfall/analyze"
+              className="inline-flex items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-white hover:bg-sky-700"
+            >
+              Open Waterfall
+            </Link>
+            <Link
+              href="/app/consistency/upload"
+              className="inline-flex items-center justify-center rounded-lg border px-4 py-2 hover:bg-gray-50 text-sm"
+            >
+              Upload/Replace Excel
+            </Link>
+          </div>
+        </div>
+
+        {/* Consistency */}
+        <div className="rounded-2xl border bg-white p-6 flex flex-col">
+          <div className="font-semibold">Consistency</div>
+          <p className="text-sm text-gray-600 mt-1 flex-1">
+            Toets per klant of discount% in lijn is met omzet-aandeel. Vind outliers, zie trend & heatmap, en krijg concrete acties.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/app/consistency"
+              className="inline-flex items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-white hover:bg-sky-700"
+            >
+              Open Consistency Hub
+            </Link>
+            <Link
+              href="/app/consistency/customers"
+              className="inline-flex items-center justify-center rounded-lg border px-4 py-2 hover:bg-gray-50 text-sm"
+            >
+              Customers-analyse
+            </Link>
+            <Link
+              href="/app/consistency/trend"
+              className="inline-flex items-center justify-center rounded-lg border px-4 py-2 hover:bg-gray-50 text-sm"
+            >
+              Trend & Heatmap
+            </Link>
+          </div>
+        </div>
       </div>
 
-      {/* Quick actions */}
-      <div className="grid md:grid-cols-3 gap-4">
-        <QuickAction href="/app/waterfall" label="Open Waterfall" desc="Trickle-down en componentbijdragen per kanaal" />
-        <QuickAction href="/app/consistency" label="Open Consistency" desc="Controleer afwijkingen en datakwaliteit" />
-        <QuickAction href="/app/parallel" label="Open Paralleldruk" desc="Signalen van parallelimport en druk" />
-      </div>
-
-      {/* Upload (client component) */}
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="font-medium">Snel uploaden</div>
+      {/* Info blok */}
+      <div className="rounded-2xl border bg-white p-6">
+        <div className="font-medium mb-1">Template & privacy</div>
         <p className="text-sm text-gray-600">
-          Upload je Excel (eerste tabblad wordt gelezen). Daarna kun je filteren en de Waterfall zien.
+          Gebruik de standaard Excel-template (eerste tabblad). Parsing gebeurt volledig in je browser; er wordt niets naar de server geüpload.
         </p>
-        <UploadAndParse />
-        <div className="mt-2 text-xs text-gray-500">
-          Vereiste kolommen: “Product Group Name”, “SKU Name”, “Customer Name (Sold-to)”, “Fiscal year / period” en alle “Sum of …” velden.
-        </div>
-      </div>
-
-      {/* Recent activity (mock) */}
-      <div className="rounded-2xl border bg-white">
-        <div className="px-4 py-3 border-b font-medium">Recente activiteiten</div>
-        <div className="divide-y">
-          {[
-            { t: "Dataset NL_Q2.xlsx geüpload", ts: "vandaag 10:12" },
-            { t: "Waterfall gedraaid voor Product A", ts: "gisteren 16:41" },
-            { t: "Billing: factuur #2025-0007 betaald", ts: "3 dagen geleden" },
-          ].map((r, i) => (
-            <div key={i} className="px-4 py-3 text-sm flex items-center justify-between">
-              <div>{r.t}</div>
-              <div className="text-gray-500">{r.ts}</div>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
