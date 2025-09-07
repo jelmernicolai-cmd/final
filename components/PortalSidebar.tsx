@@ -23,8 +23,10 @@ export default function PortalSidebar() {
   const [open, setOpen] = useState(false);
 
   const crumb = useMemo(() => {
-    const parts = pathname.split("/").filter(Boolean); // ["app", "waterfall", ...]
-    return (parts[1] ?? "Dashboard").replace(/-/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+    const parts = pathname.split("/").filter(Boolean);
+    return (parts[1] ?? "Dashboard")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (m) => m.toUpperCase());
   }, [pathname]);
 
   const Sections = (
@@ -36,7 +38,9 @@ export default function PortalSidebar() {
             <Link
               href={it.href}
               className={`block rounded px-3 py-2 text-sm hover:bg-gray-50 ${
-                active ? "bg-gray-100 text-gray-900 border-l-2 border-sky-600" : "text-gray-700"
+                active
+                  ? "bg-gray-100 text-gray-900 border-l-2 border-sky-600"
+                  : "text-gray-700"
               }`}
             >
               {it.label}
@@ -48,9 +52,9 @@ export default function PortalSidebar() {
   );
 
   return (
-    <aside className="border-r bg-white/70 backdrop-blur md:min-h-[calc(100vh-56px)] flex flex-col">
-      {/* Topbar binnen de sidebar */}
-      <div className="flex items-center gap-3 p-3 border-b">
+    <aside className="bg-white border-r md:min-h-[calc(100vh-56px)] flex flex-col">
+      {/* Topbar (altijd zichtbaar, bovenaan in de sidebar) */}
+      <div className="flex items-center gap-3 p-3 border-b sticky top-0 bg-white z-30">
         <Link href="/" className="text-sm text-gray-600 hover:underline">
           ← Terug naar website
         </Link>
@@ -72,10 +76,10 @@ export default function PortalSidebar() {
         </div>
       </div>
 
-      {/* Desktop nav */}
+      {/* Desktop navigatie */}
       <nav className="hidden md:block p-3 space-y-6">{Sections}</nav>
 
-      {/* Mobile nav (collapsible) */}
+      {/* Mobiele navigatie (collapsible) */}
       <nav
         id="portal-mobile-menu"
         className={`md:hidden border-t overflow-hidden transition-[max-height] duration-300 ease-in-out ${
@@ -85,9 +89,12 @@ export default function PortalSidebar() {
         <div className="p-3 space-y-6">{Sections}</div>
       </nav>
 
-      {/* Footer note */}
+      {/* Footer */}
       <div className="mt-auto p-3 border-t text-[11px] text-gray-500">
-        Ingelogd via GtN Portal • <Link className="underline hover:no-underline" href="/pricing">Licentiebeheer</Link>
+        Ingelogd via GtN Portal •{" "}
+        <Link className="underline hover:no-underline" href="/pricing">
+          Licentiebeheer
+        </Link>
       </div>
     </aside>
   );
