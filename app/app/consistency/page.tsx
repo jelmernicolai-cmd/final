@@ -32,12 +32,12 @@ export default function ConsistencyHub() {
       const g = r.gross||0, d = discOf(r);
       grossTotal += g; discTotal += d;
 
-      const c = byCust.get(r.cust) || {gross:0,disc:0};
-      c.gross += g; c.disc += d; byCust.set(r.cust, c);
+      const cc = byCust.get(r.cust) || {gross:0,disc:0};
+      cc.gross += g; cc.disc += d; byCust.set(r.cust, cc);
 
-      const p = r.period || '—';
-      const pp = byPeriod.get(p) || {gross:0,disc:0};
-      pp.gross += g; pp.disc += d; byPeriod.set(p, pp);
+      const pp = r.period || '—';
+      const cp = byPeriod.get(pp) || {gross:0,disc:0};
+      cp.gross += g; cp.disc += d; byPeriod.set(pp, cp);
     }
 
     const avgDiscountPct = grossTotal ? (discTotal / grossTotal) * 100 : 0;
@@ -66,7 +66,7 @@ export default function ConsistencyHub() {
         <p className="text-gray-600">Benchmarks, afwijkingen en direct besparingspotentieel.</p>
       </header>
 
-      {/* KPIs + Charts (geen tegels) */}
+      {/* KPIs + Charts */}
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-2xl border bg-white p-4 flex items-center justify-between">
           <div>
