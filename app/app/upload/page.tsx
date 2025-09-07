@@ -63,7 +63,6 @@ export default function UploadPage() {
     }
   }
 
-  // Zet NormalizedRow → Row (alle kernvelden)
   function toRowShape(input: NormalizedRow[]): Row[] {
     return input.map((r) => {
       const row: any = {
@@ -129,8 +128,7 @@ export default function UploadPage() {
         <div>
           <h1 className="text-xl font-semibold">Upload – Masterdataset</h1>
           <p className="text-gray-600 text-sm">
-            Deze masterfile voedt zowel de <b>Waterfall</b> als de <b>Consistency analyse</b>. 
-            Door één bestand te gebruiken zijn alle inzichten consistent en gebaseerd op dezelfde dataset.
+            Deze masterfile voedt zowel de <b>Waterfall</b> als de <b>Consistency</b>-analyse. Eén dataset = consistente inzichten.
           </p>
         </div>
         <div className="flex gap-2">
@@ -161,20 +159,22 @@ export default function UploadPage() {
         {err && <div className="mt-3 inline-block rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</div>}
       </section>
 
+      {/* Nieuw: werkafspraak-tip */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h2 className="text-base font-semibold">Aanbevolen: samenstellen met Finance/Controller</h2>
+        <ul className="list-disc pl-5 text-sm text-gray-700 mt-2 space-y-1">
+          <li>Stem definities af: <i>Gross</i>, afzonderlijke <i>Discounts</i>, <i>Rebates</i>, en <i>Net</i> (formule: net = invoiced − rebates + incomes).</li>
+          <li>Controleer periodes (YYYY-MM) en dat elk record één (SKU, klant, periode) is.</li>
+          <li>Gebruik dezelfde bron als je P&L/BI om discussies te voorkomen.</li>
+          <li>Laat ontbrekende velden op 0; de uploader rekent ontbrekende “Invoiced/Net” desnoods afgeleid uit.</li>
+        </ul>
+      </section>
+
       {/* Rapport */}
       {result && (
         <section className="rounded-2xl border bg-white p-4 space-y-3">
           <h2 className="text-lg font-semibold">Resultaat validatie</h2>
-          <p className="text-sm text-gray-600">
-            We controleren automatisch of alle verplichte velden aanwezig zijn (o.a. Gross Sales, Discounts, Rebates).
-            Als velden ontbreken, proberen we deze waar mogelijk te reconstrueren. Dit is cruciaal voor de berekening van:
-          </p>
-          <ul className="list-disc text-sm text-gray-700 pl-5">
-            <li>Waterfall – zicht op marge-impact van kortingen & rebates</li>
-            <li>Consistency – inzicht of klanten een eerlijke korting krijgen t.o.v. omzet</li>
-          </ul>
-
-          <div className="rounded-xl border p-3 text-sm">
+          <div className="rounded-lg border p-3 text-sm">
             <div className="font-medium">Samenvatting</div>
             <div className="mt-1 text-gray-700">
               Rijen na normalisatie: <b>{result.report.rows}</b><br/>
@@ -187,9 +187,15 @@ export default function UploadPage() {
             </div>
           </div>
 
+          {result.report.missing.length > 0 && (
+            <div className="rounded-lg border p-3 text-sm text-amber-800 bg-amber-50 border-amber-200">
+              Ontbrekende velden die we niet konden mappen: {result.report.missing.join(", ")}
+            </div>
+          )}
+
           {result.report.issues.length > 0 && (
-            <div className="rounded-xl border p-3 text-sm text-amber-800 bg-amber-50 border-amber-200">
-              <div className="font-medium">Geconstateerde issues (max 50 getoond)</div>
+            <div className="rounded-lg border p-3 text-sm text-amber-800 bg-amber-50 border-amber-200">
+              <div className="font-medium">Geconstateerde issues (max 50)</div>
               <ul className="list-disc pl-5">
                 {result.report.issues.map((m, i) => <li key={i}>{m}</li>)}
               </ul>
@@ -204,11 +210,7 @@ export default function UploadPage() {
             >
               Opslaan als dataset
             </button>
-            <button
-              type="button"
-              onClick={onReset}
-              className="rounded-lg px-4 py-2 text-sm border hover:bg-gray-50"
-            >
+            <button type="button" onClick={onReset} className="rounded-lg px-4 py-2 text-sm border hover:bg-gray-50">
               Reset
             </button>
           </div>
