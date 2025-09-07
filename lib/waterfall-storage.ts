@@ -1,30 +1,35 @@
 // lib/waterfall-storage.ts
-import { WF_STORE_KEY } from "@/components/waterfall/UploadAndParse";
-import type { Row } from "./waterfall-types";
+import type { Row } from "@/lib/waterfall-types";
 
+const STORE_KEY = "pharmagtn_master_rows_v1";
 const LEGACY_KEYS = ["pharmagtn_wf_session", "pharmagtn_waterfall"];
 
 type StoredShape = { rows?: Row[] } | Row[];
 
 export function loadWaterfallRows(): Row[] {
-  const keys = [WF_STORE_KEY, ...LEGACY_KEYS];
-
+  const keys = [STORE_KEY, ...LEGACY_KEYS];
   for (const k of keys) {
     try {
       const raw =
         (typeof sessionStorage !== "undefined" && sessionStorage.getItem(k)) ||
         (typeof localStorage !== "undefined" && localStorage.getItem(k));
-
       if (!raw) continue;
-
-      const parsed: StoredShape = JSON.parse(raw);
-      const rows = Array.isArray(parsed) ? parsed : parsed?.rows;
-      if (Array.isArray(rows) && rows.length) return rows;
-    } catch {
-      // overslaan en volgende key proberen
-    }
+      const parsed = JSON.parse(raw) as StoredShape;
+      if (Array.isArray(parsed)) return parsed as Row[];
+      if (parsed && Array.isArray((parsed as any).rows)) return (parsed as any).rows as Row[];
+    } catch {}
   }
   return [];
+}
+
+export function saveWaterfallRows(rows: Row[]) {
+  const payload = JSON.stringify({ rows });
+  try { sessionStorage.setItem(STORE_KEY, payload); } catch {}
+  try { localStorage.setItem(STORE_KEY, payload); } catch {}
+  for (const k of LEGACY_KEYS) {
+    try { sessionStorage.setItem(k, payload); } catch {}
+    try { localStorage.setItem(k, payload); } catch {}
+  }
 }
 
 export function eur0(n: number) {
@@ -36,7 +41,6 @@ export function eur0(n: number) {
 }
 
 export function pct1(numerator: number, denominator: number) {
-  const safeD = denominator || 0;
-  const v = safeD ? (numerator / safeD) * 100 : 0;
+  const v = denominator ? (numerator / denominator) * 100 : 0;
   return v.toLocaleString("nl-NL", { maximumFractionDigits: 1 }) + "%";
 }
