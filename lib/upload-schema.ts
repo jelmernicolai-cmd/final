@@ -1,19 +1,41 @@
 // lib/upload-schema.ts
 export type RawRow = Record<string, any>;
 
+// Compleet genormaliseerde rij (alles wat analyses nodig kunnen hebben)
 export type NormalizedRow = {
-  period: string;   // "YYYY-MM"
-  cust: string;     // Customer Name (Sold-to)
-  pg: string;       // Product Group Name
-  sku: string;      // SKU Name
-  gross: number;    // Sum of Gross Sales
+  period: string;   // YYYY-MM
+  cust: string;
+  pg: string;
+  sku: string;
+
+  // Sales
+  gross: number;
+
+  // Discounts (sales level)
   d_channel: number;
   d_customer: number;
   d_product: number;
   d_volume: number;
-  d_other_sales: number; // Value + Other Sales (samengevoegd)
+  d_other_sales: number; // Value + Other Sales
   d_mandatory: number;
   d_local: number;
+
+  // Derived
+  invoiced: number;
+
+  // Rebates (claims)
+  r_direct: number;
+  r_prompt: number;
+  r_indirect: number;
+  r_mandatory: number;
+  r_local: number;
+
+  // Net
+  net: number;
+
+  // (optioneel ingelezen maar niet vereist in Row-type)
+  royalty_income?: number;
+  other_income?: number;
 };
 
 export const REQUIRED_HEADERS = [
@@ -34,25 +56,34 @@ export const REQUIRED_HEADERS = [
 
 type Req = (typeof REQUIRED_HEADERS)[number];
 
-const ALIASES: Record<string, Req> = {
+// alias mapping (case/underscore/space insensitive)
+const ALIASES: Record<string, string> = {
+  // Core dimensions
   "product group": "Product Group Name",
   "product group name": "Product Group Name",
   "pg": "Product Group Name",
+
   "sku": "SKU Name",
   "sku name": "SKU Name",
+
   "customer": "Customer Name (Sold-to)",
   "customer name": "Customer Name (Sold-to)",
   "sold-to": "Customer Name (Sold-to)",
   "sold to": "Customer Name (Sold-to)",
   "customer name (sold-to)": "Customer Name (Sold-to)",
+
   "fiscal year / period": "Fiscal year / period",
   "fiscal period": "Fiscal year / period",
   "period": "Fiscal year / period",
   "fy period": "Fiscal year / period",
   "fy/period": "Fiscal year / period",
+
+  // Gross
   "sum of gross sales": "Sum of Gross Sales",
   "gross": "Sum of Gross Sales",
   "gross sales": "Sum of Gross Sales",
+
+  // Discounts
   "sum of channel discounts": "Sum of Channel Discounts",
   "channel discounts": "Sum of Channel Discounts",
   "sum of customer discounts": "Sum of Customer Discounts",
@@ -69,17 +100,55 @@ const ALIASES: Record<string, Req> = {
   "mandatory discounts": "Sum of Mandatory Discounts",
   "sum of discount local": "Sum of Discount Local",
   "discount local": "Sum of Discount Local",
+
+  // Invoiced
+  "sum of invoiced sales": "Sum of Invoiced Sales",
+  "invoiced": "Sum of Invoiced Sales",
+
+  // Rebates
+  "sum of direct rebates": "Sum of Direct Rebates",
+  "direct rebates": "Sum of Direct Rebates",
+  "sum of prompt payment rebates": "Sum of Prompt Payment Rebates",
+  "prompt payment rebates": "Sum of Prompt Payment Rebates",
+  "sum of indirect rebates": "Sum of Indirect Rebates",
+  "indirect rebates": "Sum of Indirect Rebates",
+  "sum of mandatory rebates": "Sum of Mandatory Rebates",
+  "mandatory rebates": "Sum of Mandatory Rebates",
+  "sum of rebate local": "Sum of Rebate Local",
+  "rebate local": "Sum of Rebate Local",
+
+  // Income & Net
+  "sum of royalty income": "Sum of Royalty Income",
+  "royalty income": "Sum of Royalty Income",
+  "sum of other income": "Sum of Other Income",
+  "other income": "Sum of Other Income",
+  "sum of net sales": "Sum of Net Sales",
+  "net sales": "Sum of Net Sales",
 };
 
 function normHeader(h: string) {
   return h.trim().toLowerCase().replace(/\s+/g, " ").replace(/[_-]/g, " ");
 }
-export function resolveHeader(name: string): Req | null {
+
+export function resolveHeader(name: string): string | null {
   const n = normHeader(name);
-  const direct = (REQUIRED_HEADERS as readonly string[]).find((h) => normHeader(h) === n);
-  if (direct) return direct as Req;
+  const all = [
+    ...REQUIRED_HEADERS,
+    "Sum of Invoiced Sales",
+    "Sum of Direct Rebates",
+    "Sum of Prompt Payment Rebates",
+    "Sum of Indirect Rebates",
+    "Sum of Mandatory Rebates",
+    "Sum of Rebate Local",
+    "Sum of Royalty Income",
+    "Sum of Other Income",
+    "Sum of Net Sales",
+  ];
+  const direct = all.find((h) => normHeader(h) === n);
+  if (direct) return direct;
   return ALIASES[n] || null;
 }
+
 export function parseNumber(val: any): number {
   if (val == null) return 0;
   if (typeof val === "number" && isFinite(val)) return val;
@@ -90,7 +159,8 @@ export function parseNumber(val: any): number {
   const n = Number(s);
   return isFinite(n) ? n : 0;
 }
-// "2024-01", "202401", "2024/01", "2024-Q1", "2024 Q1", "2024" → "YYYY-MM"
+
+// Accepteer: "2024-01", "202401", "2024/01", "2024-Q1", "2024 Q1", "2024"
 export function normalizePeriod(input: any): string | null {
   if (!input && input !== 0) return null;
   let s = String(input).trim().toUpperCase();
@@ -100,8 +170,8 @@ export function normalizePeriod(input: any): string | null {
   if (m) return `${m[1]}-${m[2]}`;
   m = s.match(/^(\d{4})\s*Q([1-4])$/);
   if (m) {
-    const q = Number(m[2]); const map: Record<number, string> = {1:"01",2:"04",3:"07",4:"10"};
-    return `${m[1]}-${map[q]}`;
+    const map: Record<number, string> = { 1: "01", 2: "04", 3: "07", 4: "10" };
+    return `${m[1]}-${map[Number(m[2])]}`;
   }
   m = s.match(/^(\d{4})$/);
   if (m) return `${m[1]}-01`;
@@ -120,50 +190,110 @@ export type ValidateReport = {
 export function normalizeRows(inputRows: RawRow[]): ValidateReport {
   const issues: string[] = [];
   if (!inputRows.length) {
-    return { ok: false, fixedHeaders: {}, missing: Array.from(REQUIRED_HEADERS), rows: 0, issues: ["Leeg bestand"], preview: [] };
+    return {
+      ok: false,
+      fixedHeaders: {},
+      missing: Array.from(REQUIRED_HEADERS),
+      rows: 0,
+      issues: ["Leeg bestand"],
+      preview: [],
+    };
   }
+
+  // Header mapping
   const originalHeaders = Object.keys(inputRows[0] || {});
   const used: Record<string, string> = {};
-  const headerMap: Partial<Record<Req, string>> = {};
-
+  const hmap: Record<string, string> = {};
   for (const oh of originalHeaders) {
     const resolved = resolveHeader(oh);
-    if (resolved) { used[oh] = resolved; headerMap[resolved] = oh; }
+    if (resolved) {
+      used[oh] = resolved;
+      hmap[resolved] = oh;
+    }
   }
-  const missing = REQUIRED_HEADERS.filter((h) => !headerMap[h]);
-  const coreMissing = ["Product Group Name","SKU Name","Customer Name (Sold-to)","Fiscal year / period","Sum of Gross Sales"].filter((h)=>!headerMap[h]);
 
-  const normalized: NormalizedRow[] = [];
+  const missing = REQUIRED_HEADERS.filter((h) => !hmap[h]);
+  const coreMissing = ["Product Group Name","SKU Name","Customer Name (Sold-to)","Fiscal year / period","Sum of Gross Sales"].filter((h)=>!hmap[h]);
+
+  const out: NormalizedRow[] = [];
   for (let i = 0; i < inputRows.length; i++) {
     const r = inputRows[i];
-    function g(h: Req): any { const key = headerMap[h] as string; return key ? r[key] : ""; }
+
+    const g = (k: string) => {
+      const key = hmap[k];
+      return key ? r[key] : "";
+    };
 
     const period = normalizePeriod(g("Fiscal year / period"));
     if (!period) {
-      if (issues.length < 50) issues.push(`Rij ${i + 2}: ongeldige periode "${r[headerMap["Fiscal year / period"] || ""]}"`);
+      if (issues.length < 50)
+        issues.push(`Rij ${i + 2}: ongeldige periode "${r[hmap["Fiscal year / period"] || ""]}"`);
       continue;
     }
 
-    const row: NormalizedRow = {
+    const gross = parseNumber(g("Sum of Gross Sales"));
+    const d_channel = parseNumber(g("Sum of Channel Discounts"));
+    const d_customer = parseNumber(g("Sum of Customer Discounts"));
+    const d_product = parseNumber(g("Sum of Product Discounts"));
+    const d_volume = parseNumber(g("Sum of Volume Discounts"));
+    const d_value = parseNumber(g("Sum of Value Discounts"));
+    const d_otherSales = parseNumber(g("Sum of Other Sales Discounts"));
+    const d_mandatory = parseNumber(g("Sum of Mandatory Discounts"));
+    const d_local = parseNumber(g("Sum of Discount Local"));
+    const d_other_sales = d_value + d_otherSales;
+
+    const discounts = d_channel + d_customer + d_product + d_volume + d_other_sales + d_mandatory + d_local;
+
+    // invoiced fallback
+    let invoiced = parseNumber(g("Sum of Invoiced Sales"));
+    if (!invoiced && gross) invoiced = Math.max(0, gross - discounts);
+
+    const r_direct = parseNumber(g("Sum of Direct Rebates"));
+    const r_prompt = parseNumber(g("Sum of Prompt Payment Rebates"));
+    const r_indirect = parseNumber(g("Sum of Indirect Rebates"));
+    const r_mandatory = parseNumber(g("Sum of Mandatory Rebates"));
+    const r_local = parseNumber(g("Sum of Rebate Local"));
+    const rebates = r_direct + r_prompt + r_indirect + r_mandatory + r_local;
+
+    const royalty_income = parseNumber(g("Sum of Royalty Income"));
+    const other_income = parseNumber(g("Sum of Other Income"));
+
+    // net fallback
+    let net = parseNumber(g("Sum of Net Sales"));
+    if (!net && invoiced) net = Math.max(0, invoiced - rebates + royalty_income + other_income);
+
+    out.push({
       period,
       cust: String(g("Customer Name (Sold-to)") ?? "").trim(),
       pg: String(g("Product Group Name") ?? "").trim(),
       sku: String(g("SKU Name") ?? "").trim(),
-      gross: parseNumber(g("Sum of Gross Sales")),
-      d_channel: parseNumber(g("Sum of Channel Discounts")),
-      d_customer: parseNumber(g("Sum of Customer Discounts")),
-      d_product: parseNumber(g("Sum of Product Discounts")),
-      d_volume: parseNumber(g("Sum of Volume Discounts")),
-      d_other_sales:
-        parseNumber(g("Sum of Value Discounts")) +
-        parseNumber(g("Sum of Other Sales Discounts")),
-      d_mandatory: parseNumber(g("Sum of Mandatory Discounts")),
-      d_local: parseNumber(g("Sum of Discount Local")),
-    };
-
-    normalized.push(row);
+      gross,
+      d_channel,
+      d_customer,
+      d_product,
+      d_volume,
+      d_other_sales,
+      d_mandatory,
+      d_local,
+      invoiced,
+      r_direct,
+      r_prompt,
+      r_indirect,
+      r_mandatory,
+      r_local,
+      net,
+      royalty_income,
+      other_income,
+    });
   }
 
-  const ok = coreMissing.length === 0 && normalized.length > 0;
-  return { ok, fixedHeaders: used, missing, rows: normalized.length, issues, preview: normalized.slice(0, 1000) };
+  const ok = coreMissing.length === 0 && out.length > 0;
+  return {
+    ok,
+    fixedHeaders: used,
+    missing,
+    rows: out.length,
+    issues,
+    preview: out.slice(0, 2000),
+  };
 }
