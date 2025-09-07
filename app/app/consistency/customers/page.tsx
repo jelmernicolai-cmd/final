@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { loadWaterfallRows, eur0 } from '@/lib/waterfall-storage';
 import type { Row } from '@/lib/waterfall-types';
+import ConsistencyNav from '@/components/consistency/ConsistencyNav';
 
 type BenchMode = 'quintile' | 'overall';
 
@@ -13,13 +14,13 @@ export default function CustomersConsistency() {
   if (!rows.length) {
     return (
       <div>
-        <h1 className="text-xl font-semibold">Customers – Analyse</h1>
+        <ConsistencyNav />
+        <h1 className="text-xl font-semibold mt-4">Customers – Analyse</h1>
         <p className="text-gray-600">Geen dataset gevonden. Upload eerst een Excel in de Waterfall-module.</p>
       </div>
     );
   }
 
-  // 1) Data per klant
   const perCust = useMemo(() => {
     const map = new Map<string, { gross: number; disc: number }>();
     for (const r of rows) {
@@ -40,18 +41,15 @@ export default function CustomersConsistency() {
     }));
   }, [rows]);
 
-  // 2) Benchmarks
   const { overallPct, quintilePctByIdx, customersWithBench } = useMemo(() => {
     const overallGross = perCust.reduce((s, c) => s + c.gross, 0) || 1;
     const overallDisc = perCust.reduce((s, c) => s + (c.discPct / 100) * c.gross, 0);
     const overallPct = (overallDisc / overallGross) * 100;
 
-    // Quintiles obv omzet
     const sorted = [...perCust].sort((a, b) => a.gross - b.gross);
     const qIndex = (q: number) => Math.min(sorted.length - 1, Math.max(0, Math.floor(q * (sorted.length - 1))));
     const cuts = [0, qIndex(0.2), qIndex(0.4), qIndex(0.6), qIndex(0.8), sorted.length - 1];
 
-    // Bepaal per quintile een gewogen benchmark%
     const quintilePctByIdx = new Map<number, number>();
     for (let i = 0; i < 5; i++) {
       const start = i === 0 ? 0 : cuts[i] + 1;
@@ -65,13 +63,10 @@ export default function CustomersConsistency() {
       quintilePctByIdx.set(i, g ? (d / g) * 100 : overallPct);
     }
 
-    // Hang benchmark aan elke klant
     const customersWithBench = perCust.map((c) => {
       let bench = overallPct;
       if (sorted.length >= 5) {
-        // vind index in sorted
         const idx = sorted.findIndex((x) => x.cust === c.cust);
-        // bepaal quintile (0..4)
         const q =
           idx <= cuts[1] ? 0 :
           idx <= cuts[2] ? 1 :
@@ -85,11 +80,10 @@ export default function CustomersConsistency() {
     return { overallPct, quintilePctByIdx, customersWithBench };
   }, [perCust]);
 
-  // 3) Toepas benchmark mode + calculate afwijking/potentieel
   const table = useMemo(() => {
     const benchmarked = customersWithBench.map((c) => {
       const bench = mode === 'overall' ? overallPct : c.benchPct;
-      const deviation = c.discPct - bench; // pp
+      const deviation = c.discPct - bench;
       const potential = deviation > 0 ? (deviation / 100) * c.gross : 0;
       const suggestion =
         deviation > 5
@@ -105,7 +99,6 @@ export default function CustomersConsistency() {
       return { ...c, benchPct: bench, deviation, potential, suggestion };
     });
 
-    // Sorteer op hoogste besparingspotentieel
     return benchmarked.sort((a, b) => b.potential - a.potential).slice(0, 25);
   }, [customersWithBench, overallPct, mode]);
 
@@ -113,7 +106,9 @@ export default function CustomersConsistency() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <ConsistencyNav />
+
+      <div className="flex items-center gap-3 mt-4">
         <h1 className="text-xl font-semibold">Klantanalyse (korting t.o.v. omzet-benchmark)</h1>
         <div className="ml-auto flex items-center gap-2">
           <label className="text-sm text-gray-600">Benchmark</label>
@@ -185,10 +180,10 @@ function Tips() {
     <div className="rounded-2xl border bg-white p-4">
       <h2 className="font-semibold">Actie-adviezen</h2>
       <ul className="list-disc pl-5 text-sm text-gray-700 mt-2 space-y-1">
-        <li><b>Heronderhandel</b> met klanten met &gt;2 pp boven benchmark; begin top-5 potentieel.</li>
-        <li><b>Bundelvoordeel/bonussen</b> i.p.v. directe korting voor klanten net boven benchmark.</li>
-        <li><b>Retentie-check</b> bij klanten ruim <i>onder</i> benchmark: versterk waardepropositie i.p.v. korting.</li>
-        <li><b>Volumestaffels</b> aanscherpen: corrigeer te royale staffelstappen binnen dezelfde omzet-bucket.</li>
+        <li><b>Heronderhandel</b> met klanten &gt;2 pp boven benchmark; begin top-5 potentieel.</li>
+        <li><b>Bundelvoordelen/bonussen</b> in plaats van directe korting voor licht-overschrijders.</li>
+        <li><b>Retentie-check</b> bij klanten onder benchmark: versterk waardepropositie i.p.v. korting.</li>
+        <li><b>Staffels aanscherpen</b>: corrigeer te royale stappen binnen dezelfde omzet-bucket.</li>
       </ul>
     </div>
   );
