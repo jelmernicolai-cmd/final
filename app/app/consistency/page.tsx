@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useMemo } from 'react';
 import { loadWaterfallRows, eur0, pct1 } from '@/lib/waterfall-storage';
 import type { Row } from '@/lib/waterfall-types';
@@ -8,7 +7,6 @@ import type { Row } from '@/lib/waterfall-types';
 export default function ConsistencyHub() {
   const rows: Row[] = loadWaterfallRows();
 
-  // Lege state
   if (!rows.length) {
     return (
       <div className="max-w-3xl space-y-4">
@@ -16,72 +14,123 @@ export default function ConsistencyHub() {
         <p className="text-gray-600">
           Geen dataset gevonden. Upload eerst een Excel in de Waterfall-module.
         </p>
-        <div className="flex gap-3">
-          <Link href="/app/waterfall" className="rounded-lg bg-sky-600 px-4 py-2 text-white hover:bg-sky-700">
-            Naar Waterfall
-          </Link>
-          <Link href="/app/consistency/upload" className="rounded-lg border px-4 py-2 hover:bg-gray-50">
-            Excel uploaden
-          </Link>
-        </div>
       </div>
     );
   }
 
-  const kpis = useMemo(() => {
-    let gross = 0, invoiced = 0, net = 0, disc = 0, rebates = 0;
+  // 1. Bereken KPI's en klantdata
+  const { grossTotal, avgDiscountPct, customers } = useMemo(() => {
+    let grossTotal = 0;
+    let discTotal = 0;
+
+    const byCust = new Map<string, { gross: number; discount: number }>();
 
     for (const r of rows) {
-      gross    += r.gross || 0;
-      invoiced += r.invoiced || 0;
-      net      += r.net || 0;
-
-      disc +=
+      const gross = r.gross || 0;
+      const discount =
         (r.d_channel || 0) + (r.d_customer || 0) + (r.d_product || 0) +
         (r.d_volume || 0) + (r.d_other_sales || 0) + (r.d_mandatory || 0) +
         (r.d_local || 0);
 
-      rebates +=
-        (r.r_direct || 0) + (r.r_prompt || 0) + (r.r_indirect || 0) +
-        (r.r_mandatory || 0) + (r.r_local || 0);
+      grossTotal += gross;
+      discTotal += discount;
+
+      const cur = byCust.get(r.cust) || { gross: 0, discount: 0 };
+      cur.gross += gross;
+      cur.discount += discount;
+      byCust.set(r.cust, cur);
     }
 
-    return { gross, invoiced, net, disc, rebates };
+    const avgDiscountPct = grossTotal ? (discTotal / grossTotal) * 100 : 0;
+
+    const customers = [...byCust.entries()].map(([cust, v]) => {
+      const pct = v.gross ? (v.discount / v.gross) * 100 : 0;
+      const deviation = pct - avgDiscountPct;
+      const potential =
+        deviation > 0
+          ? (deviation / 100) * v.gross // teveel korting → besparing mogelijk
+          : 0;
+
+      let suggestion = '';
+      if (deviation > 3) {
+        suggestion = `Te hoge korting t.o.v. benchmark. Heronderhandel contract.`;
+      } else if (deviation < -3) {
+        suggestion = `Relatief lage korting bij hoge omzet. Kans op ontevredenheid.`;
+      }
+
+      return {
+        cust,
+        gross: v.gross,
+        discountPct: pct,
+        deviation,
+        potential,
+        suggestion,
+      };
+    });
+
+    return { grossTotal, avgDiscountPct, customers };
   }, [rows]);
+
+  // 2. Sorteer klanten op omzet en pak top 10
+  const topCustomers = [...customers]
+    .sort((a, b) => b.gross - a.gross)
+    .slice(0, 10);
 
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-xl font-semibold">Consistency</h1>
-        <p className="text-gray-600">Snelle controles en deep-dives op klant- en trendniveau.</p>
+        <h1 className="text-xl font-semibold">Consistency Analyse</h1>
+        <p className="text-gray-600">
+          Vergelijk kortingen per klant t.o.v. omzetbenchmark. Vind kansen voor besparing of retentie.
+        </p>
       </header>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Kpi title="Gross" value={eur0(kpis.gross)} />
-        <Kpi title="Invoiced" value={eur0(kpis.invoiced)} />
-        <Kpi title="Net" value={eur0(kpis.net)} />
-        <Kpi title="Discount ratio" value={pct1(kpis.disc, kpis.gross)} />
+      {/* KPIs */}
+      <div className="grid sm:grid-cols-3 gap-4">
+        <Kpi title="Totaal Gross" value={eur0(grossTotal)} />
+        <Kpi title="Gemiddelde korting%" value={pct1(avgDiscountPct, 100)} />
+        <Kpi
+          title="Potentieel besparingsbedrag"
+          value={eur0(
+            topCustomers.reduce((s, c) => s + c.potential, 0)
+          )}
+        />
       </div>
 
-      <div className="grid sm:grid-cols-3 gap-4">
-        <Card
-          title="Customers"
-          desc="Omzet-consistentie per klant, met outliers en regressielijn."
-          href="/app/consistency/customers"
-          cta="Open analyse"
-        />
-        <Card
-          title="Trend & Heatmap"
-          desc="Maand/kwartaal-trends, heatmap per productgroep of SKU."
-          href="/app/consistency/trend"
-          cta="Open analyse"
-        />
-        <Card
-          title="Upload/Replace"
-          desc="Vervang of upload de dataset die Consistency gebruikt."
-          href="/app/consistency/upload"
-          cta="Open upload"
-        />
+      {/* Tabel */}
+      <div className="rounded-2xl border bg-white p-4 overflow-x-auto">
+        <table className="min-w-[800px] w-full text-sm">
+          <thead>
+            <tr className="text-gray-500">
+              <th className="text-left p-2">Klant</th>
+              <th className="text-right p-2">Omzet</th>
+              <th className="text-right p-2">Korting%</th>
+              <th className="text-right p-2">Afwijking tov benchmark</th>
+              <th className="text-right p-2">Potentieel</th>
+              <th className="text-left p-2">Suggestie</th>
+            </tr>
+          </thead>
+          <tbody>
+            {topCustomers.map((c) => (
+              <tr key={c.cust} className="border-t">
+                <td className="p-2 font-medium">{c.cust}</td>
+                <td className="p-2 text-right">{eur0(c.gross)}</td>
+                <td className="p-2 text-right">{pct1(c.discountPct, 100)}</td>
+                <td
+                  className={`p-2 text-right ${
+                    c.deviation > 0 ? 'text-red-600' : c.deviation < 0 ? 'text-amber-600' : ''
+                  }`}
+                >
+                  {c.deviation.toFixed(1)}%
+                </td>
+                <td className="p-2 text-right">
+                  {c.potential > 0 ? eur0(c.potential) : '—'}
+                </td>
+                <td className="p-2">{c.suggestion || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -92,21 +141,6 @@ function Kpi({ title, value }: { title: string; value: string }) {
     <div className="rounded-2xl border bg-white p-4">
       <div className="text-sm text-gray-500">{title}</div>
       <div className="text-lg font-semibold mt-1">{value}</div>
-    </div>
-  );
-}
-
-function Card({ title, desc, href, cta }: { title: string; desc: string; href: string; cta: string }) {
-  return (
-    <div className="rounded-2xl border bg-white p-6 flex flex-col">
-      <div className="font-semibold">{title}</div>
-      <p className="text-sm text-gray-600 mt-1 flex-1">{desc}</p>
-      <Link
-        href={href}
-        className="mt-4 inline-flex items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-white hover:bg-sky-700"
-      >
-        {cta}
-      </Link>
     </div>
   );
 }
