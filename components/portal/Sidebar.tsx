@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type Item = { href: string; label: string };
 
 function isActive(pathname: string, href: string) {
+  // Markeer actief voor exact pad of subroutes
   return pathname === href || pathname.startsWith(href + "/");
 }
 
@@ -102,6 +103,7 @@ export default function Sidebar() {
 
   // Secties
   const ANALYSES: Item[] = [
+    { href: "/app", label: "Dashboard" },          // <-- toegevoegd
     { href: "/app/waterfall", label: "Waterfall" },
     { href: "/app/consistency", label: "Consistency" }, // subanalyses via tabs op de pagina
     { href: "/app/parallel", label: "Parallel" },
@@ -109,7 +111,6 @@ export default function Sidebar() {
   ];
 
   const DATA_UPLOAD: Item[] = [
-    // Pas de href aan als je een aparte upload-route hebt
     { href: "/app/waterfall#upload", label: "Upload / Replace dataset" },
     { href: "/app/waterfall#templates", label: "Templates & Datamapping" },
   ];
@@ -171,11 +172,19 @@ export default function Sidebar() {
       >
         <div className="p-3 space-y-4">
           <Section title="Analyses">
-            <NavList pathname={pathname} items={ANALYSES} onItemClick={() => setOpen(false)} />
+            <NavList
+              pathname={pathname}
+              items={ANALYSES}
+              onItemClick={() => setOpen(false)}
+            />
           </Section>
 
           <Section title="Data & Upload">
-            <NavList pathname={pathname} items={DATA_UPLOAD} onItemClick={() => setOpen(false)} />
+            <NavList
+              pathname={pathname}
+              items={DATA_UPLOAD}
+              onItemClick={() => setOpen(false)}
+            />
           </Section>
 
           <Section title="Instellingen & Support">
