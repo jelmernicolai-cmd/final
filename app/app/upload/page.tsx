@@ -44,19 +44,10 @@ export default function UploadPage() {
     }
   }
 
+  /** Converteer NormalizedRow[] naar Row[] zonder aannames over extra velden */
   function toRowShape(input: NormalizedRow[]): Row[] {
-    // Vul verplichte/extra velden uit Row aan met 0 zodat types kloppen
     return input.map((r) => {
-      const totalDisc =
-        (r.d_channel || 0) +
-        (r.d_customer || 0) +
-        (r.d_product || 0) +
-        (r.d_volume || 0) +
-        (r.d_other_sales || 0) +
-        (r.d_mandatory || 0) +
-        (r.d_local || 0);
-
-      const base: Row = {
+      const base = {
         period: r.period,
         cust: r.cust,
         pg: r.pg,
@@ -69,24 +60,8 @@ export default function UploadPage() {
         d_other_sales: r.d_other_sales,
         d_mandatory: r.d_mandatory,
         d_local: r.d_local,
-
-        // onderstaande velden bestaan in jouw Row-type; zet veilig op 0
-        invoiced: 0,
-        r_direct: 0,
-        r_prompt: 0,
-        r_indirect: 0,
-        r_mandatory: 0,
-        r_local: 0,
-        royalty_income: 0,
-        other_income: 0,
-        // Net (optioneel in jouw type); als aanwezig, zet conservatief op 0
-        net: 0,
-      };
-
-      // Als je liever een ruwe net-inschatting wilt:
-      // base.net = Math.max(0, r.gross - totalDisc);
-
-      return base;
+      } as any; // we forceren alleen de velden die je analyses gebruiken
+      return base as Row;
     });
   }
 
@@ -100,7 +75,8 @@ export default function UploadPage() {
   const totals = useMemo(() => {
     if (!result?.report.ok) return null;
     const r = result.report.preview;
-    let gross = 0, disc = 0;
+    let gross = 0,
+      disc = 0;
     for (const x of r) {
       gross += x.gross || 0;
       disc +=
