@@ -1,243 +1,69 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useMemo } from 'react';
+import { loadWaterfallRows } from '@/lib/waterfall-storage';
+import type { Row } from '@/lib/waterfall-types';
 import ScatterChartSVG from '@/components/consistency/ScatterChartSVG.client';
 
-// Houd gelijk aan je Waterfall types/kolommen
-type Row = {
-  pg: string; sku: string; cust: string; period: string;
-  gross: number;
-  d_channel: number; d_customer: number; d_product: number; d_volume: number; d_value: number; d_other_sales: number; d_mandatory: number; d_local: number;
-  invoiced: number;
-  r_direct: number; r_prompt: number; r_indirect: number; r_mandatory: number; r_local: number;
-  inc_royalty: number; inc_other: number;
-  net: number;
-};
+export default function CustomersConsistency() {
+  const rows: Row[] = loadWaterfallRows();
 
-const STORE_KEYS = ['pharmagtn_wf_session']; // of import { WF_STORE_KEY } als je die exporteert
-
-function loadRows(): Row[] {
-  try {
-    for (const k of STORE_KEYS) {
-      const raw = sessionStorage.getItem(k) || localStorage.getItem(k);
-      if (raw) return (JSON.parse(raw).rows || []) as Row[];
-    }
-  } catch {}
-  return [];
-}
-
-function sum<T extends Record<string, any>>(rows: T[], key: keyof T) {
-  return rows.reduce((a, r) => a + (Number(r[key]) || 0), 0);
-}
-function eur(n: number) {
-  return n.toLocaleString('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
-}
-
-type CustAgg = {
-  cust: string;
-  gross: number;
-  discounts: number;
-  rebates: number;
-  discRatePct: number;
-  gtnRatePct: number;
-  sharePct: number;
-  expectedDiscPct: number;
-  residualPP: number;
-};
-
-export default function ConsistencyCustomersPage() {
-  const [rows, setRows] = useState<Row[]>([]);
-  const [pg, setPg] = useState('All');
-  const [period, setPeriod] = useState<'ALL' | 'LATEST'>('ALL');
-  const [includeRebates, setIncludeRebates] = useState(false);
-  const [minShare, setMinShare] = useState(0.2); // negeer mini-klanten <0.2% omzet
-
-  useEffect(() => { setRows(loadRows()); }, []);
   if (!rows.length) {
     return (
-      <div className="rounded-2xl border bg-white p-6">
-        <h1 className="text-xl font-semibold">Consistency — Customers</h1>
-        <p className="text-sm text-gray-600 mt-1">Geen dataset gevonden. Upload een Excel via de aparte uploadpagina.</p>
-        <div className="mt-3 flex gap-2">
-          <Link href="/app/consistency/upload" className="rounded-lg bg-sky-600 px-3 py-2 text-white text-sm hover:bg-sky-700">
-            Upload Excel
-          </Link>
-          <Link href="/app" className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">Terug naar dashboard</Link>
-        </div>
+      <div>
+        <h1 className="text-xl font-semibold">Customers</h1>
+        <p className="text-gray-600">Geen dataset gevonden. Upload eerst een Excel.</p>
+        <Link className="inline-block mt-3 rounded-lg border px-3 py-2 hover:bg-gray-50" href="/app/consistency/upload">
+          Uploaden
+        </Link>
       </div>
     );
   }
 
-  const periods = useMemo(() => Array.from(new Set(rows.map(r => r.period))).sort(), [rows]);
-  const latest = periods[periods.length - 1];
-  const pgs    = useMemo(() => Array.from(new Set(rows.map(r => r.pg))).sort(), [rows]);
+  const points = useMemo(() => {
+    const totalGross = rows.reduce((s, r) => s + (r.gross || 0), 0) || 1;
 
-  const scoped = rows.filter(r =>
-    (pg === 'All' || r.pg === pg) &&
-    (period === 'ALL' || r.period === latest)
-  );
+    const byCust = new Map<string, { gross: number; discounts: number }>();
+    for (const r of rows) {
+      const disc =
+        (r.d_channel || 0) + (r.d_customer || 0) + (r.d_product || 0) +
+        (r.d_volume || 0) + (r.d_other_sales || 0) + (r.d_mandatory || 0) +
+        (r.d_local || 0);
 
-  const totalGross = sum(scoped, 'gross');
+      const cur = byCust.get(r.cust) || { gross: 0, discounts: 0 };
+      cur.gross += r.gross || 0;
+      cur.discounts += disc;
+      byCust.set(r.cust, cur);
+    }
 
-  // aggregatie per klant
-  const map = new Map<string, CustAgg>();
-  for (const r of scoped) {
-    const dsum = r.d_channel + r.d_customer + r.d_product + r.d_volume + r.d_value + r.d_other_sales + r.d_mandatory + r.d_local;
-    const rsum = r.r_direct + r.r_prompt + r.r_indirect + r.r_mandatory + r.r_local;
-    const it = map.get(r.cust) || {
-      cust: r.cust, gross: 0, discounts: 0, rebates: 0, discRatePct: 0, gtnRatePct: 0, sharePct: 0, expectedDiscPct: 0, residualPP: 0
-    };
-    it.gross += r.gross;
-    it.discounts += dsum;
-    it.rebates += rsum;
-    map.set(r.cust, it);
-  }
-
-  let aggs = Array.from(map.values()).map(a => {
-    const discRatePct = a.gross ? (100 * a.discounts / a.gross) : 0;
-    const gtnRatePct  = a.gross ? (100 * (a.discounts + a.rebates) / a.gross) : 0;
-    const sharePct    = totalGross ? (100 * a.gross / totalGross) : 0;
-    return { ...a, discRatePct, gtnRatePct, sharePct };
-  });
-
-  aggs = aggs.filter(a => a.sharePct >= minShare);
-
-  // trend (least squares): % t.o.v. share
-  const pts = aggs.map(a => ({ x: a.sharePct, y: includeRebates ? a.gtnRatePct : a.discRatePct, label: a.cust, size: Math.sqrt(a.sharePct/100) }));
-  const { a: A, b: B } = (() => {
-    const n = Math.max(1, pts.length);
-    let sx=0, sy=0, sxx=0, sxy=0;
-    for (const p of pts) { sx+=p.x; sy+=p.y; sxx+=p.x*p.x; sxy+=p.x*p.y; }
-    const denom = n*sxx - sx*sx || 1;
-    const b = (n*sxy - sx*sy)/denom;
-    const a = (sy - b*sx)/n;
-    return { a, b };
-  })();
-  aggs = aggs.map(a => {
-    const yhat = A + B * a.sharePct;
-    const y    = includeRebates ? a.gtnRatePct : a.discRatePct;
-    return { ...a, expectedDiscPct: yhat, residualPP: y - yhat };
-  });
-
-  // KPI’s
-  const rho = (() => {
-    const xs = [...aggs].sort((a,b)=>b.sharePct - a.sharePct).map((a,i)=>({ cust:a.cust, rx:i+1 }));
-    const ys = [...aggs].sort((a,b)=>(includeRebates? b.gtnRatePct - a.gtnRatePct : b.discRatePct - a.discRatePct)).map((a,i)=>({ cust:a.cust, ry:i+1 }));
-    const rank = new Map<string, {rx:number, ry:number}>();
-    xs.forEach(r => rank.set(r.cust, { rx: r.rx, ry: 0 }));
-    ys.forEach(r => { const o = rank.get(r.cust)!; o.ry = r.ry; rank.set(r.cust, o); });
-    const n = aggs.length;
-    if (n < 2) return 0;
-    let s = 0;
-    rank.forEach(v => { const d=v.rx - v.ry; s += d*d; });
-    return 1 - (6*s)/(n*(n*n-1));
-  })();
-
-  const OUTLIER_PP = 2.0;
-  const worstAbove = [...aggs].sort((a,b)=>b.residualPP - a.residualPP).slice(0,5);
+    return [...byCust.entries()].map(([cust, v]) => ({
+      label: cust,
+      x: (v.gross / totalGross) * 100,                  // omzet-aandeel %
+      y: v.gross ? (v.discounts / v.gross) * 100 : 0,   // discount %
+      size: Math.max(0.4, Math.min(3, (v.gross / totalGross) * 6)),
+    }));
+  }, [rows]);
 
   return (
-    <div className="space-y-6">
-      {/* header */}
-      <div className="rounded-2xl border bg-white p-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold">Consistency — Customers</h1>
-            <p className="text-sm text-gray-600">
-              Vergelijk <strong>discount% t.o.v. omzet</strong> per klant. Doel: voorkom dat <em>kleine</em> klanten relatief het meest krijgen.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href="/app/consistency/upload" className="rounded-lg bg-sky-600 px-3 py-2 text-white text-sm hover:bg-sky-700">
-              Upload/Replace Excel
-            </Link>
-            <Link href="/app" className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">Terug naar dashboard</Link>
-          </div>
-        </div>
-      </div>
+    <div className="space-y-4">
+      <h1 className="text-xl font-semibold">Customers – Consistency</h1>
+      <p className="text-gray-600">Omzet-aandeel vs. discount% per klant met trendlijn.</p>
 
-      {/* KPI's */}
-      <div className="grid md:grid-cols-4 gap-4">
-        <Kpi label="Klanten (>= min share)" value={String(aggs.length)} />
-        <Kpi label="Totale omzet (scope)" value={eur(totalGross)} />
-        <Kpi label="Rang-correlatie (size vs %)" value={rho.toFixed(2)} hint=">0: kleine klanten relatief meer; <0: grotere klanten relatief meer" />
-        <Kpi label="Outliers (>+2,0 p.p.)" value={String(worstAbove.filter(a => a.residualPP > OUTLIER_PP).length)} />
-      </div>
-
-      {/* Filters */}
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="grid md:grid-cols-5 gap-2">
-          <select value={pg} onChange={e=>setPg(e.target.value)} className="rounded-lg border px-3 py-2 text-sm">
-            <option value="All">Alle productgroepen</option>
-            {pgs.map(v => <option key={v} value={v}>{v}</option>)}
-          </select>
-          <select value={period} onChange={e=>setPeriod(e.target.value as any)} className="rounded-lg border px-3 py-2 text-sm">
-            <option value="ALL">Alle perioden (geaggregeerd)</option>
-            <option value="LATEST">Laatste periode ({latest})</option>
-          </select>
-          <label className="flex items-center gap-2 text-sm px-2">
-            <input type="checkbox" checked={includeRebates} onChange={e=>setIncludeRebates(e.target.checked)} />
-            Neem rebates mee in % (GtN)
-          </label>
-          <label className="flex items-center gap-2 text-sm px-2">
-            Min. omzet-aandeel:
-            <input
-              type="number" min={0} step={0.1} value={minShare}
-              onChange={e=>setMinShare(Math.max(0, Number(e.target.value)))}
-              className="w-20 rounded border px-2 py-1"
-            /> %
-          </label>
-          <div className="self-center text-xs text-gray-500 px-1">Periode-range: {periods[0]} → {periods[periods.length-1]}</div>
-        </div>
-      </div>
-
-      {/* Scatter */}
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="font-medium mb-2">Discount% vs Omzet-aandeel per klant</div>
+      <div className="rounded-2xl border bg-white p-4 overflow-x-auto">
         <ScatterChartSVG
-          points={pts}
-          xLabel="Omzet-aandeel klant (%)"
-          yLabel={includeRebates ? 'Discount+Rebate / Gross (%)' : 'Discount / Gross (%)'}
+          points={points}
+          width={960}
+          height={360}
+          xLabel="Omzet-aandeel (%)"
+          yLabel="Discount / Gross (%)"
           decimals={1}
         />
-        <div className="mt-2 text-xs text-gray-500">
-          Cirkelgrootte ~ omzet-aandeel. Blauwe lijn = verwachte discount% (trend). Punten ver daarboven: mogelijke over-incentivatie.
-        </div>
       </div>
 
-      {/* Outliers + suggesties */}
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="font-medium mb-2">Top afwijkers (boven verwachting)</div>
-        {worstAbove.length ? (
-          <ul className="space-y-2 text-sm">
-            {worstAbove.map((a, i) => (
-              <li key={i} className="rounded-lg border px-3 py-2 leading-relaxed">
-                <div className="font-medium">{a.cust}</div>
-                <div className="text-gray-700">
-                  Aandeel {a.sharePct.toFixed(1).replace('.', ',')}% — Discount {(includeRebates ? a.gtnRatePct : a.discRatePct).toFixed(1).replace('.', ',')}% — 
-                  +{a.residualPP.toFixed(1).replace('.', ',')} p.p. t.o.v. verwacht.
-                </div>
-                <div className="text-gray-800 mt-1">
-                  Actie: breng basis-discount terug naar corridor (± trend) en migreer rest naar performance-rebates (tiered/retro, KPI’s, claims, DSO-borging).
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="text-sm text-gray-500">Geen duidelijke outliers binnen de huidige scope.</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="rounded-2xl border bg-white p-4">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="mt-1 text-xl font-semibold">{value}</div>
-      {hint && <div className="text-xs text-gray-500 mt-1">{hint}</div>}
+      <Link href="/app/consistency" className="inline-block rounded-lg border px-3 py-2 hover:bg-gray-50">
+        ← Terug naar Consistency hub
+      </Link>
     </div>
   );
 }
