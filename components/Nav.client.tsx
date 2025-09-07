@@ -1,14 +1,19 @@
 // components/Nav.client.tsx
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
+import { usePathname } from "next/navigation";
 
-type LeftItemProps = { href: string; label: string };
-function LeftItem({ href, label }: LeftItemProps) {
+type LeftItemProps = { href: string; label: string; onClick?: () => void };
+function LeftItem({ href, label, onClick }: LeftItemProps) {
   return (
-    <Link href={href} className="px-3 py-2 rounded hover:underline">
+    <Link
+      href={href}
+      onClick={onClick}
+      className="px-3 py-2 rounded hover:underline focus:outline-none focus:ring-2 focus:ring-sky-400/40"
+    >
       {label}
     </Link>
   );
@@ -17,24 +22,76 @@ function LeftItem({ href, label }: LeftItemProps) {
 export default function Nav() {
   const [open, setOpen] = useState(false);
   const { data: session, status } = useSession();
+  const pathname = usePathname() || "/";
+  const panelRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  // Nav-items (zelfde als je huidige)
+  const items = useMemo(
+    () => [
+      { href: "/features", label: "Features" },
+      { href: "/pricing", label: "Pricing" },
+      { href: "/about", label: "Over ons" },
+      { href: "/contact", label: "Contact" },
+      { href: "/portal", label: "Portal" },
+    ],
+    []
+  );
+
+  // 1) Sluit bij routewissel
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // 2) Klik-buiten + Escape om te sluiten (alleen wanneer open)
+  useEffect(() => {
+    if (!open) return;
+
+    function onDocClick(e: MouseEvent) {
+      const t = e.target as Node;
+      const insidePanel = panelRef.current?.contains(t);
+      const onButton = btnRef.current?.contains(t);
+      if (!insidePanel && !onButton) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("click", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // 3) Body scroll lock op mobiel paneel
+  useEffect(() => {
+    const b = document.body;
+    const prev = b.style.overflow;
+    if (open) b.style.overflow = "hidden";
+    return () => {
+      b.style.overflow = prev;
+    };
+  }, [open]);
 
   return (
     <header className="border-b bg-white/70 backdrop-blur sticky top-0 z-40">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-4">
-        <Link href="/" className="text-lg font-semibold">PharmaGtN</Link>
+        <Link href="/" className="text-lg font-semibold">
+          PharmaGtN
+        </Link>
 
         {/* Desktop links */}
         <nav className="hidden md:flex items-center gap-1">
-          <LeftItem href="/features" label="Features" />
-          <LeftItem href="/pricing" label="Pricing" />
-          <LeftItem href="/about" label="Over ons" />
-          <LeftItem href="/contact" label="Contact" />
-          <LeftItem href="/portal" label="Portal" />
+          {items.map((it) => (
+            <LeftItem key={it.href} href={it.href} label={it.label} />
+          ))}
         </nav>
 
         <div className="ml-auto" />
 
-        {/* Rechts: login status */}
+        {/* Rechts: login status (desktop) */}
         <div className="hidden md:flex items-center gap-3">
           {status === "authenticated" ? (
             <>
@@ -59,6 +116,7 @@ export default function Nav() {
 
         {/* Mobile hamburger */}
         <button
+          ref={btnRef}
           type="button"
           className="md:hidden inline-flex items-center justify-center rounded-lg border px-3 py-2"
           aria-expanded={open}
@@ -76,21 +134,29 @@ export default function Nav() {
       {/* Mobile panel */}
       <div
         id="mobile-nav"
+        ref={panelRef}
         className={`md:hidden overflow-hidden border-t transition-[max-height] duration-300 ease-in-out ${
-          open ? "max-h-96" : "max-h-0"
+          open ? "max-h-[70vh]" : "max-h-0"
         }`}
+        aria-hidden={!open}
       >
         <div className="mx-auto max-w-6xl px-4 py-3 flex flex-col gap-2">
-          <LeftItem href="/features" label="Features" />
-          <LeftItem href="/pricing" label="Pricing" />
-          <LeftItem href="/about" label="Over ons" />
-          <LeftItem href="/contact" label="Contact" />
-          <LeftItem href="/portal" label="Portal" />
+          {items.map((it) => (
+            <LeftItem
+              key={it.href}
+              href={it.href}
+              label={it.label}
+              onClick={() => setOpen(false)} // 4) sluit direct na keuze
+            />
+          ))}
 
           {status === "authenticated" ? (
             <button
               type="button"
-              onClick={() => signOut({ callbackUrl: "/" })}
+              onClick={() => {
+                setOpen(false);
+                signOut({ callbackUrl: "/" });
+              }}
               className="mt-2 inline-flex items-center w-fit rounded-lg border px-4 py-2 hover:bg-gray-50"
             >
               Log uit
@@ -98,6 +164,7 @@ export default function Nav() {
           ) : (
             <Link
               href="/login"
+              onClick={() => setOpen(false)}
               className="mt-2 inline-flex items-center w-fit rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:bg-sky-700"
             >
               Login
