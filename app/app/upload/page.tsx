@@ -75,7 +75,6 @@ export default function UploadPage() {
         </div>
       </header>
 
-      {/* Uploader */}
       <section className="rounded-2xl border bg-white p-4">
         <label className="block text-sm font-medium">Kies bestand</label>
         <input
@@ -92,7 +91,6 @@ export default function UploadPage() {
         </p>
       </section>
 
-      {/* Rapport */}
       {result && (
         <section className="rounded-2xl border bg-white p-4">
           <h2 className="text-lg font-semibold">Validatie & normalisatie</h2>
@@ -150,7 +148,6 @@ export default function UploadPage() {
         </section>
       )}
 
-      {/* Preview */}
       {result?.report.ok && (
         <section className="rounded-2xl border bg-white p-4">
           <h2 className="text-lg font-semibold">Preview (eerste 10 rijen)</h2>
@@ -183,7 +180,7 @@ export default function UploadPage() {
             </table>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            “Value Discounts” worden samengevoegd met “Other Sales Discounts” in <code>d_other_sales</code> voor compatibiliteit met je analyses.
+            “Value Discounts” worden samengevoegd met “Other Sales Discounts” in <code>d_other_sales</code>.
           </p>
         </section>
       )}
@@ -191,7 +188,7 @@ export default function UploadPage() {
   );
 }
 
-/** CSV helpers (voldoende robuust voor standaard exporten) */
+/** CSV helpers */
 function csvToJson(text: string): any[] {
   const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim().length > 0);
   if (!lines.length) return [];
