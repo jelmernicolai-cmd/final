@@ -31,11 +31,15 @@ export default function UploadPage() {
     setBusy(true);
     setErr(null);
     try {
-      const ext = file.name.toLowerCase().split(".").pop();
+      const ext = (file.name.toLowerCase().split(".").pop() || "").trim();
       let rows: any[] = [];
 
       if (ext === "xlsx" || ext === "xls") {
-        const XLSX = (await import("xlsx")).default;
+        // Belangrijk: géén .default; importeer de module
+        const XLSX: any = await import("xlsx");
+        if (!XLSX?.read || !XLSX?.utils) {
+          throw new Error("Excel parser kon niet worden geladen (xlsx).");
+        }
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
@@ -44,12 +48,14 @@ export default function UploadPage() {
         const text = await file.text();
         rows = csvToJson(text);
       } else {
-        throw new Error("Ondersteunde formaten: .xlsx of .csv");
+        throw new Error("Ondersteunde formaten: .xlsx, .xls of .csv");
       }
 
       const report = normalizeRows(rows);
       setResult({ report, all: report.preview });
-      if (!report.ok) setErr("Bestand verwerkt maar er ontbreken kernkolommen of alle rijen zijn ongeldig. Zie details hieronder.");
+      if (!report.ok) {
+        setErr("Bestand verwerkt maar er ontbreken kernkolommen of alle rijen zijn ongeldig. Zie details hieronder.");
+      }
     } catch (e: any) {
       console.error(e);
       setErr(e?.message || "Upload mislukt");
@@ -58,7 +64,7 @@ export default function UploadPage() {
     }
   }
 
-  // Zet NormalizedRow → Row (alle velden die in jouw Row-type voorkomen)
+  // Zet NormalizedRow → Row (alle kernvelden)
   function toRowShape(input: NormalizedRow[]): Row[] {
     return input.map((r) => {
       const row: any = {
@@ -82,7 +88,6 @@ export default function UploadPage() {
         r_local: r.r_local,
         net: r.net,
       };
-      // Royalties/Other income niet meegeven als Row-type die velden niet kent
       return row as Row;
     });
   }
@@ -117,7 +122,7 @@ export default function UploadPage() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Upload – Masterdataset</h1>
-          <p className="text-gray-600 text-sm">Één bestand voedt Waterfall & Consistency. Ondersteund: Excel (.xlsx) of CSV.</p>
+          <p className="text-gray-600 text-sm">Één bestand voedt Waterfall & Consistency. Ondersteund: Excel (.xlsx/.xls) of CSV.</p>
         </div>
         <div className="flex gap-2">
           <Link href="/app/waterfall" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Naar Waterfall</Link>
