@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import type { NormalizedRow } from "@/lib/upload-schema";
 import { normalizeRows } from "@/lib/upload-schema";
@@ -10,9 +10,22 @@ import type { Row } from "@/lib/waterfall-types";
 type ParseResult = { report: ReturnType<typeof normalizeRows>; all: NormalizedRow[] };
 
 export default function UploadPage() {
+  const [dragOver, setDragOver] = useState(false);
   const [result, setResult] = useState<ParseResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const handleDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) await handleFile(file);
+  }, []);
+
+  const handleBrowse = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await handleFile(file);
+  };
 
   async function handleFile(file: File) {
     setBusy(true);
@@ -36,6 +49,9 @@ export default function UploadPage() {
 
       const report = normalizeRows(rows);
       setResult({ report, all: report.preview });
+      if (!report.ok) {
+        setErr("Bestand verwerkt maar er ontbreken kernkolommen of alle rijen zijn ongeldig. Zie details hieronder.");
+      }
     } catch (e: any) {
       console.error(e);
       setErr(e?.message || "Upload mislukt");
@@ -44,25 +60,22 @@ export default function UploadPage() {
     }
   }
 
-  /** Converteer NormalizedRow[] naar Row[] zonder aannames over extra velden */
   function toRowShape(input: NormalizedRow[]): Row[] {
-    return input.map((r) => {
-      const base = {
-        period: r.period,
-        cust: r.cust,
-        pg: r.pg,
-        sku: r.sku,
-        gross: r.gross,
-        d_channel: r.d_channel,
-        d_customer: r.d_customer,
-        d_product: r.d_product,
-        d_volume: r.d_volume,
-        d_other_sales: r.d_other_sales,
-        d_mandatory: r.d_mandatory,
-        d_local: r.d_local,
-      } as any; // we forceren alleen de velden die je analyses gebruiken
-      return base as Row;
-    });
+    // Alleen velden mappen die je analyses gebruiken; overige blijven optioneel
+    return input.map((r) => ({
+      period: r.period,
+      cust: r.cust,
+      pg: r.pg,
+      sku: r.sku,
+      gross: r.gross,
+      d_channel: r.d_channel,
+      d_customer: r.d_customer,
+      d_product: r.d_product,
+      d_volume: r.d_volume,
+      d_other_sales: r.d_other_sales,
+      d_mandatory: r.d_mandatory,
+      d_local: r.d_local,
+    })) as unknown as Row[];
   }
 
   function onSave() {
@@ -75,8 +88,7 @@ export default function UploadPage() {
   const totals = useMemo(() => {
     if (!result?.report.ok) return null;
     const r = result.report.preview;
-    let gross = 0,
-      disc = 0;
+    let gross = 0, disc = 0;
     for (const x of r) {
       gross += x.gross || 0;
       disc +=
@@ -97,35 +109,44 @@ export default function UploadPage() {
         <div>
           <h1 className="text-xl font-semibold">Upload – Masterdataset</h1>
           <p className="text-gray-600 text-sm">
-            Één bestand voedt Waterfall & Consistency. Ondersteund: Excel (.xlsx) of CSV.
+            Eén bestand voedt Waterfall & Consistency. Ondersteund: Excel (.xlsx) of CSV.
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/app/waterfall" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">
-            Naar Waterfall
-          </Link>
-          <Link href="/app/consistency" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">
-            Naar Consistency
-          </Link>
+          <Link href="/app/waterfall" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Naar Waterfall</Link>
+          <Link href="/app/consistency" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Naar Consistency</Link>
         </div>
       </header>
 
-      <section className="rounded-2xl border bg-white p-4">
-        <label className="block text-sm font-medium">Kies bestand</label>
-        <input
-          type="file"
-          accept=".xlsx,.xls,.csv"
-          className="mt-2 block w-full rounded border p-2 text-sm"
-          onChange={(e) => e.target.files && e.target.files[0] && handleFile(e.target.files[0])}
-          disabled={busy}
-        />
-        {busy && <div className="mt-2 text-sm text-gray-600">Bezig met verwerken…</div>}
-        {err && <div className="mt-2 text-sm text-red-600">{err}</div>}
+      {/* Dropzone */}
+      <section
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className={[
+          "rounded-2xl border-2 border-dashed p-6 bg-white text-center transition",
+          dragOver ? "border-sky-500 bg-sky-50/50" : "border-gray-200"
+        ].join(" ")}
+      >
+        <div className="text-sm text-gray-700">Sleep je Excel/CSV hierheen of</div>
+        <label className="mt-2 inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:bg-sky-700 cursor-pointer">
+          Bestand kiezen
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleBrowse}
+            disabled={busy}
+          />
+        </label>
         <p className="mt-2 text-xs text-gray-500">
-          Kolommen mogen andere benamingen hebben: we mappen synoniemen en repareren getalnotaties & periodes automatisch.
+          Headers mogen variëren; we herkennen synoniemen en repareren decimale komma’s en periodes automatisch.
         </p>
+        {busy && <div className="mt-2 text-sm text-gray-600">Bezig met verwerken…</div>}
+        {err && <div className="mt-3 inline-block rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</div>}
       </section>
 
+      {/* Rapport */}
       {result && (
         <section className="rounded-2xl border bg-white p-4">
           <h2 className="text-lg font-semibold">Validatie & normalisatie</h2>
@@ -133,11 +154,9 @@ export default function UploadPage() {
           <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl border p-3">
               <div className="font-medium">Header-mapping</div>
-              <ul className="mt-1 text-gray-700">
+              <ul className="mt-1 text-gray-700 space-y-1">
                 {Object.entries(result.report.fixedHeaders).map(([orig, used]) => (
-                  <li key={orig}>
-                    <code className="text-xs">{orig}</code> → <b>{used}</b>
-                  </li>
+                  <li key={orig}><code className="text-xs">{orig}</code> → <b>{used}</b></li>
                 ))}
               </ul>
               {result.report.missing.length > 0 && (
@@ -150,12 +169,10 @@ export default function UploadPage() {
             <div className="rounded-xl border p-3">
               <div className="font-medium">Samenvatting</div>
               <div className="mt-1 text-gray-700">
-                Rijen na normalisatie: <b>{result.report.rows}</b>
-                <br />
+                Rijen na normalisatie: <b>{result.report.rows}</b><br/>
                 {totals && (
                   <>
-                    Totaal Gross: <b>{eur0(totals.gross)}</b>
-                    <br />
+                    Totaal Gross: <b>{eur0(totals.gross)}</b><br/>
                     Totaal Discounts: <b>{eur0(totals.disc)}</b> ({totals.pct.toFixed(1)}%)
                   </>
                 )}
@@ -165,20 +182,16 @@ export default function UploadPage() {
 
           {result.report.issues.length > 0 && (
             <div className="mt-3 rounded-xl border p-3 text-sm text-amber-800 bg-amber-50 border-amber-200">
-              <div className="font-medium">Geconstateerde issues (eerste {result.report.issues.length})</div>
+              <div className="font-medium">Geconstateerde issues (max 50 getoond)</div>
               <ul className="list-disc pl-5">
-                {result.report.issues.map((m, i) => (
-                  <li key={i}>{m}</li>
-                ))}
+                {result.report.issues.map((m, i) => <li key={i}>{m}</li>)}
               </ul>
             </div>
           )}
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
-              className={`rounded-lg px-4 py-2 text-sm border ${
-                result.report.ok ? "bg-sky-600 text-white hover:bg-sky-700" : "opacity-50 cursor-not-allowed"
-              }`}
+              className={`rounded-lg px-4 py-2 text-sm border ${result.report.ok ? "bg-sky-600 text-white hover:bg-sky-700" : "opacity-50 cursor-not-allowed"}`}
               disabled={!result.report.ok}
               onClick={onSave}
             >
@@ -191,35 +204,20 @@ export default function UploadPage() {
         </section>
       )}
 
+      {/* Preview */}
       {result?.report.ok && (
         <section className="rounded-2xl border bg-white p-4">
           <h2 className="text-lg font-semibold">Preview (eerste 10 rijen)</h2>
           <div className="mt-2 overflow-x-auto">
-            <table className="min-w-[720px] w-full text-xs">
+            <table className="min-w-[860px] w-full text-xs">
               <thead>
                 <tr className="text-gray-500">
-                  {[
-                    "period",
-                    "cust",
-                    "pg",
-                    "sku",
-                    "gross",
-                    "d_channel",
-                    "d_customer",
-                    "d_product",
-                    "d_volume",
-                    "d_other_sales",
-                    "d_mandatory",
-                    "d_local",
-                  ].map((h) => (
-                    <th key={h} className="text-left p-1">
-                      {h}
-                    </th>
-                  ))}
+                  {["period","cust","pg","sku","gross","d_channel","d_customer","d_product","d_volume","d_other_sales","d_mandatory","d_local"]
+                    .map(h => <th key={h} className="text-left p-1">{h}</th>)}
                 </tr>
               </thead>
               <tbody>
-                {result.report.preview.slice(0, 10).map((r, idx) => (
+                {result.report.preview.slice(0,10).map((r, idx) => (
                   <tr key={idx} className="border-t">
                     <td className="p-1">{r.period}</td>
                     <td className="p-1">{r.cust}</td>
@@ -239,7 +237,7 @@ export default function UploadPage() {
             </table>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            “Value Discounts” worden samengevoegd met “Other Sales Discounts” in <code>d_other_sales</code>.
+            “Value Discounts” zijn samengevoegd met “Other Sales Discounts” in <code>d_other_sales</code> voor compatibiliteit.
           </p>
         </section>
       )}
@@ -249,32 +247,28 @@ export default function UploadPage() {
 
 /** CSV helpers */
 function csvToJson(text: string): any[] {
-  const lines = text.replace(/\r/g, "").split("\n").filter((l) => l.trim().length > 0);
+  const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim().length > 0);
   if (!lines.length) return [];
   const headers = splitCSVLine(lines[0]);
   const rows: any[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = splitCSVLine(lines[i]);
     const obj: any = {};
-    headers.forEach((h, idx) => (obj[h] = cols[idx] ?? ""));
+    headers.forEach((h, idx) => obj[h] = cols[idx] ?? "");
     rows.push(obj);
   }
   return rows;
 }
 function splitCSVLine(line: string): string[] {
   const out: string[] = [];
-  let cur = "",
-    inQ = false;
+  let cur = "", inQ = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') {
-      if (inQ && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else inQ = !inQ;
+      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
     } else if (ch === "," && !inQ) {
-      out.push(cur);
-      cur = "";
+      out.push(cur); cur = "";
     } else {
       cur += ch;
     }
