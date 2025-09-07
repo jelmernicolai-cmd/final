@@ -49,9 +49,7 @@ export default function UploadPage() {
 
       const report = normalizeRows(rows);
       setResult({ report, all: report.preview });
-      if (!report.ok) {
-        setErr("Bestand verwerkt maar er ontbreken kernkolommen of alle rijen zijn ongeldig. Zie details hieronder.");
-      }
+      if (!report.ok) setErr("Bestand verwerkt maar er ontbreken kernkolommen of alle rijen zijn ongeldig. Zie details hieronder.");
     } catch (e: any) {
       console.error(e);
       setErr(e?.message || "Upload mislukt");
@@ -60,22 +58,33 @@ export default function UploadPage() {
     }
   }
 
+  // Zet NormalizedRow → Row (alle velden die in jouw Row-type voorkomen)
   function toRowShape(input: NormalizedRow[]): Row[] {
-    // Alleen velden mappen die je analyses gebruiken; overige blijven optioneel
-    return input.map((r) => ({
-      period: r.period,
-      cust: r.cust,
-      pg: r.pg,
-      sku: r.sku,
-      gross: r.gross,
-      d_channel: r.d_channel,
-      d_customer: r.d_customer,
-      d_product: r.d_product,
-      d_volume: r.d_volume,
-      d_other_sales: r.d_other_sales,
-      d_mandatory: r.d_mandatory,
-      d_local: r.d_local,
-    })) as unknown as Row[];
+    return input.map((r) => {
+      const row: any = {
+        period: r.period,
+        cust: r.cust,
+        pg: r.pg,
+        sku: r.sku,
+        gross: r.gross,
+        d_channel: r.d_channel,
+        d_customer: r.d_customer,
+        d_product: r.d_product,
+        d_volume: r.d_volume,
+        d_other_sales: r.d_other_sales,
+        d_mandatory: r.d_mandatory,
+        d_local: r.d_local,
+        invoiced: r.invoiced,
+        r_direct: r.r_direct,
+        r_prompt: r.r_prompt,
+        r_indirect: r.r_indirect,
+        r_mandatory: r.r_mandatory,
+        r_local: r.r_local,
+        net: r.net,
+      };
+      // Royalties/Other income niet meegeven als Row-type die velden niet kent
+      return row as Row;
+    });
   }
 
   function onSave() {
@@ -108,9 +117,7 @@ export default function UploadPage() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Upload – Masterdataset</h1>
-          <p className="text-gray-600 text-sm">
-            Eén bestand voedt Waterfall & Consistency. Ondersteund: Excel (.xlsx) of CSV.
-          </p>
+          <p className="text-gray-600 text-sm">Één bestand voedt Waterfall & Consistency. Ondersteund: Excel (.xlsx) of CSV.</p>
         </div>
         <div className="flex gap-2">
           <Link href="/app/waterfall" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Naar Waterfall</Link>
@@ -131,13 +138,7 @@ export default function UploadPage() {
         <div className="text-sm text-gray-700">Sleep je Excel/CSV hierheen of</div>
         <label className="mt-2 inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:bg-sky-700 cursor-pointer">
           Bestand kiezen
-          <input
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={handleBrowse}
-            disabled={busy}
-          />
+          <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleBrowse} disabled={busy} />
         </label>
         <p className="mt-2 text-xs text-gray-500">
           Headers mogen variëren; we herkennen synoniemen en repareren decimale komma’s en periodes automatisch.
@@ -197,9 +198,7 @@ export default function UploadPage() {
             >
               Opslaan als dataset
             </button>
-            <Link href="/app/consistency" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">
-              Naar Consistency
-            </Link>
+            <Link href="/app/consistency" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Naar Consistency</Link>
           </div>
         </section>
       )}
@@ -209,10 +208,10 @@ export default function UploadPage() {
         <section className="rounded-2xl border bg-white p-4">
           <h2 className="text-lg font-semibold">Preview (eerste 10 rijen)</h2>
           <div className="mt-2 overflow-x-auto">
-            <table className="min-w-[860px] w-full text-xs">
+            <table className="min-w-[920px] w-full text-xs">
               <thead>
                 <tr className="text-gray-500">
-                  {["period","cust","pg","sku","gross","d_channel","d_customer","d_product","d_volume","d_other_sales","d_mandatory","d_local"]
+                  {["period","cust","pg","sku","gross","invoiced","net","d_channel","d_customer","d_product","d_volume","d_other_sales","d_mandatory","d_local","r_direct","r_prompt","r_indirect","r_mandatory","r_local"]
                     .map(h => <th key={h} className="text-left p-1">{h}</th>)}
                 </tr>
               </thead>
@@ -224,6 +223,8 @@ export default function UploadPage() {
                     <td className="p-1">{r.pg}</td>
                     <td className="p-1">{r.sku}</td>
                     <td className="p-1">{Math.round(r.gross)}</td>
+                    <td className="p-1">{Math.round(r.invoiced)}</td>
+                    <td className="p-1">{Math.round(r.net)}</td>
                     <td className="p-1">{Math.round(r.d_channel)}</td>
                     <td className="p-1">{Math.round(r.d_customer)}</td>
                     <td className="p-1">{Math.round(r.d_product)}</td>
@@ -231,13 +232,18 @@ export default function UploadPage() {
                     <td className="p-1">{Math.round(r.d_other_sales)}</td>
                     <td className="p-1">{Math.round(r.d_mandatory)}</td>
                     <td className="p-1">{Math.round(r.d_local)}</td>
+                    <td className="p-1">{Math.round(r.r_direct)}</td>
+                    <td className="p-1">{Math.round(r.r_prompt)}</td>
+                    <td className="p-1">{Math.round(r.r_indirect)}</td>
+                    <td className="p-1">{Math.round(r.r_mandatory)}</td>
+                    <td className="p-1">{Math.round(r.r_local)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            “Value Discounts” zijn samengevoegd met “Other Sales Discounts” in <code>d_other_sales</code> voor compatibiliteit.
+            Ontbreekt “Invoiced” of “Net” in je bron? We berekenen: <code>invoiced = gross − discounts</code>, <code>net = invoiced − rebates + incomes</code>.
           </p>
         </section>
       )}
