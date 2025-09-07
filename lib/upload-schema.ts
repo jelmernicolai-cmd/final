@@ -1,3 +1,4 @@
+// lib/upload-schema.ts
 export type RawRow = Record<string, any>;
 
 export type NormalizedRow = {
