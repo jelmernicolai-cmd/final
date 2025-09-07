@@ -1,13 +1,13 @@
 // lib/waterfall-storage.ts
 import type { Row } from "@/lib/waterfall-types";
 
-const STORE_KEY = "pharmagtn_master_rows_v1";
+export const WF_STORE_KEY = "pharmagtn_master_rows_v1";
 const LEGACY_KEYS = ["pharmagtn_wf_session", "pharmagtn_waterfall"];
 
 type StoredShape = { rows?: Row[] } | Row[];
 
 export function loadWaterfallRows(): Row[] {
-  const keys = [STORE_KEY, ...LEGACY_KEYS];
+  const keys = [WF_STORE_KEY, ...LEGACY_KEYS];
   for (const k of keys) {
     try {
       const raw =
@@ -24,8 +24,8 @@ export function loadWaterfallRows(): Row[] {
 
 export function saveWaterfallRows(rows: Row[]) {
   const payload = JSON.stringify({ rows });
-  try { sessionStorage.setItem(STORE_KEY, payload); } catch {}
-  try { localStorage.setItem(STORE_KEY, payload); } catch {}
+  try { sessionStorage.setItem(WF_STORE_KEY, payload); } catch {}
+  try { localStorage.setItem(WF_STORE_KEY, payload); } catch {}
   for (const k of LEGACY_KEYS) {
     try { sessionStorage.setItem(k, payload); } catch {}
     try { localStorage.setItem(k, payload); } catch {}
