@@ -16,8 +16,8 @@ type BenchMode = 'overall' | 'quintile';
 export default function ConsistencyHub() {
   const rows: Row[] = loadWaterfallRows();
   const [mode, setMode] = useState<BenchMode>('overall');
-  const [minorPP, setMinorPP] = useState(2);   // drempel "licht boven benchmark"
-  const [majorPP, setMajorPP] = useState(5);   // drempel "significant boven benchmark"
+  const [minorPP, setMinorPP] = useState(2);   // licht boven benchmark
+  const [majorPP, setMajorPP] = useState(5);   // significant boven benchmark
 
   if (!rows.length) {
     return (
@@ -63,7 +63,7 @@ export default function ConsistencyHub() {
     return { grossTotal, avgDiscountPct, perCustomer, periodPctSeries };
   }, [rows]);
 
-  // 2) Quintile-benchmarks op basis van omzet (voor eerlijke peer-vergelijking)
+  // 2) Quintile-benchmarks (eerlijker peers)
   const quintileBench = useMemo(() => {
     const arr = [...perCustomer].sort((a,b)=>a.gross-b.gross);
     if (arr.length < 5) return { map: new Map<string, number>(), fallback: avgDiscountPct };
@@ -85,102 +85,67 @@ export default function ConsistencyHub() {
     return { map: benchMap, fallback: avgDiscountPct };
   }, [perCustomer, avgDiscountPct]);
 
-  // 3) Afwijkingen t.o.v. gekozen benchmark + potentieel
+  // 3) Afwijkingen + potentieel
   const table = useMemo(()=>{
     return perCustomer.map(c=>{
-      const bench =
-        mode === 'overall'
-          ? avgDiscountPct
-          : (quintileBench.map.get(c.cust) ?? quintileBench.fallback);
-      const deviation = c.discPct - bench; // in percentagepunten
-      const potential = deviation > 0 ? (deviation/100)*c.gross : 0;
-      let severity: "ok"|"minor"|"major" = "ok";
-      if (deviation > majorPP) severity = "major";
-      else if (deviation > minorPP) severity = "minor";
-      return { ...c, benchPct: bench, deviation, potential, severity };
-    })
-    .sort((a,b)=> b.potential - a.potential);
+      const bench = mode==='overall' ? avgDiscountPct : (quintileBench.map.get(c.cust) ?? quintileBench.fallback);
+      const deviation = c.discPct - bench; // pp
+      const potential = deviation>0 ? (deviation/100)*c.gross : 0;
+      let severity: 'ok'|'minor'|'major' = 'ok';
+      if (deviation>majorPP) severity='major'; else if (deviation>minorPP) severity='minor';
+      return {...c, benchPct: bench, deviation, potential, severity};
+    }).sort((a,b)=>b.potential-a.potential);
   }, [perCustomer, mode, avgDiscountPct, quintileBench, minorPP, majorPP]);
 
-  const top = table.slice(0, 10);
+  const top = table.slice(0,10);
   const potentialSum = top.reduce((s,c)=>s+c.potential,0);
 
-  // CSV export
   function exportCSV() {
     const rows = [["Customer","Gross","Discount%","Benchmark%","Deviation(pp)","Potential"]];
     for (const c of table) {
-      rows.push([
-        c.cust,
-        String(Math.round(c.gross)),
-        c.discPct.toFixed(2),
-        c.benchPct.toFixed(2),
-        c.deviation.toFixed(2),
-        String(Math.round(c.potential))
-      ]);
+      rows.push([c.cust, String(Math.round(c.gross)), c.discPct.toFixed(2), c.benchPct.toFixed(2), c.deviation.toFixed(2), String(Math.round(c.potential))]);
     }
     const csv = rows.map(r=>r.join(",")).join("\n");
-    const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "consistency_customers.csv"; a.click();
-    URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8;"}));
+    const a = document.createElement("a"); a.href=url; a.download="consistency_customers.csv"; a.click(); URL.revokeObjectURL(url);
   }
 
   return (
     <div className="space-y-6">
       <ConsistencyNav />
 
+      {/* Header + controls */}
       <header className="mt-4 flex items-start gap-3">
         <div className="flex-1">
           <h1 className="text-xl font-semibold">Consistency Analyse</h1>
-          <p className="text-gray-600">
-            Vergelijk klantkortingen met de geselecteerde benchmark en zie direct het besparingspotentieel.
-          </p>
+          <p className="text-gray-600">Vergelijk klantkortingen met de gekozen benchmark en zie direct besparingspotentieel.</p>
           <div className="mt-2 flex items-center gap-2">
-            <Badge>{mode === 'overall' ? 'Benchmark: Overall (gewogen gemiddelde)' : 'Benchmark: Quintile peers (op omzet)'} </Badge>
-            <button
-              onClick={exportCSV}
-              className="text-xs rounded border px-2 py-1 hover:bg-gray-50"
-              aria-label="Exporteer CSV"
-            >
-              CSV export
-            </button>
+            <Badge>{mode==='overall' ? 'Benchmark: Overall (gewogen gemiddelde)' : 'Benchmark: Quintile peers (op omzet)'} </Badge>
+            <button onClick={exportCSV} className="text-xs rounded border px-2 py-1 hover:bg-gray-50" aria-label="Exporteer CSV">CSV export</button>
           </div>
         </div>
 
-        {/* Controls */}
         <div className="rounded-xl border bg-white p-3 w-full sm:w-[340px]">
           <div className="text-sm font-medium mb-2">Instellingen</div>
-
           <FieldRow>
             <Label>Benchmark</Label>
-            <select
-              value={mode}
-              onChange={(e)=>setMode(e.target.value as BenchMode)}
-              className="text-sm border rounded px-2 py-1 w-full"
-              aria-label="Benchmark selecteren"
-            >
+            <select value={mode} onChange={(e)=>setMode(e.target.value as BenchMode)} className="text-sm border rounded px-2 py-1 w-full">
               <option value="overall">Overall (gewogen gemiddelde)</option>
               <option value="quintile">Quintile peers (op omzet)</option>
             </select>
           </FieldRow>
-
           <div className="mt-3 grid gap-3">
             <FieldRow>
               <Label>Drempel “licht te hoog”</Label>
               <div className="flex items-center gap-2">
-                <input type="range" min={0} max={10} step={0.5} value={minorPP}
-                  onChange={(e)=>setMinorPP(Number(e.target.value))}
-                  className="w-full" aria-label="Drempel minor" />
+                <input type="range" min={0} max={10} step={0.5} value={minorPP} onChange={(e)=>setMinorPP(Number(e.target.value))} className="w-full"/>
                 <span className="text-sm w-10 text-right">{minorPP}pp</span>
               </div>
             </FieldRow>
             <FieldRow>
               <Label>Drempel “significant te hoog”</Label>
               <div className="flex items-center gap-2">
-                <input type="range" min={0} max={15} step={0.5} value={majorPP}
-                  onChange={(e)=>setMajorPP(Number(e.target.value))}
-                  className="w-full" aria-label="Drempel major" />
+                <input type="range" min={0} max={15} step={0.5} value={majorPP} onChange={(e)=>setMajorPP(Number(e.target.value))} className="w-full"/>
                 <span className="text-sm w-10 text-right">{majorPP}pp</span>
               </div>
             </FieldRow>
@@ -191,19 +156,13 @@ export default function ConsistencyHub() {
       <InfoBlock summary="Hoe berekenen we benchmark, afwijking en besparingspotentieel?">
         <ul className="list-disc pl-5 space-y-1">
           <li><b>Discount%</b> per klant = (som van alle discount-velden) ÷ Gross × 100.</li>
-          <li><b>Benchmark</b> = 
-            {mode==='overall'
-              ? <> gewogen gemiddelde discount% over alle klanten (overall).</>
-              : <> discount% van de <i>quintile</i> (omzet-peer groep) waarin de klant valt.</>
-            }
-          </li>
-          <li><b>Afwijking (pp)</b> = Discount% klant − Benchmark% (in percentagepunten).</li>
-          <li><b>Potentieel</b> = max(0, Afwijking) × Gross (vereenvoudigd conservatief scenario).</li>
-          <li>Drempels bepalen de kleurcodering (minor/major) en prioriteit in de lijst.</li>
+          <li><b>Benchmark</b> = {mode==='overall' ? <>gewogen gemiddelde over alle klanten (overall).</> : <>percentage van de omzet-quintile (peers).</>}</li>
+          <li><b>Afwijking (pp)</b> = Discount% klant − Benchmark% (percentagepunten).</li>
+          <li><b>Potentieel</b> = max(0, Afwijking) × Gross (conservatieve margeberekening).</li>
         </ul>
       </InfoBlock>
 
-      {/* KPI + Charts */}
+      {/* KPIs + Charts */}
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-2xl border bg-white p-4 flex items-center justify-between">
           <div>
@@ -216,21 +175,16 @@ export default function ConsistencyHub() {
         <div className="rounded-2xl border bg-white p-4">
           <div className="text-sm text-gray-500">Korting% over tijd</div>
           <Sparkline data={periodPctSeries} />
-          <div className="text-xs text-gray-600 mt-1">
-            Geeft ritme/volatiliteit weer; uitschieters kunnen op condities/acties duiden.
-          </div>
         </div>
 
         <div className="rounded-2xl border bg-white p-4">
           <div className="text-sm text-gray-500">Potentieel (Top 10 klanten)</div>
-          <div className="text-lg font-semibold mt-1">
-            {eur0(top.slice(0,10).reduce((s,c)=>s+c.potential,0))}
-          </div>
+          <div className="text-lg font-semibold mt-1">{eur0(potentialSum)}</div>
           <div className="mt-2">
             <MiniBar
-              values={top.slice(0,10).map(x=>x.deviation)}
-              labels={top.slice(0,10).map(x=>x.cust)}
-              valueFmt={(v)=>v.toFixed(1)+"pp"}
+              values={top.map(x=>x.deviation)}
+              labels={top.map(x=>x.cust)}
+              valueFmt={(v)=>v.toFixed(1)+'pp'}
               tooltip={(_,v,l)=>`${l}: ${v.toFixed(1)} pp`}
             />
           </div>
@@ -257,12 +211,7 @@ export default function ConsistencyHub() {
                 <td className="p-2 text-right">{eur0(c.gross)}</td>
                 <td className="p-2 text-right">{c.discPct.toFixed(1)}%</td>
                 <td className="p-2 text-right">{c.benchPct.toFixed(1)}%</td>
-                <td className={`p-2 text-right ${
-                  c.deviation>majorPP ? 'text-red-600 font-medium' :
-                  c.deviation>minorPP ? 'text-amber-700' : ''
-                }`}>
-                  {c.deviation.toFixed(1)}%
-                </td>
+                <td className={`p-2 text-right ${c.deviation>majorPP?'text-red-600 font-medium':c.deviation>minorPP?'text-amber-700':''}`}>{c.deviation.toFixed(1)}%</td>
                 <td className="p-2 text-right">{c.potential>0?eur0(c.potential):'—'}</td>
               </tr>
             ))}
@@ -276,24 +225,71 @@ export default function ConsistencyHub() {
           <div key={c.cust} className="rounded-2xl border bg-white p-4">
             <div className="flex items-center gap-2">
               <div className="font-medium">{c.cust}</div>
-              <span className="ml-auto text-xs px-2 py-0.5 rounded-full border">
-                {c.deviation.toFixed(1)}pp
-              </span>
+              <span className="ml-auto text-xs px-2 py-0.5 rounded-full border">{c.deviation.toFixed(1)}pp</span>
             </div>
             <div className="mt-1 text-sm text-gray-600">Omzet: {eur0(c.gross)}</div>
             <div className="mt-1 text-sm">Korting: <b>{c.discPct.toFixed(1)}%</b> | Benchmark: {c.benchPct.toFixed(1)}%</div>
             <div className="mt-1 text-sm">Potentieel: <b>{c.potential>0?eur0(c.potential):'—'}</b></div>
-            <div className="mt-2">
-              <MiniBar values={[c.deviation]} labels={['afw.']} width={260} height={60} valueFmt={(v)=>v.toFixed(1)+'pp'} />
-            </div>
-            {c.deviation>majorPP ? (
-              <div className="mt-2"><Badge tone="warn">Significant boven benchmark</Badge></div>
-            ) : c.deviation>minorPP ? (
-              <div className="mt-2"><Badge tone="info">Boven benchmark</Badge></div>
-            ) : null}
+            <div className="mt-2"><MiniBar values={[c.deviation]} labels={['afw.']} width={260} height={60} valueFmt={(v)=>v.toFixed(1)+'pp'} /></div>
+            {c.deviation>majorPP ? <div className="mt-2"><Badge tone="warn">Significant boven benchmark</Badge></div> : c.deviation>minorPP ? <div className="mt-2"><Badge tone="info">Boven benchmark</Badge></div> : null}
           </div>
         ))}
       </div>
+
+      {/* Samenvatting in gewone taal */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h2 className="text-lg font-semibold mb-2">Samenvatting</h2>
+        <ul className="space-y-2 text-sm text-gray-700">
+          {table.slice(0,3).map(c => (
+            <li key={c.cust}>
+              <b>{c.cust}</b> zit {c.deviation>=0?'+':''}{c.deviation.toFixed(1)}pp t.o.v. benchmark bij omzet {eur0(c.gross)}
+              {c.potential>0 ? <> → geschatte margeverbetering: <b>{eur0(c.potential)}</b>.</> : <> → onder benchmark: retentie check.</>}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* Aanbevolen acties */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h2 className="text-lg font-semibold mb-3">Aanbevolen acties om marge te optimaliseren</h2>
+        <ul className="space-y-3">
+          {table.slice(0,8).map(c=>{
+            if (c.deviation>majorPP) {
+              return (
+                <li key={c.cust} className="flex items-start gap-3">
+                  <span className="text-red-600 font-bold">↑</span>
+                  <div>
+                    <p><b>{c.cust}</b> krijgt <b>{c.deviation.toFixed(1)}pp</b> meer korting dan benchmark. Heronderhandel contract.</p>
+                    <p className="text-sm text-gray-600">Potentieel margeverbetering: <b>{eur0(c.potential)}</b></p>
+                  </div>
+                </li>
+              );
+            }
+            if (c.deviation>minorPP) {
+              return (
+                <li key={c.cust} className="flex items-start gap-3">
+                  <span className="text-amber-600 font-bold">→</span>
+                  <div>
+                    <p><b>{c.cust}</b> zit <b>{c.deviation.toFixed(1)}pp</b> boven benchmark. Harmoniseer kortingen/bonussen.</p>
+                    <p className="text-sm text-gray-600">Potentieel margeverbetering: <b>{eur0(c.potential)}</b></p>
+                  </div>
+                </li>
+              );
+            }
+            if (c.deviation<-minorPP) {
+              return (
+                <li key={c.cust} className="flex items-start gap-3">
+                  <span className="text-sky-600 font-bold">⚠</span>
+                  <div>
+                    <p><b>{c.cust}</b> krijgt {Math.abs(c.deviation).toFixed(1)}pp minder korting dan peers. Risico op churn → overweeg loyaliteitsprogramma.</p>
+                  </div>
+                </li>
+              );
+            }
+            return null;
+          })}
+        </ul>
+      </section>
     </div>
   );
 }
