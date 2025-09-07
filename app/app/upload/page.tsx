@@ -35,7 +35,6 @@ export default function UploadPage() {
       let rows: any[] = [];
 
       if (ext === "xlsx" || ext === "xls") {
-        // Belangrijk: géén .default; importeer de module
         const XLSX: any = await import("xlsx");
         if (!XLSX?.read || !XLSX?.utils) {
           throw new Error("Excel parser kon niet worden geladen (xlsx).");
@@ -99,6 +98,13 @@ export default function UploadPage() {
     alert("Dataset opgeslagen. Open Waterfall of Consistency om de analyses te bekijken.");
   }
 
+  function onReset() {
+    setResult(null);
+    setErr(null);
+    setBusy(false);
+    setDragOver(false);
+  }
+
   const totals = useMemo(() => {
     if (!result?.report.ok) return null;
     const r = result.report.preview;
@@ -122,7 +128,10 @@ export default function UploadPage() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Upload – Masterdataset</h1>
-          <p className="text-gray-600 text-sm">Één bestand voedt Waterfall & Consistency. Ondersteund: Excel (.xlsx/.xls) of CSV.</p>
+          <p className="text-gray-600 text-sm">
+            Deze masterfile voedt zowel de <b>Waterfall</b> als de <b>Consistency analyse</b>. 
+            Door één bestand te gebruiken zijn alle inzichten consistent en gebaseerd op dezelfde dataset.
+          </p>
         </div>
         <div className="flex gap-2">
           <Link href="/app/waterfall" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Naar Waterfall</Link>
@@ -154,40 +163,32 @@ export default function UploadPage() {
 
       {/* Rapport */}
       {result && (
-        <section className="rounded-2xl border bg-white p-4">
-          <h2 className="text-lg font-semibold">Validatie & normalisatie</h2>
+        <section className="rounded-2xl border bg-white p-4 space-y-3">
+          <h2 className="text-lg font-semibold">Resultaat validatie</h2>
+          <p className="text-sm text-gray-600">
+            We controleren automatisch of alle verplichte velden aanwezig zijn (o.a. Gross Sales, Discounts, Rebates).
+            Als velden ontbreken, proberen we deze waar mogelijk te reconstrueren. Dit is cruciaal voor de berekening van:
+          </p>
+          <ul className="list-disc text-sm text-gray-700 pl-5">
+            <li>Waterfall – zicht op marge-impact van kortingen & rebates</li>
+            <li>Consistency – inzicht of klanten een eerlijke korting krijgen t.o.v. omzet</li>
+          </ul>
 
-          <div className="mt-3 grid md:grid-cols-2 gap-3 text-sm">
-            <div className="rounded-xl border p-3">
-              <div className="font-medium">Header-mapping</div>
-              <ul className="mt-1 text-gray-700 space-y-1">
-                {Object.entries(result.report.fixedHeaders).map(([orig, used]) => (
-                  <li key={orig}><code className="text-xs">{orig}</code> → <b>{used}</b></li>
-                ))}
-              </ul>
-              {result.report.missing.length > 0 && (
-                <div className="mt-2 text-amber-700 bg-amber-50 border border-amber-200 p-2 rounded">
-                  Ontbrekend: {result.report.missing.join(", ")}
-                </div>
+          <div className="rounded-xl border p-3 text-sm">
+            <div className="font-medium">Samenvatting</div>
+            <div className="mt-1 text-gray-700">
+              Rijen na normalisatie: <b>{result.report.rows}</b><br/>
+              {totals && (
+                <>
+                  Totaal Gross: <b>{eur0(totals.gross)}</b><br/>
+                  Totaal Discounts: <b>{eur0(totals.disc)}</b> ({totals.pct.toFixed(1)}%)
+                </>
               )}
-            </div>
-
-            <div className="rounded-xl border p-3">
-              <div className="font-medium">Samenvatting</div>
-              <div className="mt-1 text-gray-700">
-                Rijen na normalisatie: <b>{result.report.rows}</b><br/>
-                {totals && (
-                  <>
-                    Totaal Gross: <b>{eur0(totals.gross)}</b><br/>
-                    Totaal Discounts: <b>{eur0(totals.disc)}</b> ({totals.pct.toFixed(1)}%)
-                  </>
-                )}
-              </div>
             </div>
           </div>
 
           {result.report.issues.length > 0 && (
-            <div className="mt-3 rounded-xl border p-3 text-sm text-amber-800 bg-amber-50 border-amber-200">
+            <div className="rounded-xl border p-3 text-sm text-amber-800 bg-amber-50 border-amber-200">
               <div className="font-medium">Geconstateerde issues (max 50 getoond)</div>
               <ul className="list-disc pl-5">
                 {result.report.issues.map((m, i) => <li key={i}>{m}</li>)}
@@ -195,7 +196,7 @@ export default function UploadPage() {
             </div>
           )}
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               className={`rounded-lg px-4 py-2 text-sm border ${result.report.ok ? "bg-sky-600 text-white hover:bg-sky-700" : "opacity-50 cursor-not-allowed"}`}
               disabled={!result.report.ok}
@@ -203,53 +204,14 @@ export default function UploadPage() {
             >
               Opslaan als dataset
             </button>
-            <Link href="/app/consistency" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Naar Consistency</Link>
+            <button
+              type="button"
+              onClick={onReset}
+              className="rounded-lg px-4 py-2 text-sm border hover:bg-gray-50"
+            >
+              Reset
+            </button>
           </div>
-        </section>
-      )}
-
-      {/* Preview */}
-      {result?.report.ok && (
-        <section className="rounded-2xl border bg-white p-4">
-          <h2 className="text-lg font-semibold">Preview (eerste 10 rijen)</h2>
-          <div className="mt-2 overflow-x-auto">
-            <table className="min-w-[920px] w-full text-xs">
-              <thead>
-                <tr className="text-gray-500">
-                  {["period","cust","pg","sku","gross","invoiced","net","d_channel","d_customer","d_product","d_volume","d_other_sales","d_mandatory","d_local","r_direct","r_prompt","r_indirect","r_mandatory","r_local"]
-                    .map(h => <th key={h} className="text-left p-1">{h}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {result.report.preview.slice(0,10).map((r, idx) => (
-                  <tr key={idx} className="border-t">
-                    <td className="p-1">{r.period}</td>
-                    <td className="p-1">{r.cust}</td>
-                    <td className="p-1">{r.pg}</td>
-                    <td className="p-1">{r.sku}</td>
-                    <td className="p-1">{Math.round(r.gross)}</td>
-                    <td className="p-1">{Math.round(r.invoiced)}</td>
-                    <td className="p-1">{Math.round(r.net)}</td>
-                    <td className="p-1">{Math.round(r.d_channel)}</td>
-                    <td className="p-1">{Math.round(r.d_customer)}</td>
-                    <td className="p-1">{Math.round(r.d_product)}</td>
-                    <td className="p-1">{Math.round(r.d_volume)}</td>
-                    <td className="p-1">{Math.round(r.d_other_sales)}</td>
-                    <td className="p-1">{Math.round(r.d_mandatory)}</td>
-                    <td className="p-1">{Math.round(r.d_local)}</td>
-                    <td className="p-1">{Math.round(r.r_direct)}</td>
-                    <td className="p-1">{Math.round(r.r_prompt)}</td>
-                    <td className="p-1">{Math.round(r.r_indirect)}</td>
-                    <td className="p-1">{Math.round(r.r_mandatory)}</td>
-                    <td className="p-1">{Math.round(r.r_local)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Ontbreekt “Invoiced” of “Net” in je bron? We berekenen: <code>invoiced = gross − discounts</code>, <code>net = invoiced − rebates + incomes</code>.
-          </p>
         </section>
       )}
     </div>
