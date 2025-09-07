@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { NormalizedRow } from "@/lib/upload-schema";
 import { normalizeRows } from "@/lib/upload-schema";
 import { saveWaterfallRows, eur0 } from "@/lib/waterfall-storage";
+import type { Row } from "@/lib/waterfall-types";
 
 type ParseResult = { report: ReturnType<typeof normalizeRows>; all: NormalizedRow[] };
 
@@ -43,9 +44,56 @@ export default function UploadPage() {
     }
   }
 
+  function toRowShape(input: NormalizedRow[]): Row[] {
+    // Vul verplichte/extra velden uit Row aan met 0 zodat types kloppen
+    return input.map((r) => {
+      const totalDisc =
+        (r.d_channel || 0) +
+        (r.d_customer || 0) +
+        (r.d_product || 0) +
+        (r.d_volume || 0) +
+        (r.d_other_sales || 0) +
+        (r.d_mandatory || 0) +
+        (r.d_local || 0);
+
+      const base: Row = {
+        period: r.period,
+        cust: r.cust,
+        pg: r.pg,
+        sku: r.sku,
+        gross: r.gross,
+        d_channel: r.d_channel,
+        d_customer: r.d_customer,
+        d_product: r.d_product,
+        d_volume: r.d_volume,
+        d_other_sales: r.d_other_sales,
+        d_mandatory: r.d_mandatory,
+        d_local: r.d_local,
+
+        // onderstaande velden bestaan in jouw Row-type; zet veilig op 0
+        invoiced: 0,
+        r_direct: 0,
+        r_prompt: 0,
+        r_indirect: 0,
+        r_mandatory: 0,
+        r_local: 0,
+        royalty_income: 0,
+        other_income: 0,
+        // Net (optioneel in jouw type); als aanwezig, zet conservatief op 0
+        net: 0,
+      };
+
+      // Als je liever een ruwe net-inschatting wilt:
+      // base.net = Math.max(0, r.gross - totalDisc);
+
+      return base;
+    });
+  }
+
   function onSave() {
     if (!result?.report.ok) return;
-    saveWaterfallRows(result.report.preview);
+    const rows = toRowShape(result.report.preview);
+    saveWaterfallRows(rows);
     alert("Dataset opgeslagen. Open Waterfall of Consistency om de analyses te bekijken.");
   }
 
@@ -55,7 +103,14 @@ export default function UploadPage() {
     let gross = 0, disc = 0;
     for (const x of r) {
       gross += x.gross || 0;
-      disc += (x.d_channel||0)+(x.d_customer||0)+(x.d_product||0)+(x.d_volume||0)+(x.d_other_sales||0)+(x.d_mandatory||0)+(x.d_local||0);
+      disc +=
+        (x.d_channel || 0) +
+        (x.d_customer || 0) +
+        (x.d_product || 0) +
+        (x.d_volume || 0) +
+        (x.d_other_sales || 0) +
+        (x.d_mandatory || 0) +
+        (x.d_local || 0);
     }
     return { gross, disc, pct: gross ? (disc / gross) * 100 : 0 };
   }, [result]);
@@ -70,8 +125,12 @@ export default function UploadPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/app/waterfall" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Naar Waterfall</Link>
-          <Link href="/app/consistency" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Naar Consistency</Link>
+          <Link href="/app/waterfall" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">
+            Naar Waterfall
+          </Link>
+          <Link href="/app/consistency" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">
+            Naar Consistency
+          </Link>
         </div>
       </header>
 
@@ -100,7 +159,9 @@ export default function UploadPage() {
               <div className="font-medium">Header-mapping</div>
               <ul className="mt-1 text-gray-700">
                 {Object.entries(result.report.fixedHeaders).map(([orig, used]) => (
-                  <li key={orig}><code className="text-xs">{orig}</code> → <b>{used}</b></li>
+                  <li key={orig}>
+                    <code className="text-xs">{orig}</code> → <b>{used}</b>
+                  </li>
                 ))}
               </ul>
               {result.report.missing.length > 0 && (
@@ -113,10 +174,12 @@ export default function UploadPage() {
             <div className="rounded-xl border p-3">
               <div className="font-medium">Samenvatting</div>
               <div className="mt-1 text-gray-700">
-                Rijen na normalisatie: <b>{result.report.rows}</b><br/>
+                Rijen na normalisatie: <b>{result.report.rows}</b>
+                <br />
                 {totals && (
                   <>
-                    Totaal Gross: <b>{eur0(totals.gross)}</b><br/>
+                    Totaal Gross: <b>{eur0(totals.gross)}</b>
+                    <br />
                     Totaal Discounts: <b>{eur0(totals.disc)}</b> ({totals.pct.toFixed(1)}%)
                   </>
                 )}
@@ -128,14 +191,18 @@ export default function UploadPage() {
             <div className="mt-3 rounded-xl border p-3 text-sm text-amber-800 bg-amber-50 border-amber-200">
               <div className="font-medium">Geconstateerde issues (eerste {result.report.issues.length})</div>
               <ul className="list-disc pl-5">
-                {result.report.issues.map((m, i) => <li key={i}>{m}</li>)}
+                {result.report.issues.map((m, i) => (
+                  <li key={i}>{m}</li>
+                ))}
               </ul>
             </div>
           )}
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
-              className={`rounded-lg px-4 py-2 text-sm border ${result.report.ok ? "bg-sky-600 text-white hover:bg-sky-700" : "opacity-50 cursor-not-allowed"}`}
+              className={`rounded-lg px-4 py-2 text-sm border ${
+                result.report.ok ? "bg-sky-600 text-white hover:bg-sky-700" : "opacity-50 cursor-not-allowed"
+              }`}
               disabled={!result.report.ok}
               onClick={onSave}
             >
@@ -155,12 +222,28 @@ export default function UploadPage() {
             <table className="min-w-[720px] w-full text-xs">
               <thead>
                 <tr className="text-gray-500">
-                  {["period","cust","pg","sku","gross","d_channel","d_customer","d_product","d_volume","d_other_sales","d_mandatory","d_local"]
-                    .map(h => <th key={h} className="text-left p-1">{h}</th>)}
+                  {[
+                    "period",
+                    "cust",
+                    "pg",
+                    "sku",
+                    "gross",
+                    "d_channel",
+                    "d_customer",
+                    "d_product",
+                    "d_volume",
+                    "d_other_sales",
+                    "d_mandatory",
+                    "d_local",
+                  ].map((h) => (
+                    <th key={h} className="text-left p-1">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {result.report.preview.slice(0,10).map((r, idx) => (
+                {result.report.preview.slice(0, 10).map((r, idx) => (
                   <tr key={idx} className="border-t">
                     <td className="p-1">{r.period}</td>
                     <td className="p-1">{r.cust}</td>
@@ -190,28 +273,32 @@ export default function UploadPage() {
 
 /** CSV helpers */
 function csvToJson(text: string): any[] {
-  const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim().length > 0);
+  const lines = text.replace(/\r/g, "").split("\n").filter((l) => l.trim().length > 0);
   if (!lines.length) return [];
   const headers = splitCSVLine(lines[0]);
   const rows: any[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = splitCSVLine(lines[i]);
     const obj: any = {};
-    headers.forEach((h, idx) => obj[h] = cols[idx] ?? "");
+    headers.forEach((h, idx) => (obj[h] = cols[idx] ?? ""));
     rows.push(obj);
   }
   return rows;
 }
 function splitCSVLine(line: string): string[] {
   const out: string[] = [];
-  let cur = "", inQ = false;
+  let cur = "",
+    inQ = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') {
-      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
-      else inQ = !inQ;
+      if (inQ && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else inQ = !inQ;
     } else if (ch === "," && !inQ) {
-      out.push(cur); cur = "";
+      out.push(cur);
+      cur = "";
     } else {
       cur += ch;
     }
