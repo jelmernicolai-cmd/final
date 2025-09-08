@@ -7,11 +7,12 @@ export const metadata = {
     "Download Excel-templates voor self-service upload: prijzen, kortingen, volumes en waterfall-mapping.",
 };
 
-const files = [
+const files = 
+  
   { name: "PharmaGtN_Producten.xlsx", href: "/templates/PharmaGtN_Producten.xlsx", size: "22 KB" },
-  { name: "PharmaGtN_Klanten.xlsx", href: "/templates/PharmaGtN_Klanten.xlsx", size: "18 KB" },
-  { name: "PharmaGtN_Transacties.xlsx", href: "/templates/PharmaGtN_Transacties.xlsx", size: "28 KB" },
-  { name: "PharmaGtN_WaterfallMapping.xlsx", href: "/templates/PharmaGtN_WaterfallMapping.xlsx", size: "16 KB" },
+  { name: "NL_Farma_Waterfall_Consistency_Template.xlsx", 
+    href: "/templates/NL_Farma_Waterfall_Consistency_Template.xlsx", 
+    size: "~250 KB" 
   { name: "PharmaGtN_Onboarding.pdf", href: "/templates/PharmaGtN_Onboarding.pdf", size: "120 KB" },
 ];
 
