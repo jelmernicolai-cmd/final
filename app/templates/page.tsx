@@ -10,7 +10,6 @@ export const metadata = {
 const files = [
   { name: "PharmaGtN_Onboarding.pdf", href: "/templates/PharmaGtN_Onboarding.pdf", size: "120 KB" },
   { name: "PharmaGtN_Template.xlsx", href: "/templates/NL_Pharma_Template_GtN.xlsx", size: "22 KB" },
-  },
 ];
 
 export default function TemplatesNL() {
