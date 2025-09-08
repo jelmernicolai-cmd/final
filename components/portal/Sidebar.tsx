@@ -101,7 +101,7 @@ export default function Sidebar() {
 
   const DATA_UPLOAD: Item[] = [
     { href: "/app/upload", label: "Upload masterfile" },
-    { href: "/app/templates", label: "Templates" }, // << nieuw
+    { href: "/templates", label: "Templates" }, // << nieuw
   ];
 
   const SETTINGS_SUPPORT: Item[] = [
