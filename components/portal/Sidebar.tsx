@@ -94,7 +94,7 @@ export default function Sidebar() {
     { href: "/app/waterfall", label: "Waterfall" },
     { href: "/app/consistency", label: "Consistency" },
     { href: "/app/parallel", label: "Parallel" },
-    { href: "/app/gtn", label: "GtN" },
+     { href: "/app/loe", label: "LOE Scenario's" }, 
     // Voeg je LOE-tool toe als je die route hebt:
     // { href: "/app/loe", label: "LOE Scenario's" },
   ];
