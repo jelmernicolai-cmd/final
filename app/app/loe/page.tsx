@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 
 /** ========= Helpers ========= */
@@ -12,6 +12,7 @@ const pctS = (p: number, d = 0) => `${(p * 100).toFixed(d)}%`;
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const round = (n: number, d = 0) => Math.round(n * 10 ** d) / 10 ** d;
 
+/** ========= Types ========= */
 type Inputs = {
   horizon: number;
   list0: number;
@@ -23,12 +24,9 @@ type Inputs = {
   timeErosion12m: number;
   netFloorOfPre: number;
   tenderMonth: number;
-  tenderShareLoss: number;
+  tenderShareLoss: number;   // fractie extra verlies dat blijvend doorwerkt vanaf tenderMonth
   elasticity: number;
-  hospMix: number;
-  hospTenderExtraLoss: number;
 };
-
 type Point = {
   t: number;
   list: number;
@@ -39,9 +37,9 @@ type Point = {
   cogsEur: number;
   ebitda: number;
 };
-
 type Scenario = { id: "A" | "B"; name: string; color: string; inputs: Inputs };
 
+/** ========= Defaults ========= */
 const DEFAULTS: Inputs = {
   horizon: 36,
   list0: 100,
@@ -55,45 +53,44 @@ const DEFAULTS: Inputs = {
   tenderMonth: 6,
   tenderShareLoss: 0.15,
   elasticity: 0.20,
-  hospMix: 0.45,
-  hospTenderExtraLoss: 0.10,
 };
-
 const COLORS = { A: "#0ea5e9", B: "#f59e0b" };
 
 /** ========= Model ========= */
+/** Lineaire + tijds-erosie op list; begrensd */
 function erosionFrac(t: number, entrants: number, perEntrant: number, overTime12m: number) {
   const direct = Math.min(entrants * perEntrant, 0.95);
   const overtime = Math.min((t / 12) * overTime12m, 0.50);
   return clamp(direct + overtime, 0, 0.98);
 }
-
-function shareCurve(t: number, entrants: number) {
-  // Als er geen entrants zijn: geen natuurlijke afkalving
-  if (entrants <= 0) return 1;
+/** Baseline share-retentie; sneller omlaag bij meer entrants */
+function shareCurveBase(t: number, entrants: number) {
+  if (entrants <= 0) return 1; // geen afkalving zonder concurrentie
   const k = 0.10 + entrants * 0.05;
   const base = Math.exp(-k * t);
   return clamp(base, 0.05, 1);
 }
-
+/** Simulatie met blijvend tender-effect */
 function simulate(inp: Inputs) {
   const points: Point[] = [];
   const preNet = inp.list0 * (1 - inp.gtn);
 
   for (let t = 0; t < inp.horizon; t++) {
+    // 1) Prijs
     const eros = erosionFrac(t, inp.entrants, inp.priceDropPerEntrant, inp.timeErosion12m);
     const list = inp.list0 * (1 - eros);
     let net = list * (1 - inp.gtn);
     net = Math.max(net, preNet * inp.netFloorOfPre);
 
-    const baseShare = shareCurve(t, inp.entrants);
-    const tenderHitBase = t === inp.tenderMonth ? inp.tenderShareLoss : 0;
-    const tenderHitHosp = t === inp.tenderMonth ? inp.tenderShareLoss + inp.hospTenderExtraLoss : 0;
-    const shareHosp = Math.max(0.05, baseShare * (1 - tenderHitHosp));
-    const shareRetail = Math.max(0.05, baseShare * (1 - tenderHitBase));
-    const share = clamp(inp.hospMix * shareHosp + (1 - inp.hospMix) * shareRetail, 0.05, 1);
+    // 2) Share: baseline × (blijvend tender effect vanaf tenderMonth)
+    let share = shareCurveBase(t, inp.entrants);
+    if (t >= inp.tenderMonth && inp.tenderShareLoss > 0) {
+      share = share * (1 - inp.tenderShareLoss); // blijvend lager niveau
+    }
+    share = clamp(share, 0.05, 1);
 
-    const relative = (net - preNet * 0.5) / (preNet || 1);
+    // 3) Elasticiteit: duurdere originator → iets minder volume
+    const relative = (net - preNet * 0.5) / (preNet || 1); // vs “typische” generiek-net ~50% preNet
     const elastAdj = 1 - clamp(relative * inp.elasticity, -0.5, 0.5);
 
     const units = Math.max(0, inp.baseUnits * share * elastAdj);
@@ -104,18 +101,19 @@ function simulate(inp: Inputs) {
     points.push({ t, list, net, share, units, netSales, cogsEur, ebitda });
   }
 
-  const y1 = points.slice(0, Math.min(12, points.length));
+  // KPI’s
   const sum = (arr: Point[], f: (p: Point) => number) => arr.reduce((a, p) => a + f(p), 0);
-  const netY1 = sum(y1, p => p.netSales);
-  const grossY1 = sum(y1, p => p.list * p.units);
+  const y1 = points.slice(0, Math.min(12, points.length));
+  const netY1 = sum(y1, (p) => p.netSales);
+  const grossY1 = sum(y1, (p) => p.list * p.units);
   const kpis = {
     netY1,
-    netTotal: sum(points, p => p.netSales),
-    ebitdaTotal: sum(points, p => p.ebitda),
+    netTotal: sum(points, (p) => p.netSales),
+    ebitdaTotal: sum(points, (p) => p.ebitda),
     avgShareY1: y1.reduce((a, p) => a + p.share, 0) / (y1.length || 1),
     endShare: points.at(-1)?.share ?? 0,
     endNet: points.at(-1)?.net ?? 0,
-    volLossY1: 1 - (sum(y1, p => p.units) / (inp.baseUnits * (y1.length || 1) || 1)),
+    volLossY1: 1 - (sum(y1, (p) => p.units) / (inp.baseUnits * (y1.length || 1) || 1)),
     gtnLeakY1: grossY1 > 0 ? 1 - netY1 / grossY1 : 0,
   };
 
@@ -144,36 +142,20 @@ function FieldNumber({ label, value, onChange, step = 1, min, max, suffix }: {
     </label>
   );
 }
-
 function FieldPct({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
     <label className="text-sm">
       <div className="font-medium">{label}</div>
       <div className="mt-1 flex items-center gap-2">
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={Number.isFinite(value) ? value : 0}
-          onChange={(e) => onChange(parseFloat(e.target.value))}
-          className="w-40"
-        />
-        <input
-          type="number"
-          step={0.01}
-          min={0}
-          max={1}
-          value={Number.isFinite(value) ? value : 0}
-          onChange={(e) => onChange(parseFloat(e.target.value))}
-          className="w-24 rounded-lg border px-3 py-2"
-        />
+        <input type="range" min={0} max={1} step={0.01} value={Number.isFinite(value) ? value : 0}
+               onChange={(e) => onChange(parseFloat(e.target.value))} className="w-40" />
+        <input type="number" step={0.01} min={0} max={1} value={Number.isFinite(value) ? value : 0}
+               onChange={(e) => onChange(parseFloat(e.target.value))} className="w-24 rounded-lg border px-3 py-2" />
         <span className="text-gray-500">{pctS(value)}</span>
       </div>
     </label>
   );
 }
-
 function Kpi({ title, value, help }: { title: string; value: string; help?: string }) {
   return (
     <div className="rounded-2xl border bg-white p-4">
@@ -184,7 +166,7 @@ function Kpi({ title, value, help }: { title: string; value: string; help?: stri
   );
 }
 
-/** ========= Charts ========= */
+/** ========= Chart (multi-line SVG, no libs) ========= */
 function MultiLineChart({
   name,
   series,
@@ -196,25 +178,17 @@ function MultiLineChart({
   yFmt?: (v: number) => string;
   height?: number;
 }) {
-  const w = 960;
-  const h = height;
-  const padX = 46;
-  const padY = 28;
-
-  const maxLen = Math.max(1, ...series.map((s) => s.values.length));
-  const allVals = series.flatMap((s) => s.values);
-  const maxY = Math.max(1, ...allVals, 1);
-  const minY = 0;
-
+  const w = 960, h = height, padX = 46, padY = 28;
+  const maxLen = Math.max(1, ...series.map(s => s.values.length));
+  const all = series.flatMap(s => s.values);
+  const maxY = Math.max(1, ...all), minY = 0;
   const x = (i: number) => padX + (i / Math.max(1, maxLen - 1)) * (w - 2 * padX);
   const y = (v: number) => h - padY - ((v - minY) / (maxY - minY)) * (h - 2 * padY);
-
   const ticks = Array.from({ length: 5 }, (_, i) => (maxY / 4) * i);
-  const svgRef = useRef<SVGSVGElement | null>(null);
 
   return (
     <div className="w-full">
-      <svg ref={svgRef} className="w-full" viewBox={`0 0 ${w} ${h}`} role="img" aria-label={name}>
+      <svg className="w-full" viewBox={`0 0 ${w} ${h}`} role="img" aria-label={name}>
         <rect x={12} y={12} width={w - 24} height={h - 24} rx={16} fill="#fff" stroke="#e5e7eb" />
         {ticks.map((tv, i) => (
           <g key={i}>
@@ -229,9 +203,7 @@ function MultiLineChart({
           return (
             <g key={si}>
               <path d={d} fill="none" stroke={s.color} strokeWidth={2} />
-              {s.values.map((v, i) => (
-                <circle key={i} cx={x(i)} cy={y(v)} r={2} fill={s.color} />
-              ))}
+              {s.values.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r={2} fill={s.color} />)}
               <text x={w - padX} y={y(s.values.at(-1) || 0) - 6} fontSize="10" textAnchor="end" fill={s.color}>
                 {s.name}
               </text>
@@ -245,12 +217,8 @@ function MultiLineChart({
 
 /** ========= Export (één CSV met KPI’s + punten) ========= */
 function toCSV(rows: (string | number)[][]) {
-  const esc = (v: string | number) => {
-    if (typeof v === "number") return String(v);
-    const needs = /[",;\n]/.test(v);
-    return needs ? `"${v.replace(/"/g, '""')}"` : v;
-  };
-  return rows.map((r) => r.map(esc).join(",")).join("\n");
+  const esc = (v: string | number) => typeof v === "number" ? String(v) : /[",;\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  return rows.map(r => r.map(esc).join(",")).join("\n");
 }
 function downloadCSV(name: string, rows: (string | number)[][]) {
   const blob = new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8" });
@@ -262,8 +230,8 @@ function downloadCSV(name: string, rows: (string | number)[][]) {
 }
 
 /** ========= Pagina ========= */
-export default function LOEPlannerLite() {
-  // Precies 2 scenario’s: A (Base) en B (Variant)
+export default function LOEPlannerSimplified() {
+  // 2 scenario’s: A (Base) en B (Variant)
   const [scenarios, setScenarios] = useState<Scenario[]>([
     { id: "A", name: "Scenario A (Base)", color: COLORS.A, inputs: { ...DEFAULTS } },
     {
@@ -277,24 +245,21 @@ export default function LOEPlannerLite() {
         timeErosion12m: 0.06,
         netFloorOfPre: 0.40,
         tenderShareLoss: 0.20,
-        hospTenderExtraLoss: 0.15,
       },
     },
   ]);
   const [activeId, setActiveId] = useState<"A" | "B">("A");
 
-  const sA = scenarios.find(s => s.id === "A")!;
-  const sB = scenarios.find(s => s.id === "B")!;
+  const sA = scenarios[0];
+  const sB = scenarios[1];
   const simA = useMemo(() => simulate(sA.inputs), [sA.inputs]);
   const simB = useMemo(() => simulate(sB.inputs), [sB.inputs]);
 
   const active = scenarios.find(s => s.id === activeId)!;
   const activeSim = active.id === "A" ? simA : simB;
 
-  /** Reset-knoppen */
-  const resetActive = () => {
-    setScenarios(prev => prev.map(s => s.id === activeId ? { ...s, inputs: { ...DEFAULTS } } : s));
-  };
+  /** Reset */
+  const resetActive = () => setScenarios(prev => prev.map(s => s.id === activeId ? { ...s, inputs: { ...DEFAULTS } } : s));
   const resetBoth = () => {
     setScenarios([
       { id: "A", name: "Scenario A (Base)", color: COLORS.A, inputs: { ...DEFAULTS } },
@@ -303,7 +268,7 @@ export default function LOEPlannerLite() {
     setActiveId("A");
   };
 
-  /** Eén CSV-export */
+  /** Export */
   const exportCSV = () => {
     const rows: (string | number)[][] = [];
     rows.push(["KPI’s"]);
@@ -334,15 +299,8 @@ export default function LOEPlannerLite() {
     ].forEach(({ name, points }) => {
       points.forEach(p => {
         rows.push([
-          name,
-          p.t,
-          round(p.list, 2),
-          round(p.net, 2),
-          round(p.share, 4),
-          Math.round(p.units),
-          Math.round(p.netSales),
-          Math.round(p.cogsEur),
-          Math.round(p.ebitda),
+          name, p.t, round(p.list, 2), round(p.net, 2), round(p.share, 4),
+          Math.round(p.units), Math.round(p.netSales), Math.round(p.cogsEur), Math.round(p.ebitda),
         ]);
       });
     });
@@ -353,9 +311,6 @@ export default function LOEPlannerLite() {
   /** Update helpers */
   const updateScenario = (id: "A" | "B", fn: (i: Inputs) => Inputs) => {
     setScenarios(prev => prev.map(s => (s.id === id ? { ...s, inputs: fn(s.inputs) } : s)));
-  };
-  const setName = (id: "A" | "B", name: string) => {
-    setScenarios(prev => prev.map(s => (s.id === id ? { ...s, name } : s)));
   };
 
   /** Series voor grafieken */
@@ -372,7 +327,6 @@ export default function LOEPlannerLite() {
     { name: sB.name, color: sB.color, values: simB.points.map(p => p.net) },
   ];
 
-  /** UI */
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -380,57 +334,36 @@ export default function LOEPlannerLite() {
         <div className="min-w-0">
           <h1 className="text-xl font-semibold">Loss of Exclusivity – Scenario Planner</h1>
           <p className="text-gray-600 text-sm">
-            Vergelijk twee scenario’s side-by-side. Eenvoudige export en snelle reset — klaar voor Market Access & Finance.
+            Twee scenario’s naast elkaar. Tenderverlies is blijvend; geen ziekenhuismix meer voor eenvoud en focus.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 sm:justify-end">
-          <button onClick={exportCSV} className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">
-            Export CSV
+          <button onClick={exportCSV} className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Export CSV</button>
+          <button onClick={() => setActiveId(activeId === "A" ? "B" : "A")} className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">
+            Bewerk: {activeId === "A" ? "Scenario B" : "Scenario A"}
           </button>
-          <button onClick={resetActive} className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">
-            Reset actief
-          </button>
-          <button onClick={resetBoth} className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">
-            Reset beide
-          </button>
+          <button onClick={resetActive} className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Reset actief</button>
+          <button onClick={resetBoth} className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Reset beide</button>
         </div>
       </header>
 
-      {/* Snelle navigatie */}
+      {/* Uitlegblok */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h2 className="text-base font-semibold">Hoe rekent de tool (simpel en realistisch)</h2>
+        <ul className="mt-2 text-sm text-gray-700 list-disc pl-5 space-y-1">
+          <li><b>Prijs</b>: list-price daalt door <i>entrants</i> en <i>tijd</i> → net via jouw <b>GTN%</b> met <b>net floor</b> (vs pre-LOE net).</li>
+          <li><b>Share</b>: daalt volgens een basiscurve; vanaf <b>tendermaand</b> geldt een <b>blijvende</b> extra daling van <i>Tender share-verlies</i>.</li>
+          <li><b>Volume</b>: baseline × share × elasticiteitseffect (originator duurder → iets minder volume).</li>
+          <li><b>EBITDA</b> ≈ Net sales − COGS (opex buiten scope).</li>
+          <li><b>Vlak test</b>: zet alle “druk” op 0 (entrants=0, price/time-erosie=0, tenderShareLoss=0, elasticity=0) → sales blijft vlak.</li>
+        </ul>
+      </section>
+
+      {/* Snelle navigatie (optioneel) */}
       <div className="flex flex-wrap gap-2">
         <Link href="/app/waterfall" className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Waterfall</Link>
         <Link href="/app/consistency" className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Consistency</Link>
       </div>
-
-      {/* Scenario koppen */}
-      <section className="rounded-2xl border bg-white p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          {(["A", "B"] as const).map((id) => {
-            const sc = id === "A" ? sA : sB;
-            const activeTab = activeId === id;
-            return (
-              <div key={id} className={`flex items-center gap-2 rounded-lg border px-2 py-1 ${activeTab ? "ring-2 ring-sky-300" : ""}`}>
-                <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: sc.color }} />
-                <button
-                  className="text-sm font-medium"
-                  onClick={() => setActiveId(id)}
-                  title={`Bewerk ${sc.name}`}
-                >
-                  {sc.name}
-                </button>
-              </div>
-            );
-          })}
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-gray-500">Hernoem:</span>
-            <input
-              value={active.name}
-              onChange={(e) => setName(active.id, e.target.value)}
-              className="text-sm border rounded px-2 py-1"
-            />
-          </div>
-        </div>
-      </section>
 
       {/* Parameters actief scenario */}
       <section className="rounded-2xl border bg-white p-4">
@@ -459,25 +392,38 @@ export default function LOEPlannerLite() {
 
           <FieldNumber label="Tender (maand)" value={active.inputs.tenderMonth} min={0} step={1}
             onChange={(v) => updateScenario(active.id, i => ({ ...i, tenderMonth: Math.max(0, Math.min(Math.round(v), i.horizon - 1)) }))} />
-          <FieldPct label="Tender share-verlies" value={active.inputs.tenderShareLoss}
+          <FieldPct label="Tender share-verlies (blijvend)" value={active.inputs.tenderShareLoss}
             onChange={(v) => updateScenario(active.id, i => ({ ...i, tenderShareLoss: clamp(v, 0, 0.8) }))} />
           <FieldPct label="Elasticiteit" value={active.inputs.elasticity}
             onChange={(v) => updateScenario(active.id, i => ({ ...i, elasticity: clamp(v, 0, 1) }))} />
-
-          <FieldPct label="Ziekenhuismix (volume %)" value={active.inputs.hospMix}
-            onChange={(v) => updateScenario(active.id, i => ({ ...i, hospMix: clamp(v, 0, 1) }))} />
-          <FieldPct label="Extra tenderverlies in ziekenhuizen" value={active.inputs.hospTenderExtraLoss}
-            onChange={(v) => updateScenario(active.id, i => ({ ...i, hospTenderExtraLoss: clamp(v, 0, 0.5) }))} />
         </div>
-        <p className="mt-2 text-xs text-gray-500">
-          Pre-LOE net (referentie floor) = {eur(activeSim.preNet, 0)}.
-        </p>
+        <p className="mt-2 text-xs text-gray-500">Pre-LOE net (referentie net floor) = {eur(activeSim.preNet, 0)}.</p>
       </section>
 
       {/* KPI’s en vergelijking */}
       <section className="rounded-2xl border bg-white p-4">
-        <h3 className="text-base font-semibold mb-3">KPI vergelijking</h3>
-        <div className="overflow-auto">
+        <h3 className="text-base font-semibold mb-3">KPI’s en vergelijking</h3>
+
+        {/* KPI-cards per scenario */}
+        <div className="grid lg:grid-cols-2 gap-4">
+          {[{ sc: sA, sim: simA }, { sc: sB, sim: simB }].map(({ sc, sim }) => (
+            <div key={sc.id} className="rounded-2xl border p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: sc.color }} />
+                <div className="font-semibold">{sc.name}</div>
+              </div>
+              <div className="grid md:grid-cols-4 gap-4">
+                <Kpi title="Net sales – Y1" value={eur(sim.kpis.netY1)} />
+                <Kpi title="Net sales – Horizon" value={eur(sim.kpis.netTotal)} />
+                <Kpi title="EBITDA – Horizon" value={eur(sim.kpis.ebitdaTotal)} />
+                <Kpi title="Eind-netto prijs" value={eur(sim.kpis.endNet, 0)} help={`Eind-share: ${pctS(sim.kpis.endShare, 1)}`} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabelvergelijking met Δ t.o.v. Scenario A */}
+        <div className="overflow-auto mt-4">
           <table className="min-w-full text-sm">
             <thead>
               <tr className="text-left border-b">
@@ -490,7 +436,7 @@ export default function LOEPlannerLite() {
                 <th className="py-2 pr-4">Eind-net €/u</th>
                 <th className="py-2 pr-4">Volumeverlies Y1</th>
                 <th className="py-2 pr-4">GTN leakage Y1</th>
-                <th className="py-2 pr-4">Δ Net Y1</th>
+                <th className="py-2 pr-4">Δ Net Y1 (vs A)</th>
               </tr>
             </thead>
             <tbody>
@@ -499,9 +445,11 @@ export default function LOEPlannerLite() {
                 const dNetY1 = sim.kpis.netY1 - base.netY1;
                 return (
                   <tr key={sc.id} className="border-b">
-                    <td className="py-2 pr-4"><span className="inline-flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: sc.color }} /> {sc.name}
-                    </span></td>
+                    <td className="py-2 pr-4">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: sc.color }} /> {sc.name}
+                      </span>
+                    </td>
                     <td className="py-2 pr-4">{eur(sim.kpis.netY1)}</td>
                     <td className="py-2 pr-4">{eur(sim.kpis.netTotal)}</td>
                     <td className="py-2 pr-4">{eur(sim.kpis.ebitdaTotal)}</td>
@@ -521,41 +469,38 @@ export default function LOEPlannerLite() {
             </tbody>
           </table>
         </div>
-
-        {/* Snelle kaartjes voor actief scenario */}
-        <div className="grid md:grid-cols-4 gap-4 mt-4">
-          <Kpi title="Net sales – Jaar 1" value={eur(activeSim.kpis.netY1)} />
-          <Kpi title="Net sales – Horizon" value={eur(activeSim.kpis.netTotal)} />
-          <Kpi title="EBITDA – Horizon" value={eur(activeSim.kpis.ebitdaTotal)} />
-          <Kpi title="Eind-netto prijs" value={eur(activeSim.kpis.endNet, 0)} help={`Pre-LOE net = ${eur(activeSim.preNet, 0)}`} />
-        </div>
       </section>
 
       {/* Grafieken */}
       <section className="grid lg:grid-cols-2 gap-4">
         <div className="rounded-2xl border bg-white p-4">
           <h3 className="text-base font-semibold mb-2">Net sales per maand</h3>
-          <MultiLineChart name="Net sales" series={seriesNet} yFmt={(v) => compact(v)} />
+          <MultiLineChart name="Net sales" series={[
+            { name: sA.name, color: sA.color, values: simA.points.map(p => p.netSales) },
+            { name: sB.name, color: sB.color, values: simB.points.map(p => p.netSales) },
+          ]} yFmt={(v) => compact(v)} />
           <p className="text-xs text-gray-600 mt-2">
-            Speel met <b>Net floor</b> en <b>GTN%</b> om post-LOE erosie te dempen zonder onhoudbare front-end kortingen.
+            Tip: speel met <b>Net floor</b> en <b>GTN%</b> om omzet te beschermen, versus <b>Tender share-verlies</b> voor access-risico.
           </p>
         </div>
 
         <div className="rounded-2xl border bg-white p-4">
           <h3 className="text-base font-semibold mb-2">Originator marktaandeel (%)</h3>
-          <MultiLineChart name="Share %" series={seriesShare} yFmt={(v) => `${v.toFixed(0)}%`} />
+          <MultiLineChart name="Share %" series={[
+            { name: sA.name, color: sA.color, values: simA.points.map(p => p.share * 100) },
+            { name: sB.name, color: sB.color, values: simB.points.map(p => p.share * 100) },
+          ]} yFmt={(v) => `${v.toFixed(0)}%`} />
           <p className="text-xs text-gray-600 mt-2">
-            Tender in maand <b>{active.inputs.tenderMonth}</b> geeft sprong omlaag; ziekenhuizen kunnen extra impact hebben.
+            Vanaf maand <b>{active.inputs.tenderMonth}</b> is het share-verlies blijvend (multiplicatief) – er is geen “herstelbump”.
           </p>
         </div>
 
         <div className="rounded-2xl border bg-white p-4 lg:col-span-2">
           <h3 className="text-base font-semibold mb-2">Netto prijs per unit (€)</h3>
-          <MultiLineChart
-            name="Net €/unit"
-            series={seriesNetPrice}
-            yFmt={(v) => new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 0 }).format(v)}
-          />
+          <MultiLineChart name="Net €/unit" series={[
+            { name: sA.name, color: sA.color, values: simA.points.map(p => p.net) },
+            { name: sB.name, color: sB.color, values: simB.points.map(p => p.net) },
+          ]} yFmt={(v) => new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 0 }).format(v)} />
         </div>
       </section>
     </div>
