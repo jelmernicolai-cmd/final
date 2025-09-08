@@ -166,7 +166,7 @@ function simulate(inp: Inputs) {
 
   const kpis = {
     // Originator
-    orgNetY1: sum((p) => p.netSalesOriginator) - sum((p, i) => (i >= 12 ? 0 : 0)), // expliciet voor leesbaarheid
+    orgNetY1: y1.reduce((a, p) => a + p.netSalesOriginator, 0),
     orgNetTotal: sum((p) => p.netSalesOriginator),
     orgEbitdaTotal: sum((p) => p.ebitdaOriginator),
     orgAvgShareY1: y1.length ? y1.reduce((a, p) => a + p.shareOriginator, 0) / y1.length : 0,
@@ -174,13 +174,13 @@ function simulate(inp: Inputs) {
     orgEndNet: points.at(-1)?.netOriginator ?? 0,
 
     // Generics
-    genNetY1: sum((p, i) => (i < 12 ? p.netSalesGenerics : 0)),
+    genNetY1: y1.reduce((a, p) => a + p.netSalesGenerics, 0),
     genNetTotal: sum((p) => p.netSalesGenerics),
     genEndShare: points.at(-1)?.shareGenerics ?? 0,
     genNetUnit: points.at(0)?.netGeneric ?? 0,
 
     // Markt
-    mktNetY1: sum((p, i) => (i < 12 ? p.netSalesTotal : 0)),
+    mktNetY1: y1.reduce((a, p) => a + p.netSalesTotal, 0),
     mktNetTotal: sum((p) => p.netSalesTotal),
   };
 
