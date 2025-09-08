@@ -13,6 +13,7 @@ const compact = (n: number) =>
     Number.isFinite(n) ? n : 0
   );
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+const round = (n: number, d = 0) => Math.round((Number.isFinite(n) ? n : 0) * 10 ** d) / 10 ** d;
 
 /** ===== Types ===== */
 type Inputs = {
@@ -28,7 +29,6 @@ type Inputs = {
   availabilityCap: number;     // Max PI share
   shareElasticity: number;     // PI gevoeligheid vs gap
   rampMonths: number;          // Ramp-in naar cap
-  // EU referentie (afgeleid uit EU-tabel, maar fallback nodig)
   euRefFallback: number;       // fallback min landprijs als EU-ref
 };
 
@@ -60,7 +60,24 @@ type EUCountryRow = {
   fxToEUR: number; // 1 currency = fxToEUR EUR
   logistics: number; // extra logistiek/handling naar NL in EUR/unit
   buffer: number;    // risico-/wastagebuffer in EUR/unit
-  capShare: number;  // max aandeel dat uit dit land te halen is (0..1) — info, niet in sim gebruikt
+  capShare: number;  // max aandeel uit dit land (info; niet in sim gebruikt)
+};
+
+type Sim = {
+  points: Point[];
+  kpis: {
+    piShareY1: number;
+    piNetY1: number;
+    piNetTotal: number;
+    orgNetY1: number;
+    orgNetTotal: number;
+    orgEbitdaTotal: number;
+    endPIshare: number;
+    endNetOriginator: number;
+    euRefNet: number;
+    netEffectiveBuyerEnd: number;
+    gapEnd: number;
+  };
 };
 
 /** ===== Defaults ===== */
@@ -101,20 +118,17 @@ const EU_DEFAULT: EUCountryRow[] = [
 /**
  * - netOriginator = list * (1 - gtnFront), met floor vs pre
  * - netEffectiveBuyer = netOriginator * (1 - bonusOnReal)
- * - euRefNet (min landed EU) = min( (exFactory*fx)+logistics(buffer)+NL-logistics ) over landen
- * - gap = netEffectiveBuyer - (euRefNet)
- * - sharePI = min(availabilityCap, max(0, (gap - threshold)*elasticity)) * ramp-in
+ * - euRefNet (min landed EU) = min( (exFactory*fx)+logistics(buffer)+NL-logistiek ) over landen
+ * - gap = netEffectiveBuyer - euRefNet
+ * - sharePI = min(cap, max(0, (gap - threshold)*elasticity)) * ramp-in
  */
-function simulate(inp: Inputs, euRows: EUCountryRow[]) {
+function simulate(inp: Inputs, euRows: EUCountryRow[]): Sim {
   const points: Point[] = [];
 
   const preNet = inp.listNL * (1 - inp.gtnFront);
 
-  // Bepaal referentie op basis van landen (landed naar NL)
-  const euLandedPrices = euRows.map((r) => r.exFactory * r.fxToEUR + r.logistics + r.buffer);
-  const euRefNet = euLandedPrices.length
-    ? Math.min(...euLandedPrices)
-    : inp.euRefFallback;
+  const euLandedPrices = euRows.map((r) => r.exFactory * r.fxToEUR + r.logistics + r.buffer + (inp.logisticsPerUnit || 0));
+  const euRefNet = euLandedPrices.length ? Math.min(...euLandedPrices) : inp.euRefFallback;
 
   for (let t = 0; t < inp.horizon; t++) {
     let netOriginator = inp.listNL * (1 - inp.gtnFront);
@@ -136,7 +150,7 @@ function simulate(inp: Inputs, euRows: EUCountryRow[]) {
     const unitsPI = inp.baseUnitsNL * sharePI;
 
     const netSalesOriginator = unitsOriginator * netOriginator;
-    const netSalesPI = unitsPI * euRefNet; // omzet die richting PI wegvloeit tegen EU-ref
+    const netSalesPI = unitsPI * euRefNet;
 
     const ebitdaOriginator = netSalesOriginator * (1 - inp.cogs);
 
@@ -170,6 +184,7 @@ function simulate(inp: Inputs, euRows: EUCountryRow[]) {
       endNetOriginator: points.at(-1)?.netOriginator ?? 0,
       euRefNet,
       netEffectiveBuyerEnd: points.at(-1)?.netEffectiveBuyer ?? 0,
+      gapEnd: (points.at(-1)?.netEffectiveBuyer ?? 0) - euRefNet,
     },
   };
 }
@@ -289,6 +304,21 @@ function MultiLineChart({
   );
 }
 
+/** ===== CSV Export ===== */
+function toCSV(rows: (string | number)[][]) {
+  const esc = (v: string | number) =>
+    typeof v === "number" ? String(v) : /[",;\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
+  return rows.map((r) => r.map(esc).join(",")).join("\n");
+}
+function downloadCSV(name: string, rows: (string | number)[][]) {
+  const blob = new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 /** ===== Page ===== */
 export default function ParallelPage() {
   // Scenario state (interactief)
@@ -306,6 +336,15 @@ export default function ParallelPage() {
   const simA = useMemo(() => simulate(scenarios[0].inputs, euRows), [scenarios[0].inputs, euRows]);
   const simB = useMemo(() => simulate(scenarios[1].inputs, euRows), [scenarios[1].inputs, euRows]);
   const activeSim = activeId === "A" ? simA : simB;
+
+  // Delta’s B - A (om scenario’s te duiden)
+  const deltas = {
+    orgNetY1: simB.kpis.orgNetY1 - simA.kpis.orgNetY1,
+    orgNetTotal: simB.kpis.orgNetTotal - simA.kpis.orgNetTotal,
+    piNetY1: simB.kpis.piNetY1 - simA.kpis.piNetY1,
+    endPIshare: simB.kpis.endPIshare - simA.kpis.endPIshare,
+    gapEnd: simB.kpis.gapEnd - simA.kpis.gapEnd,
+  };
 
   const updateActive = (fn: (i: Inputs) => Inputs) =>
     setScenarios((prev) => prev.map((s) => (s.id === activeId ? { ...s, inputs: fn(s.inputs) } : s)));
@@ -352,6 +391,93 @@ export default function ParallelPage() {
     { name: "PI B", color: COLORS.PI_B, values: simB.points.map((p) => p.sharePI * 100) },
   ];
 
+  // Export — één CSV met scenario-KPI’s, maanddata en EU-prijzen
+  const exportCSV = () => {
+    const rows: (string | number)[][] = [];
+    rows.push(["== Scenario KPI's =="]);
+    rows.push(["Scenario","Org Net Y1","Org Net Total","Org EBITDA Total","PI Net Y1","PI Net Total","Eind PI Share","Eind Net Originator","EU Ref (min landed)","NL Effective End","Gap End"]);
+    [
+      { name: scenarios[0].name, k: simA.kpis },
+      { name: scenarios[1].name, k: simB.kpis },
+    ].forEach(({ name, k }) => rows.push([
+      name, Math.round(k.orgNetY1), Math.round(k.orgNetTotal), Math.round(k.orgEbitdaTotal),
+      Math.round(k.piNetY1), Math.round(k.piNetTotal),
+      round(k.endPIshare, 4), round(k.endNetOriginator, 2),
+      round(k.euRefNet, 2), round(k.netEffectiveBuyerEnd, 2), round(k.gapEnd, 2),
+    ]));
+
+    rows.push([]);
+    rows.push(["== Maanddata (Scenario A) =="]);
+    rows.push(["t","Net Originator","Net Eff Buyer","Share PI","Share Originator","Units PI","Units Originator","NetSales PI","NetSales Originator"]);
+    simA.points.forEach(p => rows.push([
+      p.t, round(p.netOriginator,2), round(p.netEffectiveBuyer,2),
+      round(p.sharePI,4), round(p.shareOriginator,4),
+      Math.round(p.unitsPI), Math.round(p.unitsOriginator),
+      Math.round(p.netSalesPI), Math.round(p.netSalesOriginator),
+    ]));
+
+    rows.push([]);
+    rows.push(["== Maanddata (Scenario B) =="]);
+    rows.push(["t","Net Originator","Net Eff Buyer","Share PI","Share Originator","Units PI","Units Originator","NetSales PI","NetSales Originator"]);
+    simB.points.forEach(p => rows.push([
+      p.t, round(p.netOriginator,2), round(p.netEffectiveBuyer,2),
+      round(p.sharePI,4), round(p.shareOriginator,4),
+      Math.round(p.unitsPI), Math.round(p.unitsOriginator),
+      Math.round(p.netSalesPI), Math.round(p.netSalesOriginator),
+    ]));
+
+    rows.push([]);
+    rows.push(["== EU Prijzen (Landen) =="]);
+    rows.push(["Land","Ex-factory","Valuta","FX→EUR","Logistiek (EU)","Buffer","Landed NL (EUR)"]);
+    euRows.forEach(r => {
+      const landed = r.exFactory * r.fxToEUR + r.logistics + r.buffer + (active.inputs.logisticsPerUnit || 0);
+      rows.push([r.country, r.exFactory, r.currency, r.fxToEUR, r.logistics, r.buffer, round(landed,2)]);
+    });
+
+    downloadCSV("parallel_tool_export.csv", rows);
+  };
+
+  // Aanbevolen acties op basis van inputs (actief scenario)
+  const recs = useMemo(() => {
+    const k = activeSim.kpis;
+    const items: { title: string; detail: string }[] = [];
+    const gapAbs = k.gapEnd;
+    const over = gapAbs - active.inputs.arbitrageThreshold;
+
+    if (over > 0.5) {
+      items.push({
+        title: "Verlaag effectieve NL netprijs zonder list te raken",
+        detail: `Verhoog 'Bonus op realisatie' met 1–2 pp of verschuif 2–3 pp van front-end naar bonus. Doel: gap ≤ drempel (${eur(active.inputs.arbitrageThreshold,0)}).`,
+      });
+    } else {
+      items.push({
+        title: "Behoud prijsdiscipline, monitor EU referentie",
+        detail: `Gap is binnen drempel. Borg maandelijkse EU-min landed update; zet alert bij > ${eur(active.inputs.arbitrageThreshold,0)} gap.`,
+      });
+    }
+
+    if (active.inputs.availabilityCap > 0.4) {
+      items.push({
+        title: "Verlaag cap door supply-frictie",
+        detail: "Contracteer leveringszekerheid en unieke value-add (ASL, diensten) zodat PI minder gemakkelijk aan grote volumes komt.",
+      });
+    }
+
+    if (active.inputs.shareElasticity > 0.06) {
+      items.push({
+        title: "Verklein gevoeligheid bij kopers",
+        detail: "Introduceer bundle-kortingen / performance-bonussen i.p.v. vlakke korting; verlaag prikkel tot switch.",
+      });
+    }
+
+    items.push({
+      title: "Rapporteer PI-impact als vast KPI-blok",
+      detail: "Neem PI Net Y1, Eind-share PI en Gap t=Eind op in maandelijkse pricing review; vergelijk A/B en licht afwijkingen toe.",
+    });
+
+    return items.slice(0, 4);
+  }, [active.inputs, activeSim.kpis]);
+
   return (
     <div className="max-w-screen-xl mx-auto px-3 sm:px-4 lg:px-6 py-4 space-y-6">
       {/* Header */}
@@ -359,11 +485,12 @@ export default function ParallelPage() {
         <div className="min-w-0">
           <h1 className="text-xl font-semibold truncate">Parallelimport — Analyse & Scenario’s</h1>
           <p className="text-gray-600 text-sm">
-            Meet de druk van parallelimport op de Nederlandse markt en test of je <b>kortingsmix</b> (front vs bonus) volumes kan terugwinnen
-            <span className="hidden sm:inline"> — zonder je listprijs te wijzigen (IRP-vriendelijk).</span>
+            Baseer beslissingen op de <b>effectieve NL netprijs</b> t.o.v. de <b>laagste landed EU-prijs</b>. Test direct of je
+            <i> kortingsmix</i> (front vs. bonus) PI-druk dempt zonder list aan te passen (IRP-vriendelijk).
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button onClick={exportCSV} className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Export CSV</button>
           <button onClick={() => setActiveId(activeId === "A" ? "B" : "A")} className="text-sm rounded border px-3 py-2 hover:bg-gray-50">
             Bewerk: {activeId === "A" ? "Scenario B" : "Scenario A"}
           </button>
@@ -372,7 +499,7 @@ export default function ParallelPage() {
         </div>
       </header>
 
-      {/* Scenario selector / legend */}
+      {/* Scenario legend + uitleg */}
       <section className="rounded-2xl border bg-white p-4">
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <span className="inline-flex items-center gap-2">
@@ -385,13 +512,14 @@ export default function ParallelPage() {
           </span>
           <span className="inline-flex items-center gap-2">
             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS.PI_A }} />
-            Groen = omzet/ aandeel PI
+            Groen = omzet/aandeel PI
           </span>
         </div>
-        <p className="text-xs text-gray-600 mt-2">
-          <b>Interpretatie:</b> Als de <i>effectieve NL netprijs</i> (front+bonus) substantieel hoger ligt dan de <i>EU landed PI-prijs</i>,
-          stijgt het PI-aandeel richting de ingestelde cap. Met bonus op realisatie kun je netto verlagen zonder list te raken.
-        </p>
+        <ul className="mt-2 text-sm text-gray-700 list-disc pl-5 space-y-1">
+          <li><b>NL effectief</b> = List × (1 − front) × (1 − bonus). Dit is je koperprijs.</li>
+          <li><b>EU referentie</b> = Laagste “landed naar NL” prijs in de tabel (incl. EU-logistiek, buffer & NL-logistiek).</li>
+          <li><b>Gap</b> = NL effectief − EU referentie. Als gap &gt; drempel ⇒ PI-share groeit richting cap (met ramp-in).</li>
+        </ul>
       </section>
 
       {/* Parameters actief scenario */}
@@ -438,7 +566,7 @@ export default function ParallelPage() {
         </div>
 
         <div className="mt-3 text-xs text-gray-600">
-          Eind-effectieve NL netprijs: <b>{eur(activeSim.kpis.netEffectiveBuyerEnd, 0)}</b> • EU referentie (min landed): <b>{eur(activeSim.kpis.euRefNet, 0)}</b>
+          NL effectief (eind): <b>{eur(activeSim.kpis.netEffectiveBuyerEnd, 0)}</b> • EU referentie: <b>{eur(activeSim.kpis.euRefNet, 0)}</b> • Gap: <b>{eur(activeSim.kpis.gapEnd, 0)}</b>
         </div>
       </section>
 
@@ -454,12 +582,26 @@ export default function ParallelPage() {
               </div>
               <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
                 <Kpi title="Originator — Net Y1" value={eur(sim.kpis.orgNetY1)} />
-                <Kpi title="Parallelimport — Net Y1" value={eur(sim.kpis.piNetY1)} />
+                <Kpi title="Originator — Net (horizon)" value={eur(sim.kpis.orgNetTotal)} />
+                <Kpi title="Parallel — Net Y1" value={eur(sim.kpis.piNetY1)} />
+                <Kpi title="Parallel — Net (horizon)" value={eur(sim.kpis.piNetTotal)} />
                 <Kpi title="Eind-share PI" value={pctS(sim.kpis.endPIshare, 1)} help={`EU ref: ${eur(sim.kpis.euRefNet, 0)}`} />
-                <Kpi title="Originator — EBITDA (Horizon)" value={eur(sim.kpis.orgEbitdaTotal)} help={`Originator eind-net: ${eur(sim.kpis.endNetOriginator, 0)}`} />
+                <Kpi title="Originator — EBITDA (horizon)" value={eur(sim.kpis.orgEbitdaTotal)} help={`Originator eind-net: ${eur(sim.kpis.endNetOriginator, 0)}`} />
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Scenario-delta’s kort en krachtig */}
+        <div className="mt-4 rounded-xl border p-4">
+          <div className="font-semibold mb-2">Delta’s (B − A)</div>
+          <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))] text-sm">
+            <div>Δ Originator Net Y1: <b>{eur(deltas.orgNetY1)}</b></div>
+            <div>Δ Originator Net (horizon): <b>{eur(deltas.orgNetTotal)}</b></div>
+            <div>Δ PI Net Y1: <b>{eur(deltas.piNetY1)}</b></div>
+            <div>Δ Eind-share PI: <b>{pctS(deltas.endPIshare, 1)}</b></div>
+            <div>Δ Gap eind: <b>{eur(deltas.gapEnd, 0)}</b></div>
+          </div>
         </div>
       </section>
 
@@ -467,11 +609,12 @@ export default function ParallelPage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border bg-white p-4">
           <h3 className="text-base font-semibold mb-2">Net sales per maand</h3>
-          <MultiLineChart
-            name="Net sales"
-            series={seriesNet}
-            yFmt={(v) => compact(v)}
-          />
+          <MultiLineChart name="Net sales" series={[
+            { name: "Originator A", color: COLORS.A, values: simA.points.map((p) => p.netSalesOriginator) },
+            { name: "PI A", color: COLORS.PI_A, values: simA.points.map((p) => p.netSalesPI) },
+            { name: "Originator B", color: COLORS.B, values: simB.points.map((p) => p.netSalesOriginator) },
+            { name: "PI B", color: COLORS.PI_B, values: simB.points.map((p) => p.netSalesPI) },
+          ]} yFmt={(v) => compact(v)} />
           <p className="text-xs text-gray-600 mt-2">
             Bonus op realisatie verlaagt de effectieve koperprijs zonder list te raken. Zichtbaar effect op PI-instroom.
           </p>
@@ -479,12 +622,13 @@ export default function ParallelPage() {
 
         <div className="rounded-2xl border bg-white p-4">
           <h3 className="text-base font-semibold mb-2">Marktaandeel PI (%)</h3>
-          <MultiLineChart
-            name="PI share"
-            series={seriesShare}
-            yFmt={(v) => `${v.toFixed(0)}%`}
-          />
-          <p className="text-xs text-gray-600 mt-2">PI share groeit als de gap > drempel; cap en ramp-in beperken tempo en plafond.</p>
+          <MultiLineChart name="PI share" series={[
+            { name: "PI A", color: COLORS.PI_A, values: simA.points.map((p) => p.sharePI * 100) },
+            { name: "PI B", color: COLORS.PI_B, values: simB.points.map((p) => p.sharePI * 100) },
+          ]} yFmt={(v) => `${v.toFixed(0)}%`} />
+          <p className="text-xs text-gray-600 mt-2">
+            PI share groeit als de gap &gt; drempel; cap en ramp-in beperken tempo en plafond.
+          </p>
         </div>
       </section>
 
@@ -494,6 +638,7 @@ export default function ParallelPage() {
           <h3 className="text-base font-semibold">EU parallel prijsvergelijking (landed → NL)</h3>
           <div className="flex gap-2">
             <button onClick={addCountry} className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Land toevoegen</button>
+            <button onClick={exportCSV} className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Export CSV</button>
           </div>
         </div>
         <div className="mt-3 w-full overflow-x-auto">
@@ -513,8 +658,7 @@ export default function ParallelPage() {
             </thead>
             <tbody>
               {euRows.map((r) => {
-                const baseEUR = r.exFactory * r.fxToEUR;
-                const landed = baseEUR + r.logistics + r.buffer + (active.inputs.logisticsPerUnit || 0);
+                const landed = r.exFactory * r.fxToEUR + r.logistics + r.buffer + (active.inputs.logisticsPerUnit || 0);
                 return (
                   <tr key={r.id} className="border-b last:border-0">
                     <td className="py-1 px-2">
@@ -564,10 +708,24 @@ export default function ParallelPage() {
         </div>
 
         <p className="text-xs text-gray-600 mt-2">
-          <b>Tip:</b> De <i>EU referentie</i> in de simulatie is de <b>laagste landed prijs</b> uit de tabel (incl. NL-logistiek). Als jouw
-          <i>effectieve NL net</i> hier ruim boven ligt en de drempel overschrijdt, stijgt het PI-aandeel richting de cap. Verlaag bij voorkeur
-          met <b>bonus op realisatie</b> om IRP-effecten te vermijden.
+          <b>Tip:</b> De <i>EU referentie</i> in de simulatie is de <b>laagste landed prijs</b> uit de tabel (incl. NL-logistiek).
+          Als jouw <i>effectieve NL net</i> hier ruim boven ligt en de drempel overschrijdt, stijgt het PI-aandeel richting de cap.
+          Verlaag bij voorkeur met <b>bonus op realisatie</b> om IRP-effecten te vermijden.
         </p>
+      </section>
+
+      {/* Aanbevolen acties (op basis van jouw inputs) */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h3 className="text-base font-semibold mb-2">Aanbevelingen</h3>
+        <ul className="mt-1 text-sm text-gray-700 list-disc pl-5 space-y-2">
+          {recs.map((r, idx) => (
+            <li key={idx}><b>{r.title}.</b> {r.detail}</li>
+          ))}
+          <li>
+            <b>KPI-vastlegging</b>: monitor maandelijks <i>PI Net Y1</i>, <i>Eind-share PI</i>, <i>Gap (eind)</i>, <i>EU-ref</i>, <i>NL effectief</i> en
+            <i> delta’s t.o.v. Scenario A</i>. Leg beslisregels vast (bijv. “gap &gt; drempel 3 maanden op rij ⇒ +2pp bonus op realisatie”).
+          </li>
+        </ul>
       </section>
     </div>
   );
