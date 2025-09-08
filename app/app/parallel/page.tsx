@@ -2,201 +2,141 @@
 
 import { useMemo, useState } from "react";
 
-/** ===== Helpers ===== */
+/** ==== Kleine helpers ==== */
 const eur = (n: number, d = 0) =>
-  new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: d }).format(
-    Number.isFinite(n) ? n : 0
-  );
+  new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: d })
+    .format(Number.isFinite(n) ? n : 0);
 const pctS = (p: number, d = 0) => `${((Number.isFinite(p) ? p : 0) * 100).toFixed(d)}%`;
 const compact = (n: number) =>
-  new Intl.NumberFormat("nl-NL", { notation: "compact", maximumFractionDigits: 1 }).format(
-    Number.isFinite(n) ? n : 0
-  );
+  new Intl.NumberFormat("nl-NL", { notation: "compact", maximumFractionDigits: 1 })
+    .format(Number.isFinite(n) ? n : 0);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const round = (n: number, d = 0) => Math.round((Number.isFinite(n) ? n : 0) * 10 ** d) / 10 ** d;
 
-/** ===== Types ===== */
+/** ==== Model (bewust simpel) ==== 
+  Inputs: List NL, front %, bonus %, EU landed prijs, units/maand.
+  Afleidingen:
+   - NetOriginator = list * (1 - front)
+   - NL effectief (koper) = NetOriginator * (1 - bonus)
+   - Gap = NL effectief - EU landed
+   - PI-share = min(CAP, max(0, (Gap - THRESHOLD) * SLOPE)) met ramp-in.
+*/
 type Inputs = {
-  horizon: number;             // maanden
-  listNL: number;              // List price NL €/unit
-  gtnFront: number;            // Front-end % (fees/discounts)
-  bonusOnReal: number;         // Bonus op realisatie %
-  netFloorVsPre: number;       // Floor vs pre-net (IRP comfort)
-  baseUnitsNL: number;         // NL markt-units/maand (constant)
-  cogs: number;                // COGS %
-  logisticsPerUnit: number;    // Logistiek/marge PI €/unit (NL zijde)
-  arbitrageThreshold: number;  // Drempel €/unit
-  availabilityCap: number;     // Max PI share
-  shareElasticity: number;     // PI gevoeligheid vs gap
-  rampMonths: number;          // Ramp-in naar cap
-  euRefFallback: number;       // fallback min landprijs als EU-ref
+  listNL: number;         // €/unit
+  front: number;          // 0..1
+  bonus: number;          // 0..1
+  euLanded: number;       // €/unit (laagste EU landed richting NL)
+  units: number;          // units/maand (NL market size)
+};
+
+type Settings = {
+  threshold: number;      // €/unit drempel voordat PI "gaat lopen"
+  slope: number;          // gevoeligheid PI-share per €/gap
+  cap: number;            // max PI-share
+  rampMonths: number;     // ramp-in
+  horizon: number;        // maanden voor KPI Y1 en horizon
+  cogs: number;           // COGS% op originator net
 };
 
 type Point = {
   t: number;
   netOriginator: number;
-  netEffectiveBuyer: number;
+  netEffective: number;
+  gap: number;
   sharePI: number;
-  shareOriginator: number;
-  unitsPI: number;
-  unitsOriginator: number;
   netSalesPI: number;
   netSalesOriginator: number;
   ebitdaOriginator: number;
 };
 
-type Scenario = {
-  id: "A" | "B";
-  name: string;
-  color: string;
-  inputs: Inputs;
+type KPIs = {
+  orgNetY1: number;
+  orgNetTotal: number;
+  piNetY1: number;
+  piNetTotal: number;
+  endSharePI: number;
+  endNetOriginator: number;
+  endGap: number;
+  neededBonusDeltaPP: number; // percentagepunten bonus extra nodig om gap <= threshold te krijgen
 };
 
-type EUCountryRow = {
-  id: string;
-  country: string;
-  exFactory: number;
-  currency: "EUR" | "PLN" | "CZK" | "HUF" | "GBP" | "DKK";
-  fxToEUR: number; // 1 currency = fxToEUR EUR
-  logistics: number; // extra logistiek/handling naar NL in EUR/unit
-  buffer: number;    // risico-/wastagebuffer in EUR/unit
-  capShare: number;  // max aandeel uit dit land (info; niet in sim gebruikt)
-};
-
-type Sim = {
-  points: Point[];
-  kpis: {
-    piShareY1: number;
-    piNetY1: number;
-    piNetTotal: number;
-    orgNetY1: number;
-    orgNetTotal: number;
-    orgEbitdaTotal: number;
-    endPIshare: number;
-    endNetOriginator: number;
-    euRefNet: number;
-    netEffectiveBuyerEnd: number;
-    gapEnd: number;
-  };
-};
-
-/** ===== Defaults ===== */
-const DEFAULTS: Inputs = {
-  horizon: 24,
+const DEFAULT_INPUTS: Inputs = {
   listNL: 100,
-  gtnFront: 0.18,
-  bonusOnReal: 0.06,
-  netFloorVsPre: 0.85,
-  baseUnitsNL: 9000,
-  cogs: 0.20,
-  logisticsPerUnit: 4,
-  arbitrageThreshold: 2,
-  availabilityCap: 0.35,
-  shareElasticity: 0.055,
+  front: 0.18,
+  bonus: 0.06,
+  euLanded: 65,
+  units: 9000,
+};
+
+const DEFAULT_SETTINGS: Settings = {
+  threshold: 2,
+  slope: 0.06,
+  cap: 0.35,
   rampMonths: 3,
-  euRefFallback: 65,
+  horizon: 24,
+  cogs: 0.20,
 };
 
-const MORE_PRESSURE: Partial<Inputs> = {
-  availabilityCap: 0.45,
-  shareElasticity: 0.07,
-  arbitrageThreshold: 1.5,
-};
+/** ==== Simpel simulatiemodel ==== */
+function simulate(inp: Inputs, cfg: Settings) {
+  const pts: Point[] = [];
+  const netOriginator0 = inp.listNL * (1 - inp.front);
 
-const COLORS = { A: "#0ea5e9", B: "#f59e0b", PI_A: "#22c55e", PI_B: "#16a34a" };
+  for (let t = 0; t < cfg.horizon; t++) {
+    const netOriginator = netOriginator0; // list/front constant
+    const netEffective = netOriginator * (1 - inp.bonus);
+    const gap = netEffective - inp.euLanded;
 
-const EU_DEFAULT: EUCountryRow[] = [
-  { id: "pl", country: "Polen",      exFactory: 240,   currency: "PLN", fxToEUR: 0.23,  logistics: 3.5, buffer: 1.0, capShare: 0.12 },
-  { id: "cz", country: "Tsjechië",   exFactory: 760,   currency: "CZK", fxToEUR: 0.041, logistics: 3.5, buffer: 1.0, capShare: 0.08 },
-  { id: "hu", country: "Hongarije",  exFactory: 24000, currency: "HUF", fxToEUR: 0.0026,logistics: 4.0, buffer: 1.0, capShare: 0.10 },
-  { id: "dk", country: "Denemarken", exFactory: 85,    currency: "EUR", fxToEUR: 1,     logistics: 2.5, buffer: 0.8, capShare: 0.06 },
-  { id: "uk", country: "VK",         exFactory: 72,    currency: "GBP", fxToEUR: 1.17,  logistics: 4.5, buffer: 1.2, capShare: 0.10 },
-  { id: "es", country: "Spanje",     exFactory: 68,    currency: "EUR", fxToEUR: 1,     logistics: 3.0, buffer: 0.8, capShare: 0.10 },
-];
-
-/** ===== Simulation ===== */
-/**
- * - netOriginator = list * (1 - gtnFront), met floor vs pre
- * - netEffectiveBuyer = netOriginator * (1 - bonusOnReal)
- * - euRefNet (min landed EU) = min( (exFactory*fx)+logistics(buffer)+NL-logistiek ) over landen
- * - gap = netEffectiveBuyer - euRefNet
- * - sharePI = min(cap, max(0, (gap - threshold)*elasticity)) * ramp-in
- */
-function simulate(inp: Inputs, euRows: EUCountryRow[]): Sim {
-  const points: Point[] = [];
-
-  const preNet = inp.listNL * (1 - inp.gtnFront);
-
-  const euLandedPrices = euRows.map((r) => r.exFactory * r.fxToEUR + r.logistics + r.buffer + (inp.logisticsPerUnit || 0));
-  const euRefNet = euLandedPrices.length ? Math.min(...euLandedPrices) : inp.euRefFallback;
-
-  for (let t = 0; t < inp.horizon; t++) {
-    let netOriginator = inp.listNL * (1 - inp.gtnFront);
-    netOriginator = Math.max(netOriginator, preNet * inp.netFloorVsPre);
-
-    const netEffectiveBuyer = netOriginator * (1 - inp.bonusOnReal);
-
-    const gap = netEffectiveBuyer - euRefNet;
+    // PI-share op basis van gap, drempel, slope en cap + ramp-in
     let sharePI = 0;
-    if (gap > inp.arbitrageThreshold) {
-      sharePI = Math.max(0, (gap - inp.arbitrageThreshold) * inp.shareElasticity);
-      sharePI = Math.min(inp.availabilityCap, sharePI);
-      const ramp = Math.min(1, inp.rampMonths > 0 ? t / inp.rampMonths : 1);
+    if (gap > cfg.threshold) {
+      sharePI = Math.min(cfg.cap, (gap - cfg.threshold) * cfg.slope);
+      const ramp = Math.min(1, cfg.rampMonths > 0 ? t / cfg.rampMonths : 1);
       sharePI *= ramp;
     }
+    sharePI = clamp(sharePI, 0, cfg.cap);
 
     const shareOriginator = 1 - sharePI;
-    const unitsOriginator = inp.baseUnitsNL * shareOriginator;
-    const unitsPI = inp.baseUnitsNL * sharePI;
 
-    const netSalesOriginator = unitsOriginator * netOriginator;
-    const netSalesPI = unitsPI * euRefNet;
+    const netSalesPI = inp.units * sharePI * inp.euLanded;
+    const netSalesOriginator = inp.units * shareOriginator * netOriginator;
+    const ebitdaOriginator = netSalesOriginator * (1 - cfg.cogs);
 
-    const ebitdaOriginator = netSalesOriginator * (1 - inp.cogs);
-
-    points.push({
-      t,
-      netOriginator,
-      netEffectiveBuyer,
-      sharePI,
-      shareOriginator,
-      unitsPI,
-      unitsOriginator,
-      netSalesPI,
-      netSalesOriginator,
-      ebitdaOriginator,
-    });
+    pts.push({ t, netOriginator, netEffective, gap, sharePI, netSalesPI, netSalesOriginator, ebitdaOriginator });
   }
 
-  const y1 = points.slice(0, 12);
-  const sum = (f: (p: Point) => number) => points.reduce((a, p) => a + f(p), 0);
+  const y1 = pts.slice(0, Math.min(12, pts.length));
+  const sum = (f: (p: Point) => number) => pts.reduce((a, p) => a + f(p), 0);
 
-  return {
-    points,
-    kpis: {
-      piShareY1: y1.length ? y1.reduce((a, p) => a + p.sharePI, 0) / y1.length : 0,
-      piNetY1: y1.reduce((a, p) => a + p.netSalesPI, 0),
-      piNetTotal: sum((p) => p.netSalesPI),
-      orgNetY1: y1.reduce((a, p) => a + p.netSalesOriginator, 0),
-      orgNetTotal: sum((p) => p.netSalesOriginator),
-      orgEbitdaTotal: sum((p) => p.ebitdaOriginator),
-      endPIshare: points.at(-1)?.sharePI ?? 0,
-      endNetOriginator: points.at(-1)?.netOriginator ?? 0,
-      euRefNet,
-      netEffectiveBuyerEnd: points.at(-1)?.netEffectiveBuyer ?? 0,
-      gapEnd: (points.at(-1)?.netEffectiveBuyer ?? 0) - euRefNet,
-    },
+  // Slimme suggestie: hoeveel bonus extra is nodig om gap ≤ threshold te maken?
+  const end = pts.at(-1)!;
+  const neededEffective = inp.euLanded + cfg.threshold;
+  // netOriginator * (1 - bonusNeeded) = neededEffective
+  const bonusNeeded = 1 - neededEffective / (netOriginator0 || 1);
+  const neededBonusDelta = Math.max(0, bonusNeeded - inp.bonus); // absolute (0..1)
+
+  const kpis: KPIs = {
+    orgNetY1: y1.reduce((a, p) => a + p.netSalesOriginator, 0),
+    orgNetTotal: sum((p) => p.netSalesOriginator),
+    piNetY1: y1.reduce((a, p) => a + p.netSalesPI, 0),
+    piNetTotal: sum((p) => p.netSalesPI),
+    endSharePI: end.sharePI,
+    endNetOriginator: end.netOriginator,
+    endGap: end.gap,
+    neededBonusDeltaPP: neededBonusDelta * 100,
   };
+
+  return { points: pts, kpis, netOriginator0 };
 }
 
-/** ===== UI Primitives ===== */
+/** ==== Kleine UI bouwstenen ==== */
 function FieldNumber({
   label, value, onChange, step = 1, min, max, suffix,
 }: {
   label: string; value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; suffix?: string;
 }) {
   return (
-    <label className="text-sm w-full min-w-0">
+    <label className="text-sm w-full">
       <div className="font-medium">{label}</div>
       <div className="mt-1 flex items-center gap-2">
         <input
@@ -213,518 +153,192 @@ function FieldNumber({
     </label>
   );
 }
-
 function FieldPct({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <label className="text-sm w-full min-w-0">
+    <label className="text-sm w-full">
       <div className="font-medium">{label}</div>
       <div className="mt-1 flex items-center gap-2">
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={Number.isFinite(value) ? value : 0}
-          onChange={(e) => onChange(parseFloat(e.target.value))}
-          className="w-36 sm:w-40"
-        />
-        <input
-          type="number"
-          step={0.01}
-          min={0}
-          max={1}
-          value={Number.isFinite(value) ? value : 0}
-          onChange={(e) => onChange(parseFloat(e.target.value))}
-          className="w-24 rounded-lg border px-3 py-2"
-        />
+        <input type="range" min={0} max={1} step={0.01} value={Number.isFinite(value) ? value : 0}
+               onChange={(e) => onChange(parseFloat(e.target.value))} className="w-36 sm:w-40" />
+        <input type="number" step={0.01} min={0} max={1} value={Number.isFinite(value) ? value : 0}
+               onChange={(e) => onChange(parseFloat(e.target.value))} className="w-24 rounded-lg border px-3 py-2" />
         <span className="text-gray-500">{pctS(value)}</span>
       </div>
     </label>
   );
 }
-
 function Kpi({ title, value, help }: { title: string; value: string; help?: string }) {
   return (
-    <div className="w-full min-w-0 rounded-2xl border bg-white p-3 sm:p-4">
-      <div className="text-[12px] text-gray-500 leading-snug break-words">{title}</div>
-      <div className="text-lg sm:text-xl font-semibold mt-1 leading-tight break-words">{value}</div>
-      {help ? <div className="text-[11px] sm:text-xs text-gray-500 mt-1 leading-snug break-words">{help}</div> : null}
+    <div className="rounded-2xl border bg-white p-3 sm:p-4">
+      <div className="text-[12px] text-gray-500">{title}</div>
+      <div className="text-lg sm:text-xl font-semibold mt-1">{value}</div>
+      {help ? <div className="text-[11px] sm:text-xs text-gray-500 mt-1">{help}</div> : null}
     </div>
   );
 }
 
-/** ===== Charts (SVG) ===== */
-function MultiLineChart({
-  series,
-  yFmt,
-  height = 240,
-  name = "",
+/** ==== Heel simpele lijnchart (SVG) ==== */
+function LineChart({
+  name, color = "#0ea5e9", values, yFmt = (v: number) => v.toFixed(0), height = 220,
 }: {
-  series: { name: string; color: string; values: number[] }[];
-  yFmt: (v: number) => string;
-  height?: number;
-  name?: string;
+  name: string; color?: string; values: number[]; yFmt?: (v: number) => string; height?: number;
 }) {
-  const w = 960;
-  const h = height;
-  const padX = 46;
-  const padY = 28;
-  const maxLen = Math.max(1, ...series.map((s) => s.values.length));
-  const all = series.flatMap((s) => s.values);
-  const maxY = Math.max(1, ...all);
+  const w = 960, h = height, padX = 46, padY = 28;
+  const n = values.length || 1;
+  const maxY = Math.max(1, ...values);
   const minY = 0;
-  const x = (i: number) => padX + (i / Math.max(1, maxLen - 1)) * (w - 2 * padX);
+  const x = (i: number) => padX + (i / Math.max(1, n - 1)) * (w - 2 * padX);
   const y = (v: number) => h - padY - ((v - minY) / (maxY - minY)) * (h - 2 * padY);
   const ticks = Array.from({ length: 5 }, (_, i) => (maxY / 4) * i);
-
+  const d = values.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
   return (
     <svg className="w-full h-auto" viewBox={`0 0 ${w} ${h}`} role="img" aria-label={name} preserveAspectRatio="xMidYMid meet">
       <rect x={12} y={12} width={w - 24} height={h - 24} rx={16} fill="#fff" stroke="#e5e7eb" />
       {ticks.map((tv, i) => (
         <g key={i}>
           <line x1={padX} y1={y(tv)} x2={w - padX} y2={y(tv)} stroke="#f3f4f6" />
-          <text x={padX - 8} y={y(tv) + 4} fontSize="10" textAnchor="end" fill="#6b7280">
-            {yFmt(tv)}
-          </text>
+          <text x={padX - 8} y={y(tv) + 4} fontSize="10" textAnchor="end" fill="#6b7280">{yFmt(tv)}</text>
         </g>
       ))}
-      {series.map((s, si) => {
-        const d = s.values.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
-        return (
-          <g key={si}>
-            <path d={d} fill="none" stroke={s.color} strokeWidth={2} />
-            {s.values.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r={2} fill={s.color} />)}
-            <text x={w - padX} y={y(s.values.at(-1) || 0) - 6} fontSize="10" textAnchor="end" fill={s.color}>
-              {s.name}
-            </text>
-          </g>
-        );
-      })}
+      <path d={d} fill="none" stroke={color} strokeWidth={2} />
+      {values.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r={2} fill={color} />)}
+      <text x={w - padX} y={y(values.at(-1) || 0) - 6} fontSize="10" textAnchor="end" fill={color}>{name}</text>
     </svg>
   );
 }
 
-/** ===== CSV Export ===== */
-function toCSV(rows: (string | number)[][]) {
-  const esc = (v: string | number) =>
-    typeof v === "number" ? String(v) : /[",;\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
-  return rows.map((r) => r.map(esc).join(",")).join("\n");
-}
-function downloadCSV(name: string, rows: (string | number)[][]) {
-  const blob = new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
+/** ==== Pagina ==== */
+export default function ParallelSimplePage() {
+  const [inpA, setInpA] = useState<Inputs>({ ...DEFAULT_INPUTS });
+  const [useCompare, setUseCompare] = useState(true);
+  // Voor de vergelijking: we passen alleen de bonus aan volgens de suggestie (kan je vervolgens handmatig fine-tunen)
+  const simA = useMemo(() => simulate(inpA, DEFAULT_SETTINGS), [inpA]);
 
-/** ===== Page ===== */
-export default function ParallelPage() {
-  // Scenario state (interactief)
-  const [scenarios, setScenarios] = useState<Scenario[]>([
-    { id: "A", name: "Scenario A (basis)", color: COLORS.A, inputs: { ...DEFAULTS } },
-    { id: "B", name: "Scenario B (meer PI-druk)", color: COLORS.B, inputs: { ...DEFAULTS, ...MORE_PRESSURE } },
-  ]);
-  const [activeId, setActiveId] = useState<"A" | "B">("A");
-  const active = scenarios.find((s) => s.id === activeId)!;
+  const suggestedBonus = clamp(inpA.bonus + simA.kpis.neededBonusDeltaPP / 100, 0, 0.5);
+  const inpB: Inputs = useMemo(
+    () => ({ ...inpA, bonus: suggestedBonus }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inpA, simA.kpis.neededBonusDeltaPP]
+  );
+  const simB = useMemo(() => simulate(inpB, DEFAULT_SETTINGS), [inpB]);
 
-  // EU tabel (interactief)
-  const [euRows, setEuRows] = useState<EUCountryRow[]>(EU_DEFAULT);
-
-  // Simulaties (live herrekenen bij wijzigingen)
-  const simA = useMemo(() => simulate(scenarios[0].inputs, euRows), [scenarios[0].inputs, euRows]);
-  const simB = useMemo(() => simulate(scenarios[1].inputs, euRows), [scenarios[1].inputs, euRows]);
-  const activeSim = activeId === "A" ? simA : simB;
-
-  // Delta’s B - A (om scenario’s te duiden)
+  // Delta’s B - A (alleen als vergelijken aan staat)
   const deltas = {
     orgNetY1: simB.kpis.orgNetY1 - simA.kpis.orgNetY1,
-    orgNetTotal: simB.kpis.orgNetTotal - simA.kpis.orgNetTotal,
     piNetY1: simB.kpis.piNetY1 - simA.kpis.piNetY1,
-    endPIshare: simB.kpis.endPIshare - simA.kpis.endPIshare,
-    gapEnd: simB.kpis.gapEnd - simA.kpis.gapEnd,
+    endSharePI: simB.kpis.endSharePI - simA.kpis.endSharePI,
+    endGap: simB.kpis.endGap - simA.kpis.endGap,
+    bonusPP: (inpB.bonus - inpA.bonus) * 100,
   };
-
-  const updateActive = (fn: (i: Inputs) => Inputs) =>
-    setScenarios((prev) => prev.map((s) => (s.id === activeId ? { ...s, inputs: fn(s.inputs) } : s)));
-
-  const resetActive = () => setScenarios((prev) => prev.map((s) => (s.id === activeId ? {
-    ...s,
-    inputs: s.id === "A" ? { ...DEFAULTS } : { ...DEFAULTS, ...MORE_PRESSURE },
-  } : s)));
-
-  const resetBoth = () =>
-    setScenarios([
-      { id: "A", name: "Scenario A (basis)", color: COLORS.A, inputs: { ...DEFAULTS } },
-      { id: "B", name: "Scenario B (meer PI-druk)", color: COLORS.B, inputs: { ...DEFAULTS, ...MORE_PRESSURE } },
-    ]);
-
-  // EU-helpers
-  const addCountry = () =>
-    setEuRows((r) => [
-      ...r,
-      {
-        id: `c${Date.now()}`,
-        country: "Nieuw land",
-        exFactory: 50,
-        currency: "EUR",
-        fxToEUR: 1,
-        logistics: 3,
-        buffer: 1,
-        capShare: 0.05,
-      },
-    ]);
-  const removeCountry = (id: string) => setEuRows((r) => r.filter((x) => x.id !== id));
-  const updateCountry = (id: string, patch: Partial<EUCountryRow>) =>
-    setEuRows((rows) => rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
-
-  // Reeksen
-  const seriesNet = [
-    { name: "Originator A", color: COLORS.A, values: simA.points.map((p) => p.netSalesOriginator) },
-    { name: "PI A", color: COLORS.PI_A, values: simA.points.map((p) => p.netSalesPI) },
-    { name: "Originator B", color: COLORS.B, values: simB.points.map((p) => p.netSalesOriginator) },
-    { name: "PI B", color: COLORS.PI_B, values: simB.points.map((p) => p.netSalesPI) },
-  ];
-  const seriesShare = [
-    { name: "PI A", color: COLORS.PI_A, values: simA.points.map((p) => p.sharePI * 100) },
-    { name: "PI B", color: COLORS.PI_B, values: simB.points.map((p) => p.sharePI * 100) },
-  ];
-
-  // Export — één CSV met scenario-KPI’s, maanddata en EU-prijzen
-  const exportCSV = () => {
-    const rows: (string | number)[][] = [];
-    rows.push(["== Scenario KPI's =="]);
-    rows.push(["Scenario","Org Net Y1","Org Net Total","Org EBITDA Total","PI Net Y1","PI Net Total","Eind PI Share","Eind Net Originator","EU Ref (min landed)","NL Effective End","Gap End"]);
-    [
-      { name: scenarios[0].name, k: simA.kpis },
-      { name: scenarios[1].name, k: simB.kpis },
-    ].forEach(({ name, k }) => rows.push([
-      name, Math.round(k.orgNetY1), Math.round(k.orgNetTotal), Math.round(k.orgEbitdaTotal),
-      Math.round(k.piNetY1), Math.round(k.piNetTotal),
-      round(k.endPIshare, 4), round(k.endNetOriginator, 2),
-      round(k.euRefNet, 2), round(k.netEffectiveBuyerEnd, 2), round(k.gapEnd, 2),
-    ]));
-
-    rows.push([]);
-    rows.push(["== Maanddata (Scenario A) =="]);
-    rows.push(["t","Net Originator","Net Eff Buyer","Share PI","Share Originator","Units PI","Units Originator","NetSales PI","NetSales Originator"]);
-    simA.points.forEach(p => rows.push([
-      p.t, round(p.netOriginator,2), round(p.netEffectiveBuyer,2),
-      round(p.sharePI,4), round(p.shareOriginator,4),
-      Math.round(p.unitsPI), Math.round(p.unitsOriginator),
-      Math.round(p.netSalesPI), Math.round(p.netSalesOriginator),
-    ]));
-
-    rows.push([]);
-    rows.push(["== Maanddata (Scenario B) =="]);
-    rows.push(["t","Net Originator","Net Eff Buyer","Share PI","Share Originator","Units PI","Units Originator","NetSales PI","NetSales Originator"]);
-    simB.points.forEach(p => rows.push([
-      p.t, round(p.netOriginator,2), round(p.netEffectiveBuyer,2),
-      round(p.sharePI,4), round(p.shareOriginator,4),
-      Math.round(p.unitsPI), Math.round(p.unitsOriginator),
-      Math.round(p.netSalesPI), Math.round(p.netSalesOriginator),
-    ]));
-
-    rows.push([]);
-    rows.push(["== EU Prijzen (Landen) =="]);
-    rows.push(["Land","Ex-factory","Valuta","FX→EUR","Logistiek (EU)","Buffer","Landed NL (EUR)"]);
-    euRows.forEach(r => {
-      const landed = r.exFactory * r.fxToEUR + r.logistics + r.buffer + (active.inputs.logisticsPerUnit || 0);
-      rows.push([r.country, r.exFactory, r.currency, r.fxToEUR, r.logistics, r.buffer, round(landed,2)]);
-    });
-
-    downloadCSV("parallel_tool_export.csv", rows);
-  };
-
-  // Aanbevolen acties op basis van inputs (actief scenario)
-  const recs = useMemo(() => {
-    const k = activeSim.kpis;
-    const items: { title: string; detail: string }[] = [];
-    const gapAbs = k.gapEnd;
-    const over = gapAbs - active.inputs.arbitrageThreshold;
-
-    if (over > 0.5) {
-      items.push({
-        title: "Verlaag effectieve NL netprijs zonder list te raken",
-        detail: `Verhoog 'Bonus op realisatie' met 1–2 pp of verschuif 2–3 pp van front-end naar bonus. Doel: gap ≤ drempel (${eur(active.inputs.arbitrageThreshold,0)}).`,
-      });
-    } else {
-      items.push({
-        title: "Behoud prijsdiscipline, monitor EU referentie",
-        detail: `Gap is binnen drempel. Borg maandelijkse EU-min landed update; zet alert bij > ${eur(active.inputs.arbitrageThreshold,0)} gap.`,
-      });
-    }
-
-    if (active.inputs.availabilityCap > 0.4) {
-      items.push({
-        title: "Verlaag cap door supply-frictie",
-        detail: "Contracteer leveringszekerheid en unieke value-add (ASL, diensten) zodat PI minder gemakkelijk aan grote volumes komt.",
-      });
-    }
-
-    if (active.inputs.shareElasticity > 0.06) {
-      items.push({
-        title: "Verklein gevoeligheid bij kopers",
-        detail: "Introduceer bundle-kortingen / performance-bonussen i.p.v. vlakke korting; verlaag prikkel tot switch.",
-      });
-    }
-
-    items.push({
-      title: "Rapporteer PI-impact als vast KPI-blok",
-      detail: "Neem PI Net Y1, Eind-share PI en Gap t=Eind op in maandelijkse pricing review; vergelijk A/B en licht afwijkingen toe.",
-    });
-
-    return items.slice(0, 4);
-  }, [active.inputs, activeSim.kpis]);
 
   return (
     <div className="max-w-screen-xl mx-auto px-3 sm:px-4 lg:px-6 py-4 space-y-6">
       {/* Header */}
-      <header className="flex flex-wrap items-start justify-between gap-3 min-w-0">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold truncate">Parallelimport — Analyse & Scenario’s</h1>
-          <p className="text-gray-600 text-sm">
-            Baseer beslissingen op de <b>effectieve NL netprijs</b> t.o.v. de <b>laagste landed EU-prijs</b>. Test direct of je
-            <i> kortingsmix</i> (front vs. bonus) PI-druk dempt zonder list aan te passen (IRP-vriendelijk).
+          <h1 className="text-xl font-semibold">Parallelimport — Slimme Gap-tool</h1>
+          <p className="text-sm text-gray-600">
+            Minimalistische tool op basis van de <b>NL-prijs</b>. Vergelijk jouw <i>effectieve koperprijs</i> met de <i>EU landed</i> en zie direct
+            hoeveel <b>bonus-pp</b> je nodig hebt om paralleldruk te neutraliseren — zonder list price te wijzigen.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={exportCSV} className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Export CSV</button>
-          <button onClick={() => setActiveId(activeId === "A" ? "B" : "A")} className="text-sm rounded border px-3 py-2 hover:bg-gray-50">
-            Bewerk: {activeId === "A" ? "Scenario B" : "Scenario A"}
-          </button>
-          <button onClick={resetActive} className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Reset actief</button>
-          <button onClick={resetBoth} className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Reset beide</button>
+        <div className="flex items-center gap-2">
+          <label className="text-sm inline-flex items-center gap-2">
+            <input type="checkbox" checked={useCompare} onChange={(e) => setUseCompare(e.target.checked)} />
+            <span>Vergelijk voorstel (A vs B)</span>
+          </label>
         </div>
       </header>
 
-      {/* Scenario legend + uitleg */}
+      {/* Inputs */}
       <section className="rounded-2xl border bg-white p-4">
-        <div className="flex flex-wrap items-center gap-3 text-xs">
-          <span className="inline-flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS.A }} />
-            A = basis
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS.B }} />
-            B = meer PI-druk
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS.PI_A }} />
-            Groen = omzet/aandeel PI
-          </span>
+        <h2 className="text-base font-semibold mb-3">Parameters</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <FieldNumber label="List price NL (€/unit)" value={inpA.listNL} min={1} step={1}
+            onChange={(v) => setInpA(s => ({ ...s, listNL: Math.max(0, v) }))} />
+          <FieldPct label="Front-end %" value={inpA.front}
+            onChange={(v) => setInpA(s => ({ ...s, front: clamp(v, 0, 0.8) }))} />
+          <FieldPct label="Bonus op realisatie %" value={inpA.bonus}
+            onChange={(v) => setInpA(s => ({ ...s, bonus: clamp(v, 0, 0.5) }))} />
+          <FieldNumber label="EU landed (€/unit)" value={inpA.euLanded} min={1} step={0.5}
+            onChange={(v) => setInpA(s => ({ ...s, euLanded: Math.max(0, v) }))} />
+          <FieldNumber label="Units/maand (NL markt)" value={inpA.units} min={100} step={100}
+            onChange={(v) => setInpA(s => ({ ...s, units: Math.max(0, v) }))} />
         </div>
-        <ul className="mt-2 text-sm text-gray-700 list-disc pl-5 space-y-1">
-          <li><b>NL effectief</b> = List × (1 − front) × (1 − bonus). Dit is je koperprijs.</li>
-          <li><b>EU referentie</b> = Laagste “landed naar NL” prijs in de tabel (incl. EU-logistiek, buffer & NL-logistiek).</li>
-          <li><b>Gap</b> = NL effectief − EU referentie. Als gap &gt; drempel ⇒ PI-share groeit richting cap (met ramp-in).</li>
+
+        {/* Uitleg in 3 regels */}
+        <ul className="mt-3 text-xs text-gray-600 list-disc pl-5 space-y-1">
+          <li><b>NL effectief</b> = List × (1 − front) × (1 − bonus).</li>
+          <li><b>Gap</b> = NL effectief − EU landed. Als gap groter is dan de drempel (vast: €{DEFAULT_SETTINGS.threshold}), neemt PI-share toe.</li>
+          <li><b>Voorstel</b> = verhoog bonus zodat gap ≤ drempel. List blijft ongemoeid (IRP-vriendelijk).</li>
         </ul>
       </section>
 
-      {/* Parameters actief scenario */}
+      {/* KPI’s */}
       <section className="rounded-2xl border bg-white p-4">
-        <div className="flex flex-wrap items-center gap-2 mb-3 min-w-0">
-          <span className="inline-flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: active.color }} />
-            <span className="font-semibold truncate">{active.name}</span>
-          </span>
-          <div className="ml-auto flex flex-wrap gap-2">
-            <button onClick={() => setActiveId("A")} className={`text-xs rounded border px-2 py-1 ${activeId === "A" ? "bg-gray-50" : ""}`}>Scenario A</button>
-            <button onClick={() => setActiveId("B")} className={`text-xs rounded border px-2 py-1 ${activeId === "B" ? "bg-gray-50" : ""}`}>Scenario B</button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <FieldNumber label="Horizon (maanden)" value={active.inputs.horizon} min={6} max={60} step={6}
-            onChange={(v) => updateActive((i) => ({ ...i, horizon: Math.round(clamp(v, 6, 60)) }))} />
-          <FieldNumber label="List price NL (€)" value={active.inputs.listNL} min={1} step={1}
-            onChange={(v) => updateActive((i) => ({ ...i, listNL: Math.max(0, v) }))} />
-          <FieldNumber label="Units/maand (NL markt)" value={active.inputs.baseUnitsNL} min={100} step={100}
-            onChange={(v) => updateActive((i) => ({ ...i, baseUnitsNL: Math.max(0, v) }))} />
-
-          <FieldPct label="Front-end %" value={active.inputs.gtnFront}
-            onChange={(v) => updateActive((i) => ({ ...i, gtnFront: clamp(v, 0, 0.8) }))} />
-          <FieldPct label="Bonus op realisatie %" value={active.inputs.bonusOnReal}
-            onChange={(v) => updateActive((i) => ({ ...i, bonusOnReal: clamp(v, 0, 0.5) }))} />
-          <FieldPct label="Net floor vs pre-net" value={active.inputs.netFloorVsPre}
-            onChange={(v) => updateActive((i) => ({ ...i, netFloorVsPre: clamp(v, 0.6, 1) }))} />
-
-          <FieldPct label="COGS %" value={active.inputs.cogs}
-            onChange={(v) => updateActive((i) => ({ ...i, cogs: clamp(v, 0, 0.9) }))} />
-          <FieldNumber label="NL logistiek PI (€/unit)" value={active.inputs.logisticsPerUnit} min={0} step={0.5}
-            onChange={(v) => updateActive((i) => ({ ...i, logisticsPerUnit: Math.max(0, v) }))} />
-          <FieldNumber label="Arbitrage-drempel (€/unit)" value={active.inputs.arbitrageThreshold} min={0} step={0.5}
-            onChange={(v) => updateActive((i) => ({ ...i, arbitrageThreshold: Math.max(0, v) }))} />
-
-          <FieldPct label="Max PI-share (cap)" value={active.inputs.availabilityCap}
-            onChange={(v) => updateActive((i) => ({ ...i, availabilityCap: clamp(v, 0, 0.8) }))} />
-          <FieldNumber label="PI-gevoeligheid (per €/gap)" value={active.inputs.shareElasticity} min={0} step={0.005}
-            onChange={(v) => updateActive((i) => ({ ...i, shareElasticity: Math.max(0, v) }))} />
-          <FieldNumber label="Ramp-in (maanden)" value={active.inputs.rampMonths} min={0} step={1}
-            onChange={(v) => updateActive((i) => ({ ...i, rampMonths: Math.max(0, Math.round(v)) }))} />
-        </div>
-
-        <div className="mt-3 text-xs text-gray-600">
-          NL effectief (eind): <b>{eur(activeSim.kpis.netEffectiveBuyerEnd, 0)}</b> • EU referentie: <b>{eur(activeSim.kpis.euRefNet, 0)}</b> • Gap: <b>{eur(activeSim.kpis.gapEnd, 0)}</b>
+        <h3 className="text-base font-semibold mb-3">KPI’s — Huidig beleid</h3>
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+          <Kpi title="NL effectief (einde)" value={eur(simA.points.at(-1)?.netEffective ?? 0, 0)}
+               help={`Net originator: ${eur(simA.netOriginator0, 0)}`} />
+          <Kpi title="EU landed (referentie)" value={eur(inpA.euLanded, 0)}
+               help={`Gap eind: ${eur(simA.kpis.endGap, 0)}`} />
+          <Kpi title="PI-share (einde)" value={pctS(simA.kpis.endSharePI, 1)}
+               help={`Cap: ${pctS(DEFAULT_SETTINGS.cap, 0)}`} />
+          <Kpi title="Originator Net — Jaar 1" value={eur(simA.kpis.orgNetY1)} />
+          <Kpi title="Parallel Net — Jaar 1" value={eur(simA.kpis.piNetY1)} />
+          <Kpi title="Benodigde bonus ↑" value={`${round(simA.kpis.neededBonusDeltaPP, 1)} pp`}
+               help={`Van ${pctS(inpA.bonus,1)} naar ${pctS(inpA.bonus + simA.kpis.neededBonusDeltaPP/100,1)}`} />
         </div>
       </section>
 
-      {/* KPI’s per scenario — responsive */}
-      <section className="rounded-2xl border bg-white p-4">
-        <h3 className="text-base font-semibold mb-3">KPI’s — Originator & Parallelimport</h3>
-        <div className="grid gap-4 md:grid-cols-2">
-          {[{ sc: scenarios[0], sim: simA }, { sc: scenarios[1], sim: simB }].map(({ sc, sim }) => (
-            <div key={sc.id} className="rounded-2xl border p-4">
-              <div className="flex items-center gap-2 mb-2 min-w-0">
-                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: sc.color }} />
-                <div className="font-semibold truncate">{sc.name}</div>
-              </div>
-              <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
-                <Kpi title="Originator — Net Y1" value={eur(sim.kpis.orgNetY1)} />
-                <Kpi title="Originator — Net (horizon)" value={eur(sim.kpis.orgNetTotal)} />
-                <Kpi title="Parallel — Net Y1" value={eur(sim.kpis.piNetY1)} />
-                <Kpi title="Parallel — Net (horizon)" value={eur(sim.kpis.piNetTotal)} />
-                <Kpi title="Eind-share PI" value={pctS(sim.kpis.endPIshare, 1)} help={`EU ref: ${eur(sim.kpis.euRefNet, 0)}`} />
-                <Kpi title="Originator — EBITDA (horizon)" value={eur(sim.kpis.orgEbitdaTotal)} help={`Originator eind-net: ${eur(sim.kpis.endNetOriginator, 0)}`} />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Scenario-delta’s kort en krachtig */}
-        <div className="mt-4 rounded-xl border p-4">
-          <div className="font-semibold mb-2">Delta’s (B − A)</div>
-          <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))] text-sm">
-            <div>Δ Originator Net Y1: <b>{eur(deltas.orgNetY1)}</b></div>
-            <div>Δ Originator Net (horizon): <b>{eur(deltas.orgNetTotal)}</b></div>
-            <div>Δ PI Net Y1: <b>{eur(deltas.piNetY1)}</b></div>
-            <div>Δ Eind-share PI: <b>{pctS(deltas.endPIshare, 1)}</b></div>
-            <div>Δ Gap eind: <b>{eur(deltas.gapEnd, 0)}</b></div>
+      {/* Vergelijking (optioneel) */}
+      {useCompare && (
+        <section className="rounded-2xl border bg-white p-4">
+          <h3 className="text-base font-semibold mb-3">Vergelijking — Voorstel (B) t.o.v. Huidig (A)</h3>
+          <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+            <Kpi title="Bonus voorstel"
+                 value={`${round(deltas.bonusPP, 1)} pp`}
+                 help={`A: ${pctS(inpA.bonus,1)} → B: ${pctS(inpB.bonus,1)}`} />
+            <Kpi title="Δ PI-share (einde)"
+                 value={pctS(deltas.endSharePI, 1)}
+                 help={`A: ${pctS(simA.kpis.endSharePI,1)} → B: ${pctS(simB.kpis.endSharePI,1)}`} />
+            <Kpi title="Δ Gap (einde)" value={eur(deltas.endGap, 0)}
+                 help={`A: ${eur(simA.kpis.endGap,0)} → B: ${eur(simB.kpis.endGap,0)}`} />
+            <Kpi title="Δ Originator Net — Jaar 1" value={eur(deltas.orgNetY1)} />
+            <Kpi title="Δ Parallel Net — Jaar 1" value={eur(deltas.piNetY1)} />
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* Grafieken */}
+      {/* Grafieken (compact) */}
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border bg-white p-4">
-          <h3 className="text-base font-semibold mb-2">Net sales per maand</h3>
-          <MultiLineChart name="Net sales" series={[
-            { name: "Originator A", color: COLORS.A, values: simA.points.map((p) => p.netSalesOriginator) },
-            { name: "PI A", color: COLORS.PI_A, values: simA.points.map((p) => p.netSalesPI) },
-            { name: "Originator B", color: COLORS.B, values: simB.points.map((p) => p.netSalesOriginator) },
-            { name: "PI B", color: COLORS.PI_B, values: simB.points.map((p) => p.netSalesPI) },
-          ]} yFmt={(v) => compact(v)} />
-          <p className="text-xs text-gray-600 mt-2">
-            Bonus op realisatie verlaagt de effectieve koperprijs zonder list te raken. Zichtbaar effect op PI-instroom.
-          </p>
+          <h4 className="text-sm font-semibold mb-2">Net sales per maand — Originator (A)</h4>
+          <LineChart name="Originator Net A" color="#0ea5e9" values={simA.points.map(p => p.netSalesOriginator)} yFmt={(v) => compact(v)} />
         </div>
-
         <div className="rounded-2xl border bg-white p-4">
-          <h3 className="text-base font-semibold mb-2">Marktaandeel PI (%)</h3>
-          <MultiLineChart name="PI share" series={[
-            { name: "PI A", color: COLORS.PI_A, values: simA.points.map((p) => p.sharePI * 100) },
-            { name: "PI B", color: COLORS.PI_B, values: simB.points.map((p) => p.sharePI * 100) },
-          ]} yFmt={(v) => `${v.toFixed(0)}%`} />
-          <p className="text-xs text-gray-600 mt-2">
-            PI share groeit als de gap &gt; drempel; cap en ramp-in beperken tempo en plafond.
-          </p>
+          <h4 className="text-sm font-semibold mb-2">PI-share per maand (A)</h4>
+          <LineChart name="PI share A" color="#22c55e" values={simA.points.map(p => p.sharePI * 100)} yFmt={(v) => `${v.toFixed(0)}%`} />
         </div>
       </section>
 
-      {/* EU Prijsvergelijker — interactief */}
+      {/* Praktische aanbevelingen op basis van je invoer */}
       <section className="rounded-2xl border bg-white p-4">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-base font-semibold">EU parallel prijsvergelijking (landed → NL)</h3>
-          <div className="flex gap-2">
-            <button onClick={addCountry} className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Land toevoegen</button>
-            <button onClick={exportCSV} className="text-sm rounded border px-3 py-2 hover:bg-gray-50">Export CSV</button>
-          </div>
-        </div>
-        <div className="mt-3 w-full overflow-x-auto">
-          <table className="w-full text-sm border-collapse min-w-[760px]">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="text-left py-2 px-2">Land</th>
-                <th className="text-right py-2 px-2">Ex-factory</th>
-                <th className="text-left py-2 px-2">Valuta</th>
-                <th className="text-right py-2 px-2">FX→EUR</th>
-                <th className="text-right py-2 px-2">Logistiek (EUR)</th>
-                <th className="text-right py-2 px-2">Buffer (EUR)</th>
-                <th className="text-right py-2 px-2">Landed NL (EUR)</th>
-                <th className="text-right py-2 px-2">Cap (info)</th>
-                <th className="text-right py-2 px-2">Actie</th>
-              </tr>
-            </thead>
-            <tbody>
-              {euRows.map((r) => {
-                const landed = r.exFactory * r.fxToEUR + r.logistics + r.buffer + (active.inputs.logisticsPerUnit || 0);
-                return (
-                  <tr key={r.id} className="border-b last:border-0">
-                    <td className="py-1 px-2">
-                      <input value={r.country} onChange={(e) => updateCountry(r.id, { country: e.target.value })}
-                             className="w-full border rounded px-2 py-1" />
-                    </td>
-                    <td className="py-1 px-2 text-right">
-                      <input type="number" step={0.1} value={r.exFactory}
-                             onChange={(e) => updateCountry(r.id, { exFactory: parseFloat(e.target.value) })}
-                             className="w-28 border rounded px-2 py-1 text-right" />
-                    </td>
-                    <td className="py-1 px-2">
-                      <select value={r.currency} onChange={(e) => updateCountry(r.id, { currency: e.target.value as EUCountryRow["currency"] })}
-                              className="border rounded px-2 py-1">
-                        {["EUR","PLN","CZK","HUF","GBP","DKK"].map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </td>
-                    <td className="py-1 px-2 text-right">
-                      <input type="number" step={0.001} value={r.fxToEUR}
-                             onChange={(e) => updateCountry(r.id, { fxToEUR: parseFloat(e.target.value) })}
-                             className="w-24 border rounded px-2 py-1 text-right" />
-                    </td>
-                    <td className="py-1 px-2 text-right">
-                      <input type="number" step={0.1} value={r.logistics}
-                             onChange={(e) => updateCountry(r.id, { logistics: parseFloat(e.target.value) })}
-                             className="w-24 border rounded px-2 py-1 text-right" />
-                    </td>
-                    <td className="py-1 px-2 text-right">
-                      <input type="number" step={0.1} value={r.buffer}
-                             onChange={(e) => updateCountry(r.id, { buffer: parseFloat(e.target.value) })}
-                             className="w-24 border rounded px-2 py-1 text-right" />
-                    </td>
-                    <td className="py-1 px-2 text-right font-medium">{eur(landed, 0)}</td>
-                    <td className="py-1 px-2 text-right">
-                      <input type="number" step={0.01} value={r.capShare}
-                             onChange={(e) => updateCountry(r.id, { capShare: clamp(parseFloat(e.target.value),0,1) })}
-                             className="w-20 border rounded px-2 py-1 text-right" />
-                    </td>
-                    <td className="py-1 px-2 text-right">
-                      <button onClick={() => removeCountry(r.id)} className="text-xs rounded border px-2 py-1 hover:bg-gray-50">Verwijderen</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <p className="text-xs text-gray-600 mt-2">
-          <b>Tip:</b> De <i>EU referentie</i> in de simulatie is de <b>laagste landed prijs</b> uit de tabel (incl. NL-logistiek).
-          Als jouw <i>effectieve NL net</i> hier ruim boven ligt en de drempel overschrijdt, stijgt het PI-aandeel richting de cap.
-          Verlaag bij voorkeur met <b>bonus op realisatie</b> om IRP-effecten te vermijden.
-        </p>
-      </section>
-
-      {/* Aanbevolen acties (op basis van jouw inputs) */}
-      <section className="rounded-2xl border bg-white p-4">
-        <h3 className="text-base font-semibold mb-2">Aanbevelingen</h3>
-        <ul className="mt-1 text-sm text-gray-700 list-disc pl-5 space-y-2">
-          {recs.map((r, idx) => (
-            <li key={idx}><b>{r.title}.</b> {r.detail}</li>
-          ))}
-          <li>
-            <b>KPI-vastlegging</b>: monitor maandelijks <i>PI Net Y1</i>, <i>Eind-share PI</i>, <i>Gap (eind)</i>, <i>EU-ref</i>, <i>NL effectief</i> en
-            <i> delta’s t.o.v. Scenario A</i>. Leg beslisregels vast (bijv. “gap &gt; drempel 3 maanden op rij ⇒ +2pp bonus op realisatie”).
-          </li>
+        <h3 className="text-base font-semibold mb-2">Aanbevolen acties</h3>
+        <ul className="text-sm text-gray-700 list-disc pl-5 space-y-2">
+          {(() => {
+            const tips: string[] = [];
+            if (simA.kpis.endGap > DEFAULT_SETTINGS.threshold) {
+              tips.push(`Verhoog bonus op realisatie met ~${round(simA.kpis.neededBonusDeltaPP, 1)} pp om de gap te sluiten tot ≤ €${DEFAULT_SETTINGS.threshold}.`);
+            } else {
+              tips.push("Gap is binnen drempel; houd maandelijkse EU-landed check aan en borg prijsdiscipline.");
+            }
+            if (simA.kpis.endSharePI > 0.25) {
+              tips.push("Introduceer performance-bonussen of bundelkortingen i.p.v. vlakke front-end korting om switchprikkels te beperken.");
+            }
+            tips.push("Rapporteer maandelijks: NL effectief, EU landed, gap, PI-share (einde), Net Y1, benodigde bonus-pp.");
+            return tips.map((t, i) => <li key={i}>{t}</li>);
+          })()}
         </ul>
       </section>
     </div>
