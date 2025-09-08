@@ -17,38 +17,33 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const round = (n: number, d = 0) => Math.round((Number.isFinite(n) ? n : 0) * 10 ** d) / 10 ** d;
 
 /** ================= Types ================= */
-type TenderEvent = { month: number; shareLoss: number }; // fractie 0..1
+type TenderEvent = { month: number; shareLoss: number };
 
 type Inputs = {
-  // Simulatie-invoer
-  horizon: number;                 // maanden na LOE
-  list0: number;                   // list price t=0 (pre-LOE)
-  baseUnits: number;               // totale markt-units/maand (pre-LOE)
-  gtn: number;                     // GTN% 0..1
-  cogs: number;                    // COGS% 0..1 (originator)
-  entrants: number;                // # generieke concurrenten
-  priceDropPerEntrant: number;     // prijsdruk/entrant (basis-intensiteit)
-  timeErosion12m: number;          // extra erosie per 12m (bovenop entrants)
-  netFloorOfPre: number;           // floor originator net vs pre-LOE net (0..1)
-  elasticity: number;              // volumegevoeligheid (originator penalty) 0..1
-  tender1?: TenderEvent;           // tender 1 (blijvend effect)
-  rampDownMonths: number;          // maanden naar blijvend tender-niveau (0 = direct)
-  // Generieken
-  genericNetOfPre: number;         // generiek net €/unit als % van pre-LOE net (0..1)
+  horizon: number;
+  list0: number;
+  baseUnits: number;
+  gtn: number;
+  cogs: number;
+  entrants: number;
+  priceDropPerEntrant: number;
+  timeErosion12m: number;
+  netFloorOfPre: number;
+  elasticity: number;
+  tender1?: TenderEvent;
+  rampDownMonths: number;
+  genericNetOfPre: number;
 };
 
 type Point = {
   t: number;
-  // prijzen
   list: number;
   netOriginator: number;
   netGeneric: number;
-  // shares/units
   shareOriginator: number;
   shareGenerics: number;
   unitsOriginator: number;
   unitsGenerics: number;
-  // omzet/marge
   netSalesOriginator: number;
   netSalesGenerics: number;
   netSalesTotal: number;
@@ -75,25 +70,19 @@ const DEFAULTS: Inputs = {
   genericNetOfPre: 0.50,
 };
 
-const COLORS = { A: "#0ea5e9", B: "#f59e0b" };
+const COLORS = { A: "#0ea5e9", B: "#f59e0b", GEN_A: "#10b981", GEN_B: "#22c55e" };
 
 /** ================= Model ================= */
-/** Prijs-erosie: s-curve op #entrants + tijdseffect. Saturatie voorkomt absurde dalingen. */
 function erosionFrac(t: number, entrants: number, perEntrant: number, overTime12m: number) {
-  // S-curve: ~exponentiële benadering richting plateau
-  const direct = 1 - Math.exp(-Math.max(0, entrants) * clamp(perEntrant, 0, 1) * 3.5); // 0..~0.95
+  const direct = 1 - Math.exp(-Math.max(0, entrants) * clamp(perEntrant, 0, 1) * 3.5);
   const overtime = Math.min((t / 12) * clamp(overTime12m, 0, 1), 0.5);
   return clamp(direct + overtime, 0, 0.98);
 }
-
-/** Share-basis: sneller verlies bij meer generieken. */
 function shareCurveBase(t: number, entrants: number) {
   if (entrants <= 0) return 1;
-  const k = 0.10 + Math.max(0, entrants) * 0.06; // steilere daling bij meer generieken
+  const k = 0.10 + Math.max(0, entrants) * 0.06;
   return clamp(Math.exp(-k * t), 0.05, 1);
 }
-
-/** Tender-effect: blijvende reductie met optionele ramp-down (0 = direct). */
 function tenderMultiplier(t: number, rampDownMonths: number, ev?: TenderEvent) {
   if (!ev || ev.shareLoss <= 0) return 1;
   const m0 = Math.max(0, Math.floor(ev.month));
@@ -106,36 +95,28 @@ function tenderMultiplier(t: number, rampDownMonths: number, ev?: TenderEvent) {
   return 1 - loss * clamp(frac, 0, 1);
 }
 
-/** Hoofdsimulatie */
 function simulate(inp: Inputs) {
   const points: Point[] = [];
-
-  // Referenties
   const preNet = Math.max(0, inp.list0) * (1 - clamp(inp.gtn, 0, 0.9));
-  const genericNetAbs = preNet * clamp(inp.genericNetOfPre, 0.2, 0.9); // typische generiek ~50% van pre-LOE net
+  const genericNetAbs = preNet * clamp(inp.genericNetOfPre, 0.2, 0.9);
 
   for (let t = 0; t < Math.max(1, Math.floor(inp.horizon)); t++) {
-    // 1) Originator prijs na erosie
     const eros = erosionFrac(t, inp.entrants, inp.priceDropPerEntrant, inp.timeErosion12m);
     const list = Math.max(0, inp.list0) * (1 - eros);
     let netOriginator = list * (1 - clamp(inp.gtn, 0, 0.9));
-    netOriginator = Math.max(netOriginator, preNet * clamp(inp.netFloorOfPre, 0, 1)); // net floor vs pre-LOE
+    netOriginator = Math.max(netOriginator, preNet * clamp(inp.netFloorOfPre, 0, 1));
 
-    // 2) Share met blijvend tender-effect (geen herstel)
     let share = shareCurveBase(t, inp.entrants);
     share *= tenderMultiplier(t, inp.rampDownMonths, inp.tender1);
     share = clamp(share, 0.05, 1);
 
-    // 3) Elasticiteit: duurdere originator ⇒ lichte volumepenalty (marktvolume blijft gelijk)
-    const relative = (netOriginator - genericNetAbs) / (preNet || 1); // vs generieke net
+    const relative = (netOriginator - genericNetAbs) / (preNet || 1);
     const elastAdj = 1 - clamp(relative * clamp(inp.elasticity, 0, 1), -0.5, 0.5);
 
-    // Marktvolume constant (bewust): verlies originator vloeit naar generieken
     const totalUnits = Math.max(0, inp.baseUnits);
     const unitsOriginator = Math.max(0, totalUnits * share * elastAdj);
-    const unitsGenerics = Math.max(0, totalUnits - unitsOriginator); // rest gaat naar generiek
+    const unitsGenerics = Math.max(0, totalUnits - unitsOriginator);
 
-    // 4) Omzet/marge
     const netSalesOriginator = netOriginator * unitsOriginator;
     const netSalesGenerics = genericNetAbs * unitsGenerics;
     const netSalesTotal = netSalesOriginator + netSalesGenerics;
@@ -160,12 +141,10 @@ function simulate(inp: Inputs) {
     });
   }
 
-  // KPI’s
   const sum = (f: (p: Point) => number) => points.reduce((a, p) => a + f(p), 0);
   const y1 = points.slice(0, Math.min(12, points.length));
 
   const kpis = {
-    // Originator
     orgNetY1: y1.reduce((a, p) => a + p.netSalesOriginator, 0),
     orgNetTotal: sum((p) => p.netSalesOriginator),
     orgEbitdaTotal: sum((p) => p.ebitdaOriginator),
@@ -173,18 +152,15 @@ function simulate(inp: Inputs) {
     orgEndShare: points.at(-1)?.shareOriginator ?? 0,
     orgEndNet: points.at(-1)?.netOriginator ?? 0,
 
-    // Generics
     genNetY1: y1.reduce((a, p) => a + p.netSalesGenerics, 0),
     genNetTotal: sum((p) => p.netSalesGenerics),
     genEndShare: points.at(-1)?.shareGenerics ?? 0,
     genNetUnit: points.at(0)?.netGeneric ?? 0,
 
-    // Markt
     mktNetY1: y1.reduce((a, p) => a + p.netSalesTotal, 0),
     mktNetTotal: sum((p) => p.netSalesTotal),
   };
 
-  // Gezondheidschecks
   const health = {
     horizonOK: Number.isFinite(inp.horizon) && inp.horizon >= 12 && inp.horizon <= 72,
     tenderOK: inp.tender1 ? inp.tender1.month >= 0 && inp.tender1.shareLoss >= 0 && inp.tender1.shareLoss <= 0.8 : true,
@@ -202,7 +178,7 @@ function simulate(inp: Inputs) {
   return { points, kpis, preNet, genericNetAbs, health };
 }
 
-/** ================= Kleine UI-componenten ================= */
+/** ================= Kleine UI ================= */
 function FieldNumber({
   label, value, onChange, step = 1, min, max, suffix,
 }: {
@@ -242,10 +218,10 @@ function FieldPct({ label, value, onChange }: { label: string; value: number; on
 }
 function Kpi({ title, value, help }: { title: string; value: string; help?: string }) {
   return (
-    <div className="w-full min-w-0 rounded-2xl border bg-white p-4">
-      <div className="text-sm text-gray-500 leading-snug">{title}</div>
-      <div className="text-xl font-semibold mt-1 leading-tight">{value}</div>
-      {help ? <div className="text-xs text-gray-500 mt-1 leading-snug">{help}</div> : null}
+    <div className="w-full min-w-0 rounded-2xl border bg-white p-3 sm:p-4">
+      <div className="text-[12px] text-gray-500 leading-snug break-words">{title}</div>
+      <div className="text-lg sm:text-xl font-semibold mt-1 leading-tight break-words">{value}</div>
+      {help ? <div className="text-[11px] sm:text-xs text-gray-500 mt-1 leading-snug break-words">{help}</div> : null}
     </div>
   );
 }
@@ -263,7 +239,7 @@ function Badge({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-/** ================= Charts (SVG, lib-loos) ================= */
+/** ================= Charts (SVG) ================= */
 function MultiLineChart({
   name, series, yFmt = (v: number) => v.toFixed(0), height = 240,
 }: {
@@ -328,10 +304,10 @@ function downloadCSV(name: string, rows: (string | number)[][]) {
 /** ================= Page ================= */
 export default function LOEPage() {
   const [scenarios, setScenarios] = useState<Scenario[]>([
-    { id: "A", name: "Scenario A (Base)", color: COLORS.A, inputs: { ...DEFAULTS } },
+    { id: "A", name: "Scenario A (basis)", color: COLORS.A, inputs: { ...DEFAULTS } },
     {
       id: "B",
-      name: "Scenario B (Meer druk)",
+      name: "Scenario B (meer druk)",
       color: COLORS.B,
       inputs: {
         ...DEFAULTS,
@@ -360,10 +336,10 @@ export default function LOEPage() {
     setScenarios((prev) => prev.map((s) => (s.id === activeId ? { ...s, inputs: { ...DEFAULTS } } : s)));
   const resetBoth = () =>
     setScenarios([
-      { id: "A", name: "Scenario A (Base)", color: COLORS.A, inputs: { ...DEFAULTS } },
+      { id: "A", name: "Scenario A (basis)", color: COLORS.A, inputs: { ...DEFAULTS } },
       {
         id: "B",
-        name: "Scenario B (Meer druk)",
+        name: "Scenario B (meer druk)",
         color: COLORS.B,
         inputs: {
           ...DEFAULTS,
@@ -419,21 +395,21 @@ export default function LOEPage() {
   // Reeksen
   const seriesNetSales = [
     { name: `${sA.name} – Originator`, color: sA.color, values: simA.points.map((p) => p.netSalesOriginator) },
-    { name: `${sA.name} – Generieken`, color: "#10b981", values: simA.points.map((p) => p.netSalesGenerics) },
+    { name: `${sA.name} – Generieken`, color: COLORS.GEN_A, values: simA.points.map((p) => p.netSalesGenerics) },
     { name: `${sB.name} – Originator`, color: sB.color, values: simB.points.map((p) => p.netSalesOriginator) },
-    { name: `${sB.name} – Generieken`, color: "#22c55e", values: simB.points.map((p) => p.netSalesGenerics) },
+    { name: `${sB.name} – Generieken`, color: COLORS.GEN_B, values: simB.points.map((p) => p.netSalesGenerics) },
   ];
   const seriesShare = [
     { name: `${sA.name} – Originator`, color: sA.color, values: simA.points.map((p) => p.shareOriginator * 100) },
-    { name: `${sA.name} – Generieken`, color: "#10b981", values: simA.points.map((p) => p.shareGenerics * 100) },
+    { name: `${sA.name} – Generieken`, color: COLORS.GEN_A, values: simA.points.map((p) => p.shareGenerics * 100) },
     { name: `${sB.name} – Originator`, color: sB.color, values: simB.points.map((p) => p.shareOriginator * 100) },
-    { name: `${sB.name} – Generieken`, color: "#22c55e", values: simB.points.map((p) => p.shareGenerics * 100) },
+    { name: `${sB.name} – Generieken`, color: COLORS.GEN_B, values: simB.points.map((p) => p.shareGenerics * 100) },
   ];
   const seriesNetPrice = [
     { name: `${sA.name} – Originator`, color: sA.color, values: simA.points.map((p) => p.netOriginator) },
-    { name: `${sA.name} – Generiek`, color: "#10b981", values: simA.points.map((p) => p.netGeneric) },
+    { name: `${sA.name} – Generiek`, color: COLORS.GEN_A, values: simA.points.map((p) => p.netGeneric) },
     { name: `${sB.name} – Originator`, color: sB.color, values: simB.points.map((p) => p.netOriginator) },
-    { name: `${sB.name} – Generiek`, color: "#22c55e", values: simB.points.map((p) => p.netGeneric) },
+    { name: `${sB.name} – Generiek`, color: COLORS.GEN_B, values: simB.points.map((p) => p.netGeneric) },
   ];
 
   return (
@@ -441,10 +417,9 @@ export default function LOEPage() {
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-3 min-w-0">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold truncate">Loss of Exclusivity – Originator vs Generieken</h1>
+          <h1 className="text-xl font-semibold truncate">Loss of Exclusivity — Originator vs. Generieken</h1>
           <p className="text-gray-600 text-sm">
-            LOE op t=0. Simuleer prijsdruk door meerdere generieken, blijvend tender-effect en volumeschuif naar generieken.
-            Marktvolume blijft constant; verlies originator vloeit naar generiek.
+            LOE op t=0. Meerdere generieken drukken prijs en aandeel. Tender verlaagt originator blijvend (optionele ramp-down).
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -457,19 +432,22 @@ export default function LOEPage() {
         </div>
       </header>
 
-      {/* Uitleg */}
+      {/* Scenario-uitleg */}
       <section className="rounded-2xl border bg-white p-4">
-        <h2 className="text-base font-semibold">Wat modelleert deze pagina?</h2>
+        <h2 className="text-base font-semibold">Hoe lees je de scenario’s?</h2>
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+          <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:COLORS.A}}/>A = basis</span>
+          <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:COLORS.B}}/>B = meer druk</span>
+          <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:COLORS.GEN_A}}/>Groen = generieken</span>
+        </div>
         <ul className="mt-2 text-sm text-gray-700 list-disc pl-5 space-y-1">
-          <li><b>Prijs</b>: list daalt via s-curve op <i># generieken</i> + extra tijdseffect; <b>net originator</b> via GTN en <b>net floor</b>.</li>
-          <li><b>Share</b>: basisdaling versnelt bij meer generieken. Tender verlaagt het niveau <b>blijvend</b> (ramp-down optioneel).</li>
-          <li><b>Volume</b>: totale markt (units) blijft gelijk; originator-penalty door elasticiteit schuift volume naar generieken.</li>
-          <li><b>Generieken</b>: net €/unit = <b>% van pre-LOE net</b> (instelbaar). Toon omzet & share apart.</li>
-          <li><b>Vlak-test</b>: zet entrants=0, erosie=0, tender=0, elast=0 ⇒ originator net sales blijft vlak.</li>
+          <li><b>Net sales</b>: twee lijnen per scenario — <i>Originator</i> en <i>Generieken</i>. Optellen = markt.</li>
+          <li><b>Share %</b>: bij meer generieken daalt originator sneller; tender zet een lager blijvend niveau.</li>
+          <li><b>Net €/unit</b>: generiek is een % van pre-LOE net; originator heeft <i>net floor</i>.</li>
         </ul>
       </section>
 
-      {/* Kort naar andere tools */}
+      {/* Links */}
       <div className="flex flex-wrap gap-2">
         <Link href="/app/waterfall" className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Waterfall</Link>
         <Link href="/app/consistency" className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Consistency</Link>
@@ -510,9 +488,9 @@ export default function LOEPage() {
           <FieldPct label="Net floor (vs pre-LOE net)" value={active.inputs.netFloorOfPre}
             onChange={(v) => updateScenario(active.id, (i) => ({ ...i, netFloorOfPre: clamp(v, 0.2, 1) }))} />
 
-          <FieldNumber label="Tender – maand" value={active.inputs.tender1?.month ?? 6} min={0} step={1}
+          <FieldNumber label="Tender — maand" value={active.inputs.tender1?.month ?? 6} min={0} step={1}
             onChange={(v) => updateScenario(active.id, (i) => ({ ...i, tender1: { month: Math.max(0, Math.round(v)), shareLoss: i.tender1?.shareLoss ?? 0.15 } }))} />
-          <FieldPct label="Tender – share verlies" value={active.inputs.tender1?.shareLoss ?? 0}
+          <FieldPct label="Tender — shareverlies" value={active.inputs.tender1?.shareLoss ?? 0}
             onChange={(v) => updateScenario(active.id, (i) => ({ ...i, tender1: { month: i.tender1?.month ?? 6, shareLoss: clamp(v, 0, 0.8) } }))} />
           <FieldNumber label="Ramp-down (maanden)" value={active.inputs.rampDownMonths} min={0} step={1}
             onChange={(v) => updateScenario(active.id, (i) => ({ ...i, rampDownMonths: Math.max(0, Math.round(v)) }))} />
@@ -523,13 +501,13 @@ export default function LOEPage() {
             onChange={(v) => updateScenario(active.id, (i) => ({ ...i, elasticity: clamp(v, 0, 1) }))} />
         </div>
 
-        {/* Health/consistency strip */}
+        {/* Health */}
         <div className="mt-3 text-xs">
           <div className="inline-flex flex-wrap gap-2">
             <Badge ok={activeSim.health.horizonOK} label="Horizon 12–72" />
-            <Badge ok={activeSim.health.tenderOK} label="Tender-instellingen OK" />
+            <Badge ok={activeSim.health.tenderOK} label="Tender ok" />
             <Badge ok={activeSim.health.pctBandsOK} label="Parameters in band" />
-            <Badge ok={activeSim.health.mathOK} label="Berekening OK" />
+            <Badge ok={activeSim.health.mathOK} label="Berekening ok" />
           </div>
           <div className="text-gray-500 mt-1">
             Pre-LOE net (originator): {eur(activeSim.preNet, 0)} • Generiek net (aanname): {eur(activeSim.genericNetAbs, 0)}
@@ -537,7 +515,7 @@ export default function LOEPage() {
         </div>
       </section>
 
-      {/* KPI’s per scenario */}
+      {/* KPI’s per scenario — RESPONSIVE zonder overlap */}
       <section className="rounded-2xl border bg-white p-4">
         <h3 className="text-base font-semibold mb-3">KPI’s — Originator, Generieken en Markt</h3>
         <div className="grid gap-4 md:grid-cols-2">
@@ -547,7 +525,9 @@ export default function LOEPage() {
                 <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: sc.color }} />
                 <div className="font-semibold truncate">{sc.name}</div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+              {/* Auto-fit grid voorkomt overlap, ook bij lange labels */}
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
                 <Kpi title="Originator — Net Y1" value={eur(sim.kpis.orgNetY1)} help={`Ø share Y1: ${pctS(sim.kpis.orgAvgShareY1, 1)}`} />
                 <Kpi title="Originator — EBITDA (Horizon)" value={eur(sim.kpis.orgEbitdaTotal)} help={`Eind-share: ${pctS(sim.kpis.orgEndShare, 1)}`} />
                 <Kpi title="Generieken — Net Y1" value={eur(sim.kpis.genNetY1)} help={`Eind-share: ${pctS(sim.kpis.genEndShare, 1)}`} />
@@ -561,36 +541,28 @@ export default function LOEPage() {
       {/* Grafieken */}
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border bg-white p-4">
-          <h3 className="text-base font-semibold mb-2">Net sales per maand — Originator vs Generieken</h3>
-          <MultiLineChart
-            name="Net sales"
-            series={seriesNetSales}
-            yFmt={(v) => compact(v)}
-          />
+          <h3 className="text-base font-semibold mb-2">Net sales per maand — Originator vs. Generieken</h3>
+          <MultiLineChart name="Net sales" series={seriesNetSales} yFmt={(v) => compact(v)} />
           <p className="text-xs text-gray-600 mt-2">
-            Na LOE schuift volume zichtbaar naar generieken; tender verlaagt originator blijvend (ramp-down bepaalt tempo).
+            Lijnen per scenario en partij. Optellen van originator + generieken ≈ marktontwikkeling.
           </p>
         </div>
 
         <div className="rounded-2xl border bg-white p-4">
-          <h3 className="text-base font-semibold mb-2">Marktaandeel (%) — Originator vs Generieken</h3>
-          <MultiLineChart
-            name="Share %"
-            series={seriesShare}
-            yFmt={(v) => `${v.toFixed(0)}%`}
-          />
-          <p className="text-xs text-gray-600 mt-2">Meer generieken ⇒ snellere share-daling. Tender zet een nieuw, lager niveau (geen herstel).</p>
+          <h3 className="text-base font-semibold mb-2">Marktaandeel (%) — Originator vs. Generieken</h3>
+          <MultiLineChart name="Share %" series={seriesShare} yFmt={(v) => `${v.toFixed(0)}%`} />
+          <p className="text-xs text-gray-600 mt-2">Tender verlaagt het niveau blijvend (geen herstel). Meer generieken ⇒ snellere daling.</p>
         </div>
 
         <div className="rounded-2xl border bg-white p-4 lg:col-span-2">
-          <h3 className="text-base font-semibold mb-2">Netto prijs per unit (€) — Originator vs Generiek</h3>
+          <h3 className="text-base font-semibold mb-2">Netto prijs per unit (€) — Originator vs. Generiek</h3>
           <MultiLineChart
             name="Net €/unit"
             series={seriesNetPrice}
             yFmt={(v) => new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 0 }).format(v)}
           />
           <p className="text-xs text-gray-600 mt-2">
-            Generiek net wordt gemodelleerd als % van pre-LOE net (instelbaar). Originator heeft floor t.o.v. pre-LOE net.
+            Generiek-net is een % van pre-LOE net (instelbaar). Originator heeft een <i>net floor</i> t.o.v. pre-LOE net.
           </p>
         </div>
       </section>
