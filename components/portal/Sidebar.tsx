@@ -1,3 +1,4 @@
+// components/portal/Sidebar.tsx
 "use client";
 
 import Link from "next/link";
@@ -7,6 +8,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type Item = { href: string; label: string };
 
 function isActive(pathname: string, href: string) {
+  // Fix: Dashboard alleen actief op exact /app (of /app/)
+  if (href === "/app") return pathname === "/app" || pathname === "/app/";
   return pathname === href || pathname.startsWith(href + "/");
 }
 
@@ -39,6 +42,7 @@ function NavList({
             <Link
               href={it.href}
               onClick={onItemClick}
+              aria-current={active ? "page" : undefined}
               className={[
                 "block rounded px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sky-400/40",
                 active ? "bg-gray-100 text-gray-900 border-l-2 border-sky-600" : "text-gray-700",
@@ -59,7 +63,10 @@ export default function Sidebar() {
   const panelRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
+  // Sluit mobiel paneel na navigatie (route change)
   useEffect(() => { setOpen(false); }, [pathname]);
+
+  // Klik buiten/ESC → sluiten (mobiel)
   useEffect(() => {
     if (!open) return;
     function onDocClick(e: MouseEvent) {
@@ -88,10 +95,13 @@ export default function Sidebar() {
     { href: "/app/consistency", label: "Consistency" },
     { href: "/app/parallel", label: "Parallel" },
     { href: "/app/gtn", label: "GtN" },
+    // Voeg je LOE-tool toe als je die route hebt:
+    // { href: "/app/loe", label: "LOE Scenario's" },
   ];
 
   const DATA_UPLOAD: Item[] = [
     { href: "/app/upload", label: "Upload masterfile" },
+    { href: "/app/templates", label: "Templates" }, // << nieuw
   ];
 
   const SETTINGS_SUPPORT: Item[] = [
@@ -119,12 +129,14 @@ export default function Sidebar() {
         </div>
       </div>
 
+      {/* Desktop */}
       <div className="hidden md:block p-3 space-y-4">
         <Section title="Analyses"><NavList pathname={pathname} items={ANALYSES} /></Section>
         <Section title="Data & Upload"><NavList pathname={pathname} items={DATA_UPLOAD} /></Section>
         <Section title="Instellingen & Support"><NavList pathname={pathname} items={SETTINGS_SUPPORT} /></Section>
       </div>
 
+      {/* Mobiel */}
       <nav
         id="portal-mobile-menu"
         ref={panelRef}
