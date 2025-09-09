@@ -179,7 +179,7 @@ function repairRows(input: NormalizedRow[], cfg: RepairConfig) {
         message: `Invoiced ≠ Gross − ΣDiscounts (Δ ${eur0((r.invoiced || 0) - invoicedCalc)})`,
         field: "invoiced", src: r.invoiced || 0, calc: invoicedCalc,
       });
-      if (cfg.autoRepair && cfg.precedence === "prefer-calculated")) {
+      if (cfg.autoRepair && cfg.precedence === "prefer-calculated") {
         r.invoiced = invoicedCalc;
         issues.push({
           idx, severity: "info", code: "INV_FIXED",
