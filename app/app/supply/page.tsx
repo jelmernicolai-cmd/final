@@ -61,7 +61,7 @@ async function parseFile(file: File): Promise<UploadResult> {
 
     if (!sku) { issues.push("Rij met lege SKU overgeslagen."); continue; }
     const norm = normalizePeriod(period);
-    if (!norm.ok) { issues.push(`Ongeldige periode: "${period}" (verwacht MM-YYYY)`); continue; }
+    if (!norm.ok) { issues.push(`Ongeldige periode: "${period}" (verwacht MM-YYYY of YYYY-MM)`); continue; }
 
     const key = `${sku}::${norm.value}`;
     if (seen.has(key)) issues.push(`Dubbele rij: ${key} (laatste telt)`);
@@ -521,7 +521,7 @@ export default function SupplyChainOptimizationPage() {
           Bestand kiezen
           <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleBrowse} disabled={busy} />
         </label>
-        <p className="mt-2 text-xs text-gray-500">Kolommen: <code>sku</code>, <code>period</code> (MM-YYYY), <code>inmarket_units</code>.</p>
+        <p className="mt-2 text-xs text-gray-500">Kolommen: <code>sku</code>, <code>period</code> (MM-YYYY <i>of</i> YYYY-MM), <code>inmarket_units</code>.</p>
         {busy && <div className="mt-2 text-sm text-gray-600">Verwerken…</div>}
         {err && <div className="mt-3 inline-block rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</div>}
         {upload?.issues?.length ? (
