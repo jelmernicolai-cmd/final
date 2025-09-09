@@ -8,9 +8,6 @@ import { saveWaterfallRows, eur0 } from "@/lib/waterfall-storage";
 import type { Row } from "@/lib/waterfall-types";
 
 /** ====================== Kleine helpers ====================== */
-const TOLERANCE_EUR = 0.5;                // 50 cent per rij
-const AUTO_REPAIR = true;                 // altijd aan (achter de schermen)
-const PREFER_CALCULATED = true;           // bij mismatch wint herberekend
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const fmtPct = (p: number, d = 1) => `${(p * 100).toFixed(d)}%`;
 
@@ -45,8 +42,9 @@ function splitCSVLine(line: string, delim: string): string[] {
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') {
-      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
-      else inQ = !inQ;
+      if (inQ && line[i + 1] === '"') {
+        cur += '"'; i++;
+      } else inQ = !inQ;
     } else if (ch === delim && !inQ) {
       out.push(cur); cur = "";
     } else {
@@ -58,7 +56,7 @@ function splitCSVLine(line: string, delim: string): string[] {
 }
 
 /** ====================== Nummer normalisatie ====================== */
-/** "1.234,56" → 1234.56, "(123)" → -123, ""/null → 0 */
+/** "1.234,56" → 1234.56, "(123)" → -123, "  " → 0 */
 function parseSmartNumber(v: any): number {
   if (v === null || v === undefined) return 0;
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -69,10 +67,10 @@ function parseSmartNumber(v: any): number {
   const lastComma = s.lastIndexOf(",");
   const lastDot = s.lastIndexOf(".");
   if (lastComma > lastDot) {
-    // NL: punten duizendtallen, komma decimaal
+    // NL-stijl: punten als duizendtal, komma als decimaal
     s = s.replace(/\./g, "").replace(",", ".");
   } else {
-    // EN: komma duizendtallen, punt decimaal
+    // EN-stijl: komma duizendtal, punt decimaal
     s = s.replace(/,/g, "");
   }
   s = s.replace(/[^\d.-]/g, "");
@@ -81,16 +79,22 @@ function parseSmartNumber(v: any): number {
   return neg ? -n : n;
 }
 
-/** ====================== Validatie / Reparatie (achter de schermen) ====================== */
+/** ====================== Validatie / Reparatie ====================== */
 type Severity = "error" | "warning" | "info";
 type Issue = {
-  idx: number;
+  idx: number;                 // rij-index in preview
   severity: Severity;
   code: string;
   message: string;
   field?: keyof NormalizedRow | string;
-  src?: number;
-  calc?: number;
+  src?: number;                // bronwaarde (optioneel)
+  calc?: number;               // berekend (optioneel)
+};
+
+type RepairConfig = {
+  autoRepair: boolean;         // schakelaar
+  tolerance: number;           // euro tolerantie per rij
+  precedence: "prefer-calculated" | "prefer-source"; // wat leidend bij mismatch
 };
 
 function sumDiscounts(r: NormalizedRow): number {
@@ -114,15 +118,15 @@ function sumRebates(r: NormalizedRow): number {
   );
 }
 
-/** Kern: maak alles numeriek & consistent, herstel identiteiten, label credits. */
-function sanitizeAndRepair(input: NormalizedRow[]) {
+/** Post-normalisatie: numeriek forceren, identiteiten herstellen, credits labelen */
+function repairRows(input: NormalizedRow[], cfg: RepairConfig) {
   const rows: NormalizedRow[] = [];
   const issues: Issue[] = [];
 
   input.forEach((src, idx) => {
     const r: NormalizedRow = { ...src };
 
-    // 1) Numeriek forceren en conventies afdwingen
+    // 1) forceer alle numerieke velden + tekenconventies
     const numFields: (keyof NormalizedRow)[] = [
       "gross",
       "d_channel", "d_customer", "d_product", "d_volume", "d_other_sales", "d_mandatory", "d_local",
@@ -137,8 +141,9 @@ function sanitizeAndRepair(input: NormalizedRow[]) {
         issues.push({ idx, severity: "warning", code: "NaN", message: `Niet-numeriek in ${String(k)} → 0`, field: k });
         (r as any)[k] = 0;
       } else {
+        // Kortingen/rebates altijd als positieve magnitude opslaan
         if (String(k).startsWith("d_") || String(k).startsWith("r_")) {
-          (r as any)[k] = Math.abs(n); // d_*/r_* als positieve magnitude
+          (r as any)[k] = Math.abs(n);
           if (n < 0) {
             issues.push({
               idx, severity: "info", code: "NEG_TO_POS",
@@ -151,43 +156,53 @@ function sanitizeAndRepair(input: NormalizedRow[]) {
       }
     });
 
-    // 2) Credits labelen (geen blokkade)
+    // 2) Credits/retours labelen i.p.v. blokkeren
     if ((r.gross || 0) < 0) {
       issues.push({
         idx, severity: "info", code: "CREDIT_CANDIDATE",
         message: "Negatieve gross gedetecteerd (credit/retour)", field: "gross", src: r.gross,
       });
+      // (optioneel) als qty/doc_type beschikbaar zijn, kun je hier extra signaallogica toevoegen
     }
 
-    // 3) Identiteiten controleren & repareren
+    // 3) Identiteiten controleren en evt. herstellen
     const disc = sumDiscounts(r);
     const reb = sumRebates(r);
     const invoicedCalc = (r.gross || 0) - disc;
     const netCalc = (r.invoiced ?? invoicedCalc) - reb;
+    const tol = cfg.tolerance;
 
-    if (!Number.isFinite(r.invoiced) || Math.abs((r.invoiced || 0) - invoicedCalc) > TOLERANCE_EUR) {
+    // a) Invoiced
+    if (!Number.isFinite(r.invoiced) || Math.abs((r.invoiced || 0) - invoicedCalc) > tol) {
       issues.push({
         idx, severity: "warning", code: "INV_MISMATCH",
         message: `Invoiced ≠ Gross − ΣDiscounts (Δ ${eur0((r.invoiced || 0) - invoicedCalc)})`,
         field: "invoiced", src: r.invoiced || 0, calc: invoicedCalc,
       });
-      if (AUTO_REPAIR && PREFER_CALCULATED) {
+      if (cfg.autoRepair && cfg.precedence === "prefer-calculated") {
         r.invoiced = invoicedCalc;
-        issues.push({ idx, severity: "info", code: "INV_FIXED", message: "Invoiced herberekend uit Gross − ΣDiscounts", field: "invoiced", calc: invoicedCalc });
+        issues.push({
+          idx, severity: "info", code: "INV_FIXED",
+          message: "Invoiced herberekend uit Gross − ΣDiscounts", field: "invoiced", calc: invoicedCalc,
+        });
       }
     }
 
-    const netDelta = Math.abs((r.net || 0) - netCalc);
-    if (!Number.isFinite(r.net) || netDelta > TOLERANCE_EUR) {
-      const sev: Severity = AUTO_REPAIR && PREFER_CALCULATED ? "warning" : "error";
+    // b) Net
+    if (!Number.isFinite(r.net) || Math.abs((r.net || 0) - netCalc) > tol) {
+      // error tenzij we direct herstellen
+      const sev: Severity = cfg.autoRepair && cfg.precedence === "prefer-calculated" ? "warning" : "error";
       issues.push({
         idx, severity: sev, code: "NET_MISMATCH",
         message: `Net ≠ Invoiced − ΣRebates (Δ ${eur0((r.net || 0) - netCalc)})`,
         field: "net", src: r.net || 0, calc: netCalc,
       });
-      if (AUTO_REPAIR && PREFER_CALCULATED) {
+      if (cfg.autoRepair && cfg.precedence === "prefer-calculated") {
         r.net = netCalc;
-        issues.push({ idx, severity: "info", code: "NET_FIXED", message: "Net herberekend uit Invoiced − ΣRebates", field: "net", calc: netCalc });
+        issues.push({
+          idx, severity: "info", code: "NET_FIXED",
+          message: "Net herberekend uit Invoiced − ΣRebates", field: "net", calc: netCalc,
+        });
       }
     }
 
@@ -202,51 +217,69 @@ function sanitizeAndRepair(input: NormalizedRow[]) {
     rows.push(r);
   });
 
-  // Dubbelen (period,cust,sku)
+  // Dubbele sleutel detectie
   const seen = new Map<string, number>();
   rows.forEach((r, idx) => {
     const key = `${r.period}::${r.cust}::${r.sku}`;
     if (seen.has(key)) {
-      issues.push({ idx, severity: "warning", code: "DUP_KEY", message: "Dubbele sleutel (period,cust,sku) – totalen kunnen dubbel tellen" });
+      issues.push({
+        idx, severity: "warning", code: "DUP_KEY",
+        message: "Dubbele sleutel (period,cust,sku) – totalen kunnen dubbel tellen",
+      });
     } else {
       seen.set(key, idx);
     }
   });
 
-  return { rows, issues };
+  // Tellingen
+  const creditsCount = rows.filter((r) => (r.gross || 0) < 0).length;
+
+  const summary = {
+    errors: issues.filter((i) => i.severity === "error").length,
+    warnings: issues.filter((i) => i.severity === "warning").length,
+    infos: issues.filter((i) => i.severity === "info").length,
+    credits: creditsCount,
+  };
+
+  return { rows, issues, summary };
 }
 
-/** ====================== Totalen / Reconciliatie ====================== */
+/** ====================== Totalen (reconciliatie) ====================== */
 function buildTotals(rows: NormalizedRow[]) {
-  let gross = 0, absGross = 0, disc = 0, reb = 0, invSrc = 0, netSrc = 0;
+  let gross = 0, absGross = 0,
+      disc = 0, reb = 0,
+      invoicedSrc = 0, netSrc = 0;
+
   for (const x of rows) {
     const g = x.gross || 0;
     gross += g;
     absGross += Math.abs(g);
     disc += sumDiscounts(x);
     reb += sumRebates(x);
-    invSrc += x.invoiced || 0;
+    invoicedSrc += x.invoiced || 0;
     netSrc += x.net || 0;
   }
-  const invCalc = gross - disc;
-  const netCalc = invCalc - reb;
+  const invoicedCalc = gross - disc;
+  const netCalc = invoicedCalc - reb;
+
   return {
     gross,
     absGross,
     discounts: disc,
     rebates: reb,
-    invoicedSrc: invSrc,
+    invoicedSrc,
     netSrc,
-    invoicedCalc: invCalc,
+    invoicedCalc,
     netCalc,
-    diffInvoiced: invSrc - invCalc,
-    diffNet: netSrc - netCalc,
+    diffInvoiced: (invoicedSrc || 0) - invoicedCalc,
+    diffNet: (netSrc || 0) - netCalc,
+    // percentages op |gross| of |invoicedCalc| voor stabiliteit
     discPct: absGross ? disc / absGross : 0,
-    rebPct: Math.abs(invCalc) ? reb / Math.abs(invCalc) : 0,
+    rebPct: Math.abs(invoicedCalc) ? reb / Math.abs(invoicedCalc) : 0,
   };
 }
 
-/** ====================== Shape voor opslag ====================== */
+/** ====================== Storage-shape ====================== */
 function toRowShape(input: NormalizedRow[]): Row[] {
   return input.map((r) => {
     const row: any = {
@@ -290,12 +323,15 @@ function issuesToCSV(issues: Issue[]) {
   ];
   const csv = rows
     .map((r) =>
-      r.map((c) => {
-        const s = String(c);
-        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-      }).join(","),
+      r
+        .map((c) => {
+          const s = String(c);
+          return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        })
+        .join(",")
     )
     .join("\n");
+
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -306,22 +342,25 @@ function issuesToCSV(issues: Issue[]) {
 
 /** ====================== Types voor paginaresultaat ====================== */
 type ParseResult = {
-  report: ReturnType<typeof normalizeRows>;
-  normalized: NormalizedRow[];
-  issues: Issue[];
+  report: ReturnType<typeof normalizeRows>;                // uit schema-normalisatie
+  normalized: NormalizedRow[];                             // na onze reparaties
+  issues: Issue[];                                         // gecombineerde issues
+  summary: { errors: number; warnings: number; infos: number; credits: number };
   totals: ReturnType<typeof buildTotals>;
-  errorCount: number;
-  warningCount: number;
-  infoCount: number;
-  creditCount: number;
 };
 
-/** ====================== Component (UI vrijwel ongewijzigd) ====================== */
+/** ====================== Component ====================== */
 export default function UploadPage() {
   const [dragOver, setDragOver] = useState(false);
-  const [result, setResult] = useState<ParseResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Ingest-instellingen
+  const [autoRepair, setAutoRepair] = useState(true);
+  const [precedence, setPrecedence] = useState<RepairConfig["precedence"]>("prefer-calculated");
+  const [tolerance, setTolerance] = useState(0.5); // 50 cent per rij
+
+  const [result, setResult] = useState<ParseResult | null>(null);
 
   const handleDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -333,7 +372,7 @@ export default function UploadPage() {
   const handleBrowse = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) await handleFile(file);
-    e.currentTarget.value = ""; // zelfde bestand opnieuw kunnen kiezen
+    e.currentTarget.value = ""; // opnieuw hetzelfde bestand selecteerbaar
   };
 
   async function handleFile(file: File) {
@@ -359,40 +398,38 @@ export default function UploadPage() {
         throw new Error("Ondersteunde formaten: .xlsx, .xls of .csv");
       }
 
-      // 1) Normaliseren volgens schema
+      // 1) Normaliseer volgens je schema (mappen header-synoniemen etc.)
       const base = normalizeRows(rows);
 
-      // 2) Extra sanitatie + auto-repair (achter de schermen)
-      const repaired = sanitizeAndRepair(base.preview);
+      // 2) Extra validatie en reparaties
+      const cfg: RepairConfig = { autoRepair, tolerance, precedence };
+      const repaired = repairRows(base.preview, cfg);
 
-      // 3) Totalen/reconciliatie
+      // 3) Totale reconciliatie
       const totals = buildTotals(repaired.rows);
 
-      // 4) Tellingen
-      const errorCount = repaired.issues.filter((i) => i.severity === "error").length;
-      const warningCount = repaired.issues.filter((i) => i.severity === "warning").length;
-      const infoCount = repaired.issues.filter((i) => i.severity === "info").length;
-      const creditCount = repaired.rows.filter((r) => (r.gross || 0) < 0).length;
+      // 4) Verzamel issues (schema-issues + onze issues)
+      const combinedIssues: Issue[] = [
+        // neem schema-issues op als warnings (of error, afhankelijk van jouw implementatie)
+        ...base.issues.map((m, i) => ({ idx: -1, severity: "warning" as Severity, code: "SCHEMA", message: m })),
+        ...repaired.issues,
+      ];
 
-      setResult({
+      // 5) Bouw resultaat
+      const pr: ParseResult = {
         report: base,
         normalized: repaired.rows,
-        issues: [
-          // Neem schema-issues op als warnings
-          ...base.issues.map((m) => ({ idx: -1, severity: "warning" as Severity, code: "SCHEMA", message: m })),
-          ...repaired.issues,
-        ],
+        issues: combinedIssues,
+        summary: repaired.summary,
         totals,
-        errorCount,
-        warningCount,
-        infoCount,
-        creditCount,
-      });
+      };
+      setResult(pr);
 
+      // 6) Topline melding
       if (!base.ok) {
         setErr("Bestand verwerkt, maar kernkolommen ontbreken of veel ongeldige rijen. Zie validatie hieronder.");
-      } else if (errorCount > 0) {
-        setErr("Er zijn valideringsfouten (errors). Corrigeer de bron en upload opnieuw.");
+      } else if (repaired.summary.errors > 0 && !autoRepair) {
+        setErr("Er zijn valideringsfouten (errors). Zet ‘Auto-repair’ aan of corrigeer de bron en upload opnieuw.");
       }
     } catch (e: any) {
       console.error(e);
@@ -402,41 +439,14 @@ export default function UploadPage() {
     }
   }
 
-  function toRowShape(input: NormalizedRow[]): Row[] {
-    return input.map((r) => {
-      const row: any = {
-        period: r.period,
-        cust: r.cust,
-        pg: r.pg,
-        sku: r.sku,
-        gross: r.gross,
-        d_channel: r.d_channel,
-        d_customer: r.d_customer,
-        d_product: r.d_product,
-        d_volume: r.d_volume,
-        d_other_sales: r.d_other_sales,
-        d_mandatory: r.d_mandatory,
-        d_local: r.d_local,
-        invoiced: r.invoiced,
-        r_direct: r.r_direct,
-        r_prompt: r.r_prompt,
-        r_indirect: r.r_indirect,
-        r_mandatory: r.r_mandatory,
-        r_local: r.r_local,
-        net: r.net,
-      };
-      return row as Row;
-    });
-  }
-
   function onSave() {
     if (!result) return;
     if (!result.report.ok) {
-      alert("Dataset is niet OK volgens schema. Corrigeer de bron (headers/velden).");
+      alert("Dataset is niet OK volgens schema. Corrigeer eerst de bron.");
       return;
     }
-    if (result.errorCount > 0) {
-      alert("Er zijn nog errors. Corrigeer de bron en upload opnieuw.");
+    if (result.summary.errors > 0) {
+      alert("Er zijn nog errors. Zet Auto-repair aan of corrigeer de bron en upload opnieuw.");
       return;
     }
     const rows = toRowShape(result.normalized);
@@ -472,7 +482,7 @@ export default function UploadPage() {
           <div className="font-semibold">
             {eur0(t.invoicedSrc)} <span className="text-gray-500">vs</span> {eur0(t.invoicedCalc)}
           </div>
-          <div className={`text-xs mt-1 ${Math.abs(t.diffInvoiced) > TOLERANCE_EUR ? "text-amber-700" : "text-gray-500"}`}>
+          <div className={`text-xs mt-1 ${Math.abs(t.diffInvoiced) > tolerance ? "text-amber-700" : "text-gray-500"}`}>
             Δ {eur0(t.diffInvoiced)}
           </div>
         </div>
@@ -487,19 +497,19 @@ export default function UploadPage() {
           <div className="font-semibold">
             {eur0(t.netSrc)} <span className="text-gray-500">vs</span> {eur0(t.netCalc)}
           </div>
-          <div className={`text-xs mt-1 ${Math.abs(t.diffNet) > TOLERANCE_EUR ? "text-amber-700" : "text-gray-500"}`}>
+          <div className={`text-xs mt-1 ${Math.abs(t.diffNet) > tolerance ? "text-amber-700" : "text-gray-500"}`}>
             Δ {eur0(t.diffNet)}
           </div>
         </div>
       </div>
     );
-  }, [result]);
+  }, [result, tolerance]);
 
-  const canSave = !!result?.report.ok && (result?.errorCount ?? 0) === 0;
+  const canSave = !!result?.report.ok && (result?.summary.errors ?? 0) === 0;
 
   return (
     <div className="space-y-6">
-      {/* Header (ongewijzigd) */}
+      {/* Header */}
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Upload – Masterdataset</h1>
@@ -513,7 +523,43 @@ export default function UploadPage() {
         </div>
       </header>
 
-      {/* Dropzone (ongewijzigd uiterlijk) */}
+      {/* Ingest-instellingen */}
+      <section className="rounded-2xl border bg-white p-4">
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))] items-end">
+          <label className="text-sm inline-flex items-center gap-2">
+            <input type="checkbox" checked={autoRepair} onChange={(e) => setAutoRepair(e.target.checked)} />
+            <span>Auto-repair inconsistenties</span>
+          </label>
+          <label className="text-sm">
+            <div className="font-medium">Tolerantie (€/rij)</div>
+            <input
+              type="number"
+              step={0.1}
+              min={0}
+              value={tolerance}
+              onChange={(e) => setTolerance(clamp(parseFloat(e.target.value) || 0, 0, 100))}
+              className="mt-1 w-32 rounded-lg border px-3 py-2"
+            />
+          </label>
+          <label className="text-sm">
+            <div className="font-medium">Voorrang bij mismatch</div>
+            <select
+              value={precedence}
+              onChange={(e) => setPrecedence(e.target.value as any)}
+              className="mt-1 rounded-lg border px-3 py-2 w-56"
+            >
+              <option value="prefer-calculated">Herberekende waarden laten winnen</option>
+              <option value="prefer-source">Bronwaarden laten winnen (alleen signaleren)</option>
+            </select>
+          </label>
+        </div>
+        <p className="text-xs text-gray-600 mt-2">
+          We corrigeren o.a. decimalen/tekens, negatieve d_/r_ naar positief (conventie), en herberekenen <i>invoiced</i>/<i>net</i> vanuit de identiteiten.
+          Credits/retours (gross &lt; 0) zijn toegestaan en worden gelabeld.
+        </p>
+      </section>
+
+      {/* Dropzone */}
       <section
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
@@ -529,26 +575,16 @@ export default function UploadPage() {
           <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleBrowse} disabled={busy} />
         </label>
         <p className="mt-2 text-xs text-gray-500">
-          Headers mogen variëren; we herkennen synoniemen en repareren decimalen/tekens automatisch. Credits/retours zijn toegestaan.
+          Headers mogen variëren; we herkennen synoniemen (schema), en repareren decimalen/negatieven automatisch.
         </p>
         {busy && <div className="mt-2 text-sm text-gray-600">Bezig met verwerken…</div>}
         {err && <div className="mt-3 inline-block rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</div>}
       </section>
 
-      {/* Tip-blok (ongewijzigd idee, korte tekst) */}
-      <section className="rounded-2xl border bg-white p-4">
-        <h2 className="text-base font-semibold">Werkafspraak (aanrader)</h2>
-        <ul className="list-disc pl-5 text-sm text-gray-700 mt-2 space-y-1">
-          <li>Definities afstemmen met Finance: <i>Gross</i>, Σ<i>Discounts</i>, Σ<i>Rebates</i>, <i>Invoiced</i>, <i>Net</i>.</li>
-          <li>Periodes als <code>YYYY-MM</code>; unieke sleutel per rij: (SKU, klant, periode).</li>
-          <li>Negatieve bedragen bij retours/credits zijn oké; kortingen/rebates blijven positief (magnitude).</li>
-        </ul>
-      </section>
-
-      {/* Resultaat (zelfde structuur, meer checks onder water) */}
+      {/* Validatieresultaat */}
       {result && (
-        <section className="rounded-2xl border bg-white p-4 space-y-3">
-          <h2 className="text-lg font-semibold">Resultaat validatie</h2>
+        <section className="rounded-2xl border bg-white p-4 space-y-4">
+          <h2 className="text-lg font-semibold">Validatie & reparaties</h2>
 
           {/* Samenvatting */}
           <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
@@ -559,25 +595,29 @@ export default function UploadPage() {
             <div className="rounded-lg border p-3 text-sm">
               <div className="text-gray-500">Errors / Warnings / Info</div>
               <div className="font-semibold">
-                {result.errorCount} / {result.warningCount} / {result.infoCount}
+                {result.summary.errors} / {result.summary.warnings} / {result.summary.infos}
               </div>
             </div>
             <div className="rounded-lg border p-3 text-sm">
+              <div className="text-gray-500">Schema status</div>
+              <div className="font-semibold">{result.report.ok ? "OK" : "Niet OK"}</div>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
               <div className="text-gray-500">Credit/retour rijen</div>
-              <div className="font-semibold">{result.creditCount}</div>
+              <div className="font-semibold">{result.summary.credits}</div>
             </div>
           </div>
 
-          {/* Reconciliatie totalen */}
-          <div className="rounded-lg border p-3 text-sm">
-            <div className="font-medium mb-2">Reconciliatie (totalen)</div>
+          {/* Reconciliatie */}
+          <div>
+            <div className="text-sm font-medium mb-2">Reconciliatie (totalen)</div>
             {totalsBox}
             <p className="text-xs text-gray-600 mt-2">
-              Verwacht: <b>Invoiced ≈ Gross − ΣDiscounts</b> en <b>Net ≈ Invoiced − ΣRebates</b>. Percentages op basis van <b>|Gross|</b>.
+              We verwachten <b>Invoiced ≈ Gross − ΣDiscounts</b> en <b>Net ≈ Invoiced − ΣRebates</b>. Percentages op basis van <b>|Gross|</b> voor stabiliteit bij credits.
             </p>
           </div>
 
-          {/* Ontbrekende velden + schema-issues */}
+          {/* Schema-meldingen */}
           {result.report.missing.length > 0 && (
             <div className="rounded-lg border p-3 text-sm text-amber-800 bg-amber-50 border-amber-200">
               Ontbrekende velden die we niet konden mappen: {result.report.missing.join(", ")}
@@ -592,44 +632,44 @@ export default function UploadPage() {
             </div>
           )}
 
-          {/* Issues lijst + export (compact gehouden) */}
-          {result.issues.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium">Issues (eerste 100)</div>
+          {/* Issues (top 200) + export */}
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium">Issues (eerste 200)</div>
+              <div className="flex gap-2">
                 <button className="text-sm rounded border px-3 py-1.5 hover:bg-gray-50" onClick={() => issuesToCSV(result.issues)}>
                   Exporteer issues (CSV)
                 </button>
               </div>
-              <div className="mt-2 w-full overflow-x-auto">
-                <table className="w-full text-sm border-collapse min-w-[760px]">
-                  <thead>
-                    <tr className="border-b bg-gray-50">
-                      <th className="text-left py-2 px-2">#</th>
-                      <th className="text-left py-2 px-2">Severity</th>
-                      <th className="text-left py-2 px-2">Code</th>
-                      <th className="text-left py-2 px-2">Field</th>
-                      <th className="text-left py-2 px-2">Message</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.issues.slice(0, 100).map((i, idx) => (
-                      <tr key={idx} className="border-b last:border-0">
-                        <td className="py-1 px-2">{i.idx >= 0 ? i.idx : "-"}</td>
-                        <td className="py-1 px-2">{i.severity}</td>
-                        <td className="py-1 px-2">{i.code}</td>
-                        <td className="py-1 px-2">{i.field ?? ""}</td>
-                        <td className="py-1 px-2">{i.message}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
-          )}
+            <div className="mt-2 w-full overflow-x-auto">
+              <table className="w-full text-sm border-collapse min-w-[760px]">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left py-2 px-2">#</th>
+                    <th className="text-left py-2 px-2">Severity</th>
+                    <th className="text-left py-2 px-2">Code</th>
+                    <th className="text-left py-2 px-2">Field</th>
+                    <th className="text-left py-2 px-2">Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.issues.slice(0, 200).map((i, idx) => (
+                    <tr key={idx} className="border-b last:border-0">
+                      <td className="py-1 px-2">{i.idx >= 0 ? i.idx : "-"}</td>
+                      <td className="py-1 px-2">{i.severity}</td>
+                      <td className="py-1 px-2">{i.code}</td>
+                      <td className="py-1 px-2">{i.field ?? ""}</td>
+                      <td className="py-1 px-2">{i.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-          {/* Acties (ongewijzigd uiterlijk) */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Acties */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             <button
               className={`rounded-lg px-4 py-2 text-sm border ${canSave ? "bg-sky-600 text-white hover:bg-sky-700" : "opacity-50 cursor-not-allowed"}`}
               disabled={!canSave}
