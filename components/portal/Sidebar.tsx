@@ -105,7 +105,7 @@ export default function Sidebar() {
   ];
 
   const SETTINGS_SUPPORT: Item[] = [
-    { href: "/app/settings", label: "Instellingen" },
+    { href: "/app/settings", label: "Instellingen!" },
     { href: "/contact", label: "Contact & Support" },
   ];
 
