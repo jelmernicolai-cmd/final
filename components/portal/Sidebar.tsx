@@ -94,7 +94,8 @@ export default function Sidebar() {
     { href: "/app/waterfall", label: "Waterfall" },
     { href: "/app/consistency", label: "Consistency" },
     { href: "/app/parallel", label: "Parallel" },
-     { href: "/app/loe", label: "LOE Scenario's" }, 
+    { href: "/app/supply", label: "Stock Management" },
+    { href: "/app/loe", label: "LoE Scenario's" }, 
     // Voeg je LOE-tool toe als je die route hebt:
     // { href: "/app/loe", label: "LOE Scenario's" },
   ];
@@ -105,7 +106,7 @@ export default function Sidebar() {
   ];
 
   const SETTINGS_SUPPORT: Item[] = [
-    { href: "/app/settings", label: "Instellingen!" },
+    { href: "/app/settings", label: "Instellingen" },
     { href: "/contact", label: "Contact & Support" },
   ];
 
