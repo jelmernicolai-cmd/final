@@ -641,3 +641,168 @@ export default function SupplyChainOptimizationPage() {
                           <table className="w-full text-sm mt-2 border-collapse">
                             <thead><tr className="border-b bg-gray-50">
                               <th className="text-left px-2 py-1">Klant</th>
+                              <th className="text-right px-2 py-1">Share</th>
+                              <th className="text-right px-2 py-1">Units</th>
+                            </tr></thead>
+                            <tbody>
+                            {alloc.rows.map((r, i) => (
+                              <tr key={i} className="border-b last:border-0">
+                                <td className="px-2 py-1">{r.customer}</td>
+                                <td className="px-2 py-1 text-right">{fmt(r.share, 1)}%</td>
+                                <td className="px-2 py-1 text-right">{fmt(r.allocUnits)}</td>
+                              </tr>
+                            ))}
+                            </tbody>
+                          </table>
+                          <div className="text-xs text-gray-600 mt-2">
+                            Som allocaties: <b>{fmt(alloc.rows.reduce((a, r) => a + r.allocUnits, 0))}</b> &nbsp;|&nbsp; Forecast P50: <b>{fmt(forecasts.get(selectedSKU)?.fc[0]?.p50 ?? 0)}</b>
+                            {caseSize && caseSize > 1 ? " (afrondingsverschil mogelijk door case rounding)" : ""}
+                          </div>
+                        </>
+                      ) : <div className="text-sm text-gray-600">Geen allocatie berekend.</div>}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <button className="text-sm rounded border px-3 py-1.5 hover:bg-gray-50" onClick={exportForecastCSV}>Exporteer Forecast (CSV)</button>
+                    <button className="text-sm rounded border px-3 py-1.5 hover:bg-gray-50" onClick={exportAllocationsCSV}>Exporteer Allocaties (CSV)</button>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </section>
+      )}
+
+      {/* Footer note */}
+      <section className="rounded-2xl border bg-white p-4">
+        <div className="text-xs text-gray-600">
+          <b>Definities</b>: in-market = door groothandel aan apotheken geleverde stuks (NL). PI buiten scope. SKU = interne productcode/naam.
+          Forecast houdt rekening met seizoenseffecten (indien te herkennen) en werkdagen (ma–vr, plus optionele extra sluitdagen).
+          Alle berekeningen draaien lokaal in je browser (geen PII/geen serverupload).
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/** ============ Kleine sub-components ============ */
+function SimpleLine({ name, color, xs, ys }: { name: string; color: string; xs: string[]; ys: number[] }) {
+  // compact responsive SVG
+  const w = 960, h = 220, padX = 48, padY = 26;
+  const n = ys.length;
+  const maxY = Math.max(1, ...ys);
+  const minY = 0;
+  const x = (i: number) => padX + (i / Math.max(1, n - 1)) * (w - 2 * padX);
+  const y = (v: number) => h - padY - ((v - minY) / (maxY - minY)) * (h - 2 * padY);
+  const ticks = Array.from({ length: 5 }, (_, i) => (maxY / 4) * i);
+  const d = ys.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
+  return (
+    <svg className="w-full h-auto" viewBox={`0 0 ${w} ${h}`} role="img" aria-label={name} preserveAspectRatio="xMidYMid meet">
+      <rect x={12} y={12} width={w - 24} height={h - 24} rx={16} fill="#fff" stroke="#e5e7eb" />
+      {ticks.map((tv, i) => (
+        <g key={i}>
+          <line x1={padX} y1={y(tv)} x2={w - padX} y2={y(tv)} stroke="#f3f4f6" />
+          <text x={padX - 8} y={y(tv) + 4} fontSize="10" textAnchor="end" fill="#6b7280">{fmt(tv)}</text>
+        </g>
+      ))}
+      <path d={d} fill="none" stroke={color} strokeWidth={2} />
+      {ys.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r={2} fill={color} />)}
+      <text x={w - padX} y={y(ys.at(-1) || 0) - 6} fontSize="10" textAnchor="end" fill={color}>{name}</text>
+      {/* X labels (sparse) */}
+      {xs.map((t, i) => i % Math.ceil(xs.length / 8) === 0 ? (
+        <text key={i} x={x(i)} y={h - 6} fontSize="10" textAnchor="middle" fill="#6b7280">{t}</text>
+      ) : null)}
+    </svg>
+  );
+}
+
+function MonthEditor({ values, onChange }: { values: Record<string, number>; onChange: (v: Record<string, number>) => void }) {
+  const [key, setKey] = useState("");
+  const [val, setVal] = useState<number>(0);
+  return (
+    <div className="text-sm">
+      <div className="flex items-end gap-2">
+        <label className="w-40">
+          <div className="font-medium">Maand (MM-YYYY)</div>
+          <input value={key} onChange={(e) => setKey(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="03-2025" />
+        </label>
+        <label className="w-36">
+          <div className="font-medium">Extra gesloten dagen</div>
+          <input type="number" min={0} step={1} value={val} onChange={(e) => setVal(Math.max(0, Math.round(parseFloat(e.target.value) || 0)))}
+                 className="mt-1 w-full rounded-lg border px-3 py-2" />
+        </label>
+        <button
+          className="rounded border px-3 py-2 hover:bg-gray-50"
+          onClick={() => { if (/^\d{2}-\d{4}$/.test(key)) onChange({ ...values, [key]: val }); }}
+        >
+          Opslaan
+        </button>
+      </div>
+      {Object.keys(values).length > 0 && (
+        <div className="mt-3 rounded border p-2">
+          <div className="text-xs text-gray-600 mb-1">Huidige uitzonderingen</div>
+          <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            {Object.entries(values).map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between">
+                <div>{k}</div>
+                <div className="flex items-center gap-2">
+                  <div>{v}</div>
+                  <button className="text-xs rounded border px-2 py-1 hover:bg-gray-50"
+                          onClick={() => { const c = { ...values }; delete c[k]; onChange(c); }}>
+                    Verwijder
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MonthPctEditor({ values, onChange }: { values: Record<string, number>; onChange: (v: Record<string, number>) => void }) {
+  const [key, setKey] = useState("");
+  const [val, setVal] = useState<number>(0);
+  return (
+    <div className="text-sm">
+      <div className="flex items-end gap-2">
+        <label className="w-40">
+          <div className="font-medium">Maand (MM-YYYY)</div>
+          <input value={key} onChange={(e) => setKey(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="03-2025" />
+        </label>
+        <label className="w-36">
+          <div className="font-medium">Impact (±%)</div>
+          <input type="number" min={-50} max={50} step={0.5} value={val}
+                 onChange={(e) => setVal(parseFloat(e.target.value) || 0)} className="mt-1 w-full rounded-lg border px-3 py-2" />
+        </label>
+        <button
+          className="rounded border px-3 py-2 hover:bg-gray-50"
+          onClick={() => { if (/^\d{2}-\d{4}$/.test(key)) onChange({ ...values, [key]: clamp(val/100, -0.5, 0.5) }); }}
+        >
+          Opslaan
+        </button>
+      </div>
+      {Object.keys(values).length > 0 && (
+        <div className="mt-3 rounded border p-2">
+          <div className="text-xs text-gray-600 mb-1">Huidige exogene aanpassingen</div>
+          <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            {Object.entries(values).map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between">
+                <div>{k}</div>
+                <div className="flex items-center gap-2">
+                  <div>{pctS(v, 1)}</div>
+                  <button className="text-xs rounded border px-2 py-1 hover:bg-gray-50"
+                          onClick={() => { const c = { ...values }; delete c[k]; onChange(c); }}>
+                    Verwijder
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
