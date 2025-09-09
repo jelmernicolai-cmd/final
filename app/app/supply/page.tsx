@@ -40,20 +40,23 @@ const toNum = (v: any): number => {
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
-function normalizePeriod(s: string): { ok: boolean; value: string } {
+/** STRICT: alleen YYYY-MM toegestaan */
+function normalizePeriodStrictYYYYMM(s: string): { ok: boolean; value: string; reason?: string } {
   const a = (s ?? "").toString().trim();
-  const m1 = /^(\d{2})-(\d{4})$/.exec(a); // MM-YYYY
-  const m2 = /^(\d{4})-(\d{2})$/.exec(a); // YYYY-MM
-  if (m1) return { ok: true, value: `${m1[1]}-${m1[2]}` };
-  if (m2) return { ok: true, value: `${m2[2]}-${m2[1]}` };
-  return { ok: false, value: a };
+  const m = /^(\d{4})-(\d{2})$/.exec(a); // YYYY-MM
+  if (!m) return { ok: false, value: a, reason: "Formaat moet YYYY-MM zijn (bijv. 2025-09)." };
+  const yyyy = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  if (mm < 1 || mm > 12) return { ok: false, value: a, reason: "Maand moet 01..12 zijn." };
+  if (yyyy < 2000 || yyyy > 2100) return { ok: false, value: a, reason: "Jaar buiten bereik (2000..2100)." };
+  return { ok: true, value: `${yyyy}-${m[2]}` };
 }
 
 function periodToDate(per: string): Date | null {
-  const m = /^(\d{2})-(\d{4})$/.exec(per);
+  const m = /^(\d{4})-(\d{2})$/.exec(per);
   if (!m) return null;
-  const mm = parseInt(m[1], 10);
-  const yyyy = parseInt(m[2], 10);
+  const yyyy = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
   if (mm < 1 || mm > 12) return null;
   return new Date(yyyy, mm - 1, 1);
 }
@@ -63,10 +66,10 @@ function addMonths(d: Date, k: number): Date {
   nd.setDate(1);
   return nd;
 }
-function fmtPeriod(d: Date): string {
+function fmtPeriodYYYYMM(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yy = d.getFullYear();
-  return `${mm}-${yy}`;
+  return `${yy}-${mm}`;
 }
 
 function workingDaysInMonth(y: number, m: number): number {
@@ -81,11 +84,11 @@ function workingDaysInMonth(y: number, m: number): number {
 }
 const WD_BASE = 21;
 
-/** ===================== NL3 parser (breed diagonaal) ===================== */
+/** ===================== NL3 parser (breed diagonaal, labels = YYYY-MM) ===================== */
 /**
  * Verwacht sheet met:
- * - Row 0: header B.. = maanden (MM-YYYY), herhaald K keer (K = # SKUs)
- * - Col 0: "SKU" in row 0, daaronder in rows 1..K de SKU-namen
+ * - Row 0: header B.. = maanden (YYYY-MM), herhaald K keer (K = # SKU’s)
+ * - Col 0: "SKU" in row 0, daaronder (rows 1..K) de SKU-namen (vaste volgorde)
  * - Per maandblok K kolommen; i-de kolom in blok hoort bij i-de SKU-rij (diagonaal)
  */
 function groupConsecutiveIndices<T>(arr: T[], getLabel: (x: T) => string) {
@@ -105,21 +108,34 @@ function groupConsecutiveIndices<T>(arr: T[], getLabel: (x: T) => string) {
   return groups;
 }
 
-function looksLikeNL3(aoa: any[][]) {
+function looksLikeNL3YYYY(aoa: any[][], issues: string[]) {
   if (!aoa?.length) return false;
   const a00 = (aoa[0]?.[0] ?? "").toString().trim().toLowerCase();
   if (a00 !== "sku") return false;
+
   const hdr = aoa[0].slice(1).map((x: any) => (x ?? "").toString().trim());
-  const validMonths = hdr.filter((h: string) => normalizePeriod(h).ok);
-  if (validMonths.length < 2) return false;
-  const hasRepeats = validMonths.some((h: string, idx: number) => validMonths.indexOf(h) !== idx);
+  if (!hdr.length) return false;
+
+  // Check dat alle non-empty headers YYYY-MM zijn
+  let okCount = 0;
+  for (const h of hdr) {
+    if (!h) continue;
+    const n = normalizePeriodStrictYYYYMM(h);
+    if (n.ok) okCount++;
+    else issues.push(`Header '${h}' is ongeldig: ${n.reason}`);
+  }
+  if (okCount < 2) return false;
+
+  // Herhalingen (per maand K kolommen)
+  const hasRepeats = hdr.some((h, idx) => h && hdr.indexOf(h) !== idx);
   return hasRepeats;
 }
 
-function parseWideNL3(aoa: any[][]): Parsed {
+function parseWideNL3YYYY(aoa: any[][]): Parsed {
   const issues: string[] = [];
-  if (!looksLikeNL3(aoa)) {
-    return { rows: [], issues: ["Bestand lijkt geen NL3-format."], skus: [] };
+  if (!looksLikeNL3YYYY(aoa, issues)) {
+    if (!issues.length) issues.push("Bestand lijkt geen NL3 (YYYY-MM) format te hebben.");
+    return { rows: [], issues, skus: [] };
   }
 
   // SKU-lijst (col 0, vanaf row 1 tot lege cel)
@@ -137,24 +153,26 @@ function parseWideNL3(aoa: any[][]): Parsed {
   const rows: RawRow[] = [];
 
   for (const g of groups) {
-    const norm = normalizePeriod(g.label);
-    if (!norm.ok) {
-      issues.push(`Overgeslagen: ongeldige maandheader '${g.label}'.`);
+    if (!g.label) continue;
+    const n = normalizePeriodStrictYYYYMM(g.label);
+    if (!n.ok) {
+      issues.push(`Overgeslagen: ongeldige maandheader '${g.label}' (${n.reason}).`);
       continue;
     }
+
     if (g.indices.length >= K) {
       // diagonaal
       for (let i = 0; i < K; i++) {
         const colIdx = 1 + g.indices[i];
         const val = Math.max(0, Math.round(toNum(aoa[1 + i]?.[colIdx])));
-        rows.push({ sku: skuList[i], period: norm.value, inmarket_units: val });
+        rows.push({ sku: skuList[i], period: n.value, inmarket_units: val });
       }
     } else if (g.indices.length === 1) {
-      // één kolom voor alle SKUs (fallback)
+      // Eén kolom voor alle SKUs (fallback)
       const colIdx = 1 + g.indices[0];
       for (let i = 0; i < K; i++) {
         const val = Math.max(0, Math.round(toNum(aoa[1 + i]?.[colIdx])));
-        rows.push({ sku: skuList[i], period: norm.value, inmarket_units: val });
+        rows.push({ sku: skuList[i], period: n.value, inmarket_units: val });
       }
       issues.push(`Maand '${g.label}' bevat 1 kolom → toegepast op alle SKU’s (fallback).`);
     } else {
@@ -162,17 +180,14 @@ function parseWideNL3(aoa: any[][]): Parsed {
       for (let i = 0; i < Math.min(K, g.indices.length); i++) {
         const colIdx = 1 + g.indices[i];
         const val = Math.max(0, Math.round(toNum(aoa[1 + i]?.[colIdx])));
-        rows.push({ sku: skuList[i], period: norm.value, inmarket_units: val });
+        rows.push({ sku: skuList[i], period: n.value, inmarket_units: val });
       }
       issues.push(`Maand '${g.label}': onvolledig blok (${g.indices.length}/${K}). Gedeeltelijk ingelezen.`);
     }
   }
 
-  // Basic sanity
   if (!rows.length) issues.push("Geen rijen ingelezen uit NL3-sheet.");
   const skus = Array.from(new Set(rows.map((r) => r.sku))).sort();
-  const badPeriods = rows.filter((r) => !/^\d{2}-\d{4}$/.test(r.period)).slice(0, 5);
-  if (badPeriods.length) issues.push(`Ongeldige perioden (eerste 5): ${badPeriods.map((r) => r.period).join(", ")}`);
 
   // Duplicaten (SKU+period)
   const seen = new Set<string>();
@@ -187,18 +202,18 @@ function parseWideNL3(aoa: any[][]): Parsed {
   return { rows, issues, skus };
 }
 
-/** ===================== Upload handler (Excel only) ===================== */
-async function parseExcelNL3(file: File): Promise<Parsed> {
+/** ===================== Upload (Excel only) ===================== */
+async function parseExcelNL3YYYY(file: File): Promise<Parsed> {
   const ext = (file.name.toLowerCase().split(".").pop() || "").trim();
   if (ext !== "xlsx" && ext !== "xls") {
-    return { rows: [], issues: ["Alleen .xlsx of .xls toegestaan voor NL3."], skus: [] };
+    return { rows: [], issues: ["Alleen .xlsx of .xls toegestaan."], skus: [] };
   }
   const XLSX: any = await import("xlsx");
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const aoa: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
-  return parseWideNL3(aoa);
+  return parseWideNL3YYYY(aoa);
 }
 
 /** ===================== Time-series utils ===================== */
@@ -240,7 +255,6 @@ function monthSeasonality(series: { d: Date; y: number }[]): number[] {
     const avg = cnts[m] ? sums[m] / cnts[m] : avgAll || 1;
     idx[m] = avgAll ? avg / avgAll : 1;
   }
-  // normaliseer zó dat het gemiddelde ~1 blijft
   const mean = idx.slice(1).reduce((a, x) => a + x, 0) / 12;
   for (let m = 1; m <= 12; m++) idx[m] = idx[m] / (mean || 1);
   return idx;
@@ -297,7 +311,7 @@ function forecastSku(
         cnt++;
       }
     }
-    mape6 = cnt ? (absPctSum / cnt) : null;
+    mape6 = cnt ? absPctSum / cnt : null;
   }
 
   // Horizon voorspellen
@@ -308,7 +322,7 @@ function forecastSku(
     const m = d.getMonth() + 1;
     const wd = workingDaysInMonth(d.getFullYear(), m) / WD_BASE;
     const f = Math.max(0, Math.round(baseline * (seasIdx[m] || 1) * (wd || 1)));
-    nextMonths.push({ period: fmtPeriod(d), units: f });
+    nextMonths.push({ period: fmtPeriodYYYYMM(d), units: f });
   }
 
   return {
@@ -325,7 +339,7 @@ const compact = (n: number) =>
   new Intl.NumberFormat("nl-NL", { notation: "compact", maximumFractionDigits: 1 }).format(n || 0);
 
 /** ===================== Component ===================== */
-export default function SupplyPageNL3() {
+export default function SupplyPageNL3YYYY() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [parsed, setParsed] = useState<Parsed | null>(null);
@@ -358,7 +372,7 @@ export default function SupplyPageNL3() {
     setBusy(true);
     setErr(null);
     try {
-      const res = await parseExcelNL3(file);
+      const res = await parseExcelNL3YYYY(file);
       setParsed(res);
       if (!res.rows.length) {
         setErr(res.issues.join(" | ") || "Geen rijen ingelezen.");
@@ -381,7 +395,7 @@ export default function SupplyPageNL3() {
     return series.map((ser) => forecastSku(ser, horizon, maWindow));
   }, [series, horizon, maWindow]);
 
-  // Overall forecast accuracy (gewogen gemiddelde over SKUs met data)
+  // Overall forecast accuracy (gewogen gemiddeld kan ook; hier simpel gemiddelde)
   const overallMAPE = useMemo(() => {
     const vals = forecasts.map((f) => f.mape6).filter((x): x is number => x !== null);
     if (!vals.length) return null;
@@ -391,7 +405,7 @@ export default function SupplyPageNL3() {
   // Totale forecast komende maand (alle SKUs)
   const nextMonthLabel = useMemo(() => {
     const d = series?.[0]?.series?.at(-1)?.d ?? new Date();
-    return fmtPeriod(addMonths(d, 1));
+    return fmtPeriodYYYYMM(addMonths(d, 1));
   }, [series]);
 
   const totalNextMonth = useMemo(() => {
@@ -438,9 +452,9 @@ export default function SupplyPageNL3() {
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold">Supply Chain Optimization (NL3)</h1>
+          <h1 className="text-xl font-semibold">Supply Chain Optimization (NL3 – YYYY-MM)</h1>
           <p className="text-sm text-gray-600">
-            Upload je NL3-format (breed/diagonaal) en krijg per SKU een korte termijn forecast en een allocatie naar groothandels.
+            Upload je NL3-format met maanden als <b>YYYY-MM</b> (bijv. 2025-09). We voorspellen per SKU en verdelen de komende maand over groothandels.
             Werkdagen en seizoenseffecten worden meegenomen; forecasting refit automatisch bij nieuwe data.
           </p>
         </div>
@@ -458,7 +472,7 @@ export default function SupplyPageNL3() {
           <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleBrowse} disabled={busy} />
         </label>
         <p className="mt-2 text-xs text-gray-500">
-          NL3-format: rij 1: <i>SKU</i> in kolom A, maanden (MM-YYYY) in B..N; rij 2..K: SKU-namen in kolom A; per maandblok K kolommen (diagonaal).
+          NL3-format: rij 1: <i>SKU</i> in kolom A, maanden <b>(YYYY-MM)</b> in B..N; rij 2..K: SKU-namen in kolom A; per maandblok K kolommen (diagonaal).
         </p>
         {busy && <div className="mt-2 text-sm text-gray-600">Bezig met verwerken…</div>}
         {err && <div className="mt-3 inline-block rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{err}</div>}
@@ -593,35 +607,43 @@ export default function SupplyPageNL3() {
       </section>
 
       {/* Allocatie — geselecteerde SKU (komende maand) */}
-      {allocSelected && (
-        <section className="rounded-2xl border bg-white p-4">
-          <h3 className="text-base font-semibold mb-1">Allocatie — {selectedSku} ({allocSelected.period})</h3>
-          <div className="text-xs text-gray-600 mb-2">Totaal forecast: <b>{allocSelected.total}</b> units</div>
-          <div className="w-full overflow-x-auto">
-            <table className="w-full text-sm border-collapse min-w-[520px]">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="text-left py-2 px-2">Klant</th>
-                  <th className="text-left py-2 px-2">Units</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allocSelected.rows.map((r, i) => (
-                  <tr key={i} className="border-b last:border-0">
-                    <td className="py-2 px-2">{r.customer}</td>
-                    <td className="py-2 px-2">{r.units}</td>
+      {(() => {
+        const sel = selectedSku && forecasts.find(f => f.sku === selectedSku);
+        const m = nextMonthLabel;
+        const units = sel?.nextMonths.find(p => p.period === m)?.units ?? 0;
+        const ns = ((shares.map(x => Math.max(0, x.share))).reduce((a,b)=>a+b,0) || 1);
+        const norm = shares.map(x => Math.max(0, x.share) / ns);
+        const rows = shares.map((row, i) => ({ customer: row.customer, units: Math.round(units * norm[i]) }));
+        return sel ? (
+          <section className="rounded-2xl border bg-white p-4">
+            <h3 className="text-base font-semibold mb-1">Allocatie — {selectedSku} ({m})</h3>
+            <div className="text-xs text-gray-600 mb-2">Totaal forecast: <b>{units}</b> units</div>
+            <div className="w-full overflow-x-auto">
+              <table className="w-full text-sm border-collapse min-w-[520px]">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left py-2 px-2">Klant</th>
+                    <th className="text-left py-2 px-2">Units</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={i} className="border-b last:border-0">
+                      <td className="py-2 px-2">{r.customer}</td>
+                      <td className="py-2 px-2">{r.units}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null;
+      })()}
 
       {/* Allocatie — totaal (alle SKUs, komende maand) */}
       <section className="rounded-2xl border bg-white p-4">
-        <h3 className="text-base font-semibold mb-1">Allocatie — Totaal ({allocTotal.period})</h3>
-        <div className="text-xs text-gray-600 mb-2">Totaal forecast (alle SKU’s): <b>{allocTotal.total}</b> units</div>
+        <h3 className="text-base font-semibold mb-1">Allocatie — Totaal ({nextMonthLabel})</h3>
+        <div className="text-xs text-gray-600 mb-2">Totaal forecast (alle SKU’s): <b>{totalNextMonth}</b> units</div>
         <div className="w-full overflow-x-auto">
           <table className="w-full text-sm border-collapse min-w-[520px]">
             <thead>
@@ -631,12 +653,16 @@ export default function SupplyPageNL3() {
               </tr>
             </thead>
             <tbody>
-              {allocTotal.rows.map((r, i) => (
-                <tr key={i} className="border-b last:border-0">
-                  <td className="py-2 px-2">{r.customer}</td>
-                  <td className="py-2 px-2">{r.units}</td>
-                </tr>
-              ))}
+              {(() => {
+                const ns = ((shares.map(x => Math.max(0, x.share))).reduce((a,b)=>a+b,0) || 1);
+                const norm = shares.map(x => Math.max(0, x.share) / ns);
+                return shares.map((row, i) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-2 px-2">{row.customer}</td>
+                    <td className="py-2 px-2">{Math.round(totalNextMonth * norm[i])}</td>
+                  </tr>
+                ));
+              })()}
             </tbody>
           </table>
         </div>
