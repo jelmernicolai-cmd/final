@@ -351,3 +351,200 @@ export default function ParallelTool() {
     if (gapClosed && (!netUp || !ebitdaUp)) {
       items.push(
         `Gap sluiten alleen is onvoldoende. Versterk recapture: verhoog effectiviteit naar ≥ ${pctS(Math.min(1, A.recaptureEff + 0.1))} en verkort ramp naar ${Math.max(1, A.recaptureRampM - 1)} mnd via afspraken met groothandel/ziekenhuizen (voorkeursleverancier, servicelevel, voorraadgaranties).`
+      );
+    }
+    // 3) Gap > drempel in A én B → korting is nog te laag of cap/assumpties herzien
+    if (!gapClosed && simA.kpis.endGap > cfg.threshold) {
+      items.push(
+        `Zowel A als B hebben gap > €${cfg.threshold}. Overweeg tijdelijk extra korting (richting ${pctS(Math.min(0.9, B.discount + 0.03))}) of verlaag de parallel referentie aanname als logistieke realiteit verschilt.`
+      );
+    }
+    // 4) PI daalt, maar Net verslechtert → korting te kostbaar
+    if (piDown && !netUp) {
+      items.push(
+        `PI daalt, maar Net Sales verslechtert (Δ ${eur(deltas.dNet)}). Zet in op niet-prijsmaatregelen: betere beschikbaarheid, differentiatie in assortiment/verpakkingen en contractuele drempels i.p.v. extra korting.`
+      );
+    }
+    // 5) Breakeven tip
+    const be = findBreakEvenDiscount(A, cfg, sPI_base_A, simA.kpis.netY1);
+    items.push(`Break-even korting (Y1 Net Sales) ligt rond ${pctS(be,1)}. Boven dit niveau is het aannemelijk dat korting meer kost dan het oplevert (gegeven je recapture).`);
+
+    return items;
+  }, [A, B, cfg, simA.kpis, simB.kpis, deltas, sPI_base_A]);
+
+  return (
+    <div className="max-w-screen-xl mx-auto px-3 sm:px-4 lg:px-6 py-4 space-y-6">
+      {/* Intro */}
+      <header className="rounded-2xl border bg-white p-4 sm:p-5">
+        <h1 className="text-xl sm:text-2xl font-semibold">Parallelimport – Eén-kortingsmodel (A/B) met handmatige PI</h1>
+        <p className="text-sm text-gray-700 mt-1">
+          Vergelijk huidig beleid (A) met voorstel (B) op één <b>korting %</b>. Stel desgewenst de <b>PI-share handmatig</b> in.
+          Zie het <b>netto effect</b> (Net Sales, EBITDA) en bepaal je <b>break-even</b>. 
+          De <i>cap</i> (max PI-share) is instelbaar en vervangt de eerdere vaste 35%.
+        </p>
+      </header>
+
+      {/* Modelinstellingen (incl. cap) */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h2 className="text-base font-semibold mb-3">Modelinstellingen</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <FieldNumber label="Gap-drempel (€/unit)" value={cfg.threshold} step={0.5} min={0}
+            onChange={(v) => setCfg(s => ({ ...s, threshold: Math.max(0, v) }))} />
+          <FieldPct label="PI-gevoeligheid per € (slope)" value={cfg.slope} max={1}
+            help="Bijv. 0,06 ≈ 6 pp PI per extra € gap." 
+            onChange={(v) => setCfg(s => ({ ...s, slope: clamp(v, 0, 1) }))} />
+          <FieldPct label="Max PI-share (cap)" value={cfg.cap} max={1}
+            help="Verzadigingsplafond; was eerder 35%." 
+            onChange={(v) => setCfg(s => ({ ...s, cap: clamp(v, 0, 1) }))} />
+        </div>
+      </section>
+
+      {/* Parameters per scenario */}
+      <section className="rounded-2xl border bg-white p-4 space-y-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-base font-semibold">Parameters per scenario</h2>
+          <div className="flex gap-2">
+            <button onClick={copyAtoB} className="text-sm rounded border px-3 py-1.5 hover:bg-gray-50">Kopieer A → B</button>
+            <button onClick={setB_toGapThreshold} className="text-sm rounded border px-3 py-1.5 hover:bg-gray-50">B: gap ≈ drempel</button>
+            <button onClick={setB_toBreakEvenNet} className="text-sm rounded border px-3 py-1.5 hover:bg-gray-50">B: break-even Net</button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* A */}
+          <div className="rounded-xl border p-4">
+            <div className="font-semibold mb-3">Scenario A — Huidig</div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FieldNumber label="List price NL (€/unit)" value={A.listNL} step={0.5} min={0}
+                onChange={(v) => setA(s => ({ ...s, listNL: Math.max(0, v) }))} />
+              <FieldPct label="Korting %" value={A.discount}
+                onChange={(v) => setA(s => ({ ...s, discount: clamp(v, 0, 0.9) }))} />
+              <FieldNumber label="Parallel referentieprijs (€/unit)" value={A.parallelRef} step={0.5} min={0}
+                onChange={(v) => setA(s => ({ ...s, parallelRef: Math.max(0, v) }))} />
+              <FieldNumber label="Units/maand (NL)" value={A.units} step={100} min={0}
+                onChange={(v) => setA(s => ({ ...s, units: Math.max(0, Math.round(v)) }))} />
+              <FieldPct label="Recapture-effectiviteit" value={A.recaptureEff}
+                onChange={(v) => setA(s => ({ ...s, recaptureEff: clamp(v, 0, 1) }))} />
+              <FieldNumber label="Recapture-ramp (mnd)" value={A.recaptureRampM} step={1} min={0}
+                onChange={(v) => setA(s => ({ ...s, recaptureRampM: Math.max(0, Math.round(v)) }))} />
+
+              {/* Handmatige PI */}
+              <label className="text-sm w-full inline-flex items-center gap-2 sm:col-span-2">
+                <input type="checkbox" checked={A.manualPI} onChange={(e) => setA(s => ({ ...s, manualPI: e.target.checked }))} />
+                <span className="font-medium">PI-share handmatig instellen</span>
+              </label>
+              <FieldPct label="PI-share (eind, handmatig)" value={A.manualPIShare} max={1}
+                onChange={(v) => setA(s => ({ ...s, manualPIShare: clamp(v, 0, 1) }))} />
+              <FieldNumber label="Ramp-in (mnd, handmatig)" value={A.manualPIRampM} step={1} min={0}
+                onChange={(v) => setA(s => ({ ...s, manualPIRampM: Math.max(0, Math.round(v)) }))} />
+            </div>
+          </div>
+
+          {/* B */}
+          <div className="rounded-xl border p-4">
+            <div className="font-semibold mb-3">Scenario B — Voorstel</div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FieldNumber label="List price NL (€/unit)" value={B.listNL} step={0.5} min={0}
+                onChange={(v) => setB(s => ({ ...s, listNL: Math.max(0, v) }))} />
+              <FieldPct label="Korting %" value={B.discount}
+                onChange={(v) => setB(s => ({ ...s, discount: clamp(v, 0, 0.9) }))} />
+              <FieldNumber label="Parallel referentieprijs (€/unit)" value={B.parallelRef} step={0.5} min={0}
+                onChange={(v) => setB(s => ({ ...s, parallelRef: Math.max(0, v) }))} />
+              <FieldNumber label="Units/maand (NL)" value={B.units} step={100} min={0}
+                onChange={(v) => setB(s => ({ ...s, units: Math.max(0, Math.round(v)) }))} />
+              <FieldPct label="Recapture-effectiviteit" value={B.recaptureEff}
+                onChange={(v) => setB(s => ({ ...s, recaptureEff: clamp(v, 0, 1) }))} />
+              <FieldNumber label="Recapture-ramp (mnd)" value={B.recaptureRampM} step={1} min={0}
+                onChange={(v) => setB(s => ({ ...s, recaptureRampM: Math.max(0, Math.round(v)) }))} />
+
+              {/* Handmatige PI */}
+              <label className="text-sm w-full inline-flex items-center gap-2 sm:col-span-2">
+                <input type="checkbox" checked={B.manualPI} onChange={(e) => setB(s => ({ ...s, manualPI: e.target.checked }))} />
+                <span className="font-medium">PI-share handmatig instellen</span>
+              </label>
+              <FieldPct label="PI-share (eind, handmatig)" value={B.manualPIShare} max={1}
+                onChange={(v) => setB(s => ({ ...s, manualPIShare: clamp(v, 0, 1) }))} />
+              <FieldNumber label="Ramp-in (mnd, handmatig)" value={B.manualPIRampM} step={1} min={0}
+                onChange={(v) => setB(s => ({ ...s, manualPIRampM: Math.max(0, Math.round(v)) }))} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* KPI’s per scenario */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h3 className="text-base font-semibold mb-3">KPI’s per scenario (Jaar 1)</h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* A */}
+          <div className="rounded-xl border p-4">
+            <div className="font-semibold mb-2">Scenario A</div>
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+              <Kpi title="Gap (einde)" value={eur(simA.kpis.endGap, 0)}
+                   help={`Koperprijs: ${eur(simA.kpis.endNet,0)} • Parallel ref: ${eur(A.parallelRef,0)}`}
+                   tone={simA.kpis.endGap > cfg.threshold ? "bad" : simA.kpis.endGap > 0 ? "warn" : "good"} />
+              <Kpi title="PI-share (einde)" value={pctS(simA.kpis.endPIshare)}
+                   help={`Huidige cap: ${pctS(cfg.cap,0)}`}
+                   tone={simA.kpis.endPIshare > 0.25 ? "bad" : simA.kpis.endPIshare > 0.10 ? "warn" : "default"} />
+              <Kpi title="Net Sales A (Y1)" value={eur(simA.kpis.netY1)} />
+              <Kpi title="EBITDA A (Y1)" value={eur(simA.kpis.ebitdaY1)} />
+              <Kpi title="Korting A (Y1)" value={eur(simA.kpis.discY1)} />
+            </div>
+          </div>
+          {/* B */}
+          <div className="rounded-xl border p-4">
+            <div className="font-semibold mb-2">Scenario B</div>
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+              <Kpi title="Gap (einde)" value={eur(simB.kpis.endGap, 0)}
+                   help={`Koperprijs: ${eur(simB.kpis.endNet,0)} • Parallel ref: ${eur(B.parallelRef,0)}`}
+                   tone={simB.kpis.endGap > cfg.threshold ? "bad" : simB.kpis.endGap > 0 ? "warn" : "good"} />
+              <Kpi title="PI-share (einde)" value={pctS(simB.kpis.endPIshare)}
+                   help={`Huidige cap: ${pctS(cfg.cap,0)}`}
+                   tone={simB.kpis.endPIshare > 0.25 ? "bad" : simB.kpis.endPIshare > 0.10 ? "warn" : "default"} />
+              <Kpi title="Net Sales B (Y1)" value={eur(simB.kpis.netY1)} />
+              <Kpi title="EBITDA B (Y1)" value={eur(simB.kpis.ebitdaY1)} />
+              <Kpi title="Korting B (Y1)" value={eur(simB.kpis.discY1)} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Verschil A → B */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h3 className="text-base font-semibold mb-3">Verschil B t.o.v. A — Jaar 1</h3>
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+          <Kpi title="Δ Net Sales" value={eur(deltas.dNet)} tone={deltas.dNet >= 0 ? "good" : "bad"} />
+          <Kpi title="Δ EBITDA" value={eur(deltas.dEBITDA)} tone={deltas.dEBITDA >= 0 ? "good" : "bad"} />
+          <Kpi title="Δ Parallel omzet" value={eur(deltas.dPI)} tone={deltas.dPI <= 0 ? "good" : "warn"} />
+          <Kpi title="Δ Korting" value={eur(deltas.dDisc)} tone={deltas.dDisc <= 0 ? "good" : "warn"} />
+        </div>
+        <p className="text-xs text-gray-600 mt-2">
+          Dit zijn netto-uitkomsten met jouw aannames over <b>recapture</b> en <b>cap</b>. Als korting stijgt maar recapture laag blijft, zie je dat direct terug in Δ Net & Δ EBITDA.
+        </p>
+      </section>
+
+      {/* Grafieken */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border bg-white p-4">
+          <h4 className="text-sm font-semibold mb-2">Originator Net Sales per maand</h4>
+          <LineChart name="Net Sales A" color="#0ea5e9" values={simA.points.map(p => p.netSalesOriginator)} yFmt={(v) => compact(v)} />
+          <div className="mt-2" />
+          <LineChart name="Net Sales B" color="#22c55e" values={simB.points.map(p => p.netSalesOriginator)} yFmt={(v) => compact(v)} />
+        </div>
+        <div className="rounded-2xl border bg-white p-4">
+          <h4 className="text-sm font-semibold mb-2">PI-share per maand</h4>
+          <LineChart name="PI share A" color="#6366f1" values={simA.points.map(p => p.sPI_effective * 100)} yFmt={(v) => `${v.toFixed(0)}%`} />
+          <div className="mt-2" />
+          <LineChart name="PI share B" color="#f59e0b" values={simB.points.map(p => p.sPI_effective * 100)} yFmt={(v) => `${v.toFixed(0)}%`} />
+        </div>
+      </section>
+
+      {/* Concrete aanbevelingen (automatisch) */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h3 className="text-base font-semibold mb-2">Aanbevolen acties</h3>
+        <ul className="text-sm text-gray-700 list-disc pl-5 space-y-2">
+          {advies.map((t, i) => <li key={i}>{t}</li>)}
+        </ul>
+      </section>
+    </div>
+  );
+}
