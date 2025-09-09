@@ -13,8 +13,7 @@ type Parsed = {
 
 type SkuSeries = {
   sku: string;
-  // ascending by date
-  series: { period: string; y: number; d: Date; m: number; y4: number }[];
+  series: { period: string; y: number; d: Date; m: number; y4: number }[]; // ascending by date
 };
 
 type ForecastPoint = { period: string; units: number };
@@ -37,8 +36,8 @@ const toNum = (v: any): number => {
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : 0;
 };
-
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+const last = <T,>(arr: T[]): T | undefined => (Array.isArray(arr) && arr.length ? arr[arr.length - 1] : undefined);
 
 /** STRICT: alleen YYYY-MM toegestaan */
 function normalizePeriodStrictYYYYMM(s: string): { ok: boolean; value: string; reason?: string } {
@@ -93,17 +92,17 @@ const WD_BASE = 21;
  */
 function groupConsecutiveIndices<T>(arr: T[], getLabel: (x: T) => string) {
   const groups: { label: string; start: number; end: number; indices: number[] }[] = [];
-  let last = "";
+  let lastLabel = "";
   let start = -1;
   for (let i = 0; i < arr.length; i++) {
     const lab = getLabel(arr[i]);
-    if (i === 0 || lab !== last) {
-      if (i > 0) groups.push({ label: last, start, end: i - 1, indices: [] });
+    if (i === 0 || lab !== lastLabel) {
+      if (i > 0) groups.push({ label: lastLabel, start, end: i - 1, indices: [] });
       start = i;
-      last = lab;
+      lastLabel = lab;
     }
   }
-  if (arr.length) groups.push({ label: last, start, end: arr.length - 1, indices: [] });
+  if (arr.length) groups.push({ label: lastLabel, start, end: arr.length - 1, indices: [] });
   for (const g of groups) g.indices = Array.from({ length: g.end - g.start + 1 }, (_, k) => g.start + k);
   return groups;
 }
@@ -113,7 +112,12 @@ function looksLikeNL3YYYY(aoa: any[][], issues: string[]) {
   const a00 = (aoa[0]?.[0] ?? "").toString().trim().toLowerCase();
   if (a00 !== "sku") return false;
 
-  const hdr = aoa[0].slice(1).map((x: any) => (x ?? "").toString().trim());
+  const hdrRow = (aoa[0] || []);
+  if (hdrRow.length < 2) {
+    issues.push("Headerregel mist maandkolommen (verwacht: B.. met YYYY-MM).");
+    return false;
+  }
+  const hdr = hdrRow.slice(1).map((x: any) => (x ?? "").toString().trim());
   if (!hdr.length) return false;
 
   // Check dat alle non-empty headers YYYY-MM zijn
@@ -124,7 +128,7 @@ function looksLikeNL3YYYY(aoa: any[][], issues: string[]) {
     if (n.ok) okCount++;
     else issues.push(`Header '${h}' is ongeldig: ${n.reason}`);
   }
-  if (okCount < 2) return false;
+  if (okCount < 1) return false;
 
   // Herhalingen (per maand K kolommen)
   const hasRepeats = hdr.some((h, idx) => h && hdr.indexOf(h) !== idx);
@@ -133,6 +137,10 @@ function looksLikeNL3YYYY(aoa: any[][], issues: string[]) {
 
 function parseWideNL3YYYY(aoa: any[][]): Parsed {
   const issues: string[] = [];
+  if (!Array.isArray(aoa) || !aoa.length) {
+    return { rows: [], issues: ["Leeg werkblad of onleesbaar Excel-bestand."], skus: [] };
+  }
+
   if (!looksLikeNL3YYYY(aoa, issues)) {
     if (!issues.length) issues.push("Bestand lijkt geen NL3 (YYYY-MM) format te hebben.");
     return { rows: [], issues, skus: [] };
@@ -148,7 +156,7 @@ function parseWideNL3YYYY(aoa: any[][]): Parsed {
   const K = skuList.length;
   if (K === 0) return { rows: [], issues: ["Geen SKU’s gevonden in kolom A."], skus: [] };
 
-  const hdr = aoa[0].slice(1).map((x: any) => (x ?? "").toString().trim());
+  const hdr = (aoa[0] || []).slice(1).map((x: any) => (x ?? "").toString().trim());
   const groups = groupConsecutiveIndices(hdr, (x) => (x ?? "").toString().trim());
   const rows: RawRow[] = [];
 
@@ -164,22 +172,25 @@ function parseWideNL3YYYY(aoa: any[][]): Parsed {
       // diagonaal
       for (let i = 0; i < K; i++) {
         const colIdx = 1 + g.indices[i];
-        const val = Math.max(0, Math.round(toNum(aoa[1 + i]?.[colIdx])));
+        const src = aoa[1 + i]?.[colIdx];
+        const val = Math.max(0, Math.round(toNum(src)));
         rows.push({ sku: skuList[i], period: n.value, inmarket_units: val });
       }
     } else if (g.indices.length === 1) {
       // Eén kolom voor alle SKUs (fallback)
       const colIdx = 1 + g.indices[0];
       for (let i = 0; i < K; i++) {
-        const val = Math.max(0, Math.round(toNum(aoa[1 + i]?.[colIdx])));
+        const src = aoa[1 + i]?.[colIdx];
+        const val = Math.max(0, Math.round(toNum(src)));
         rows.push({ sku: skuList[i], period: n.value, inmarket_units: val });
       }
       issues.push(`Maand '${g.label}' bevat 1 kolom → toegepast op alle SKU’s (fallback).`);
-    } else {
+    } else if (g.indices.length > 1) {
       // gedeeltelijk blok
       for (let i = 0; i < Math.min(K, g.indices.length); i++) {
         const colIdx = 1 + g.indices[i];
-        const val = Math.max(0, Math.round(toNum(aoa[1 + i]?.[colIdx])));
+        const src = aoa[1 + i]?.[colIdx];
+        const val = Math.max(0, Math.round(toNum(src)));
         rows.push({ sku: skuList[i], period: n.value, inmarket_units: val });
       }
       issues.push(`Maand '${g.label}': onvolledig blok (${g.indices.length}/${K}). Gedeeltelijk ingelezen.`);
@@ -211,8 +222,17 @@ async function parseExcelNL3YYYY(file: File): Promise<Parsed> {
   const XLSX: any = await import("xlsx");
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
+  if (!wb.SheetNames || !wb.SheetNames.length) {
+    return { rows: [], issues: ["Excel bevat geen werkbladen."], skus: [] };
+  }
   const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) {
+    return { rows: [], issues: ["Eerste werkblad kon niet worden gelezen."], skus: [] };
+  }
   const aoa: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
+  if (!Array.isArray(aoa) || !aoa.length) {
+    return { rows: [], issues: ["Werkblad is leeg."], skus: [] };
+  }
   return parseWideNL3YYYY(aoa);
 }
 
@@ -232,7 +252,7 @@ function makeSkuSeries(rows: RawRow[]): SkuSeries[] {
           ? { period: r.period, y: Math.max(0, Math.round(toNum(r.inmarket_units))), d, m: d.getMonth() + 1, y4: d.getFullYear() }
           : null;
       })
-      .filter(Boolean) as SkuSeries["series"];
+      .filter((x): x is NonNullable<typeof x> => !!x);
     ser.sort((a, b) => a.d.getTime() - b.d.getTime());
     out.push({ sku, series: ser });
   });
@@ -395,7 +415,7 @@ export default function SupplyPageNL3YYYY() {
     return series.map((ser) => forecastSku(ser, horizon, maWindow));
   }, [series, horizon, maWindow]);
 
-  // Overall forecast accuracy (gewogen gemiddeld kan ook; hier simpel gemiddelde)
+  // Overall forecast accuracy (gemiddelde van aanwezige MAPE’s)
   const overallMAPE = useMemo(() => {
     const vals = forecasts.map((f) => f.mape6).filter((x): x is number => x !== null);
     if (!vals.length) return null;
@@ -404,11 +424,14 @@ export default function SupplyPageNL3YYYY() {
 
   // Totale forecast komende maand (alle SKUs)
   const nextMonthLabel = useMemo(() => {
-    const d = series?.[0]?.series?.at(-1)?.d ?? new Date();
+    const firstSer = series && series.length ? series[0] : null;
+    const lastPoint = firstSer && firstSer.series.length ? firstSer.series[firstSer.series.length - 1] : null;
+    const d = lastPoint?.d ?? new Date();
     return fmtPeriodYYYYMM(addMonths(d, 1));
   }, [series]);
 
   const totalNextMonth = useMemo(() => {
+    if (!forecasts.length) return 0;
     const m = nextMonthLabel;
     return forecasts.reduce((sum, f) => {
       const pt = f.nextMonths.find((p) => p.period === m);
@@ -424,10 +447,11 @@ export default function SupplyPageNL3YYYY() {
   }
 
   // Allocatie voor geselecteerde SKU (komende maand)
-  const allocSelected: { period: string; rows: { customer: string; units: number }[]; total: number } | null = useMemo(() => {
-    if (!selectedSku) return null;
+  const allocSelected = useMemo(() => {
+    if (!selectedSku || !forecasts.length) return null;
     const f = forecasts.find((x) => x.sku === selectedSku);
-    const pt = f?.nextMonths.find((p) => p.period === nextMonthLabel);
+    if (!f) return null;
+    const pt = f.nextMonths.find((p) => p.period === nextMonthLabel);
     const units = pt?.units ?? 0;
     const ns = normalizedShares(shares);
     const rows = shares.map((row, i) => ({
@@ -437,15 +461,17 @@ export default function SupplyPageNL3YYYY() {
     return { period: nextMonthLabel, rows, total: units };
   }, [forecasts, selectedSku, shares, nextMonthLabel]);
 
-  // Allocatie totaal (alle SKUs samen, komende maand)
-  const allocTotal: { period: string; rows: { customer: string; units: number }[]; total: number } = useMemo(() => {
+  // Allocatie totaal (alle SKUs, komende maand)
+  const allocTotal = useMemo(() => {
+    if (!forecasts.length) return null;
+    const total = totalNextMonth;
     const ns = normalizedShares(shares);
     const rows = shares.map((row, i) => ({
       customer: row.customer,
-      units: Math.round(totalNextMonth * ns[i]),
+      units: Math.round(total * ns[i]),
     }));
-    return { period: nextMonthLabel, rows, total: totalNextMonth };
-  }, [shares, totalNextMonth, nextMonthLabel]);
+    return { period: nextMonthLabel, rows, total };
+  }, [shares, totalNextMonth, nextMonthLabel, forecasts]);
 
   return (
     <div className="max-w-screen-xl mx-auto px-3 sm:px-4 lg:px-6 py-4 space-y-6">
@@ -543,7 +569,7 @@ export default function SupplyPageNL3YYYY() {
       </section>
 
       {/* Forecast tabel per SKU (compact) */}
-      {forecasts.length > 0 && (
+      {forecasts.length > 0 && forecasts[0].nextMonths && (
         <section className="rounded-2xl border bg-white p-4">
           <h3 className="text-base font-semibold mb-3">Forecast per SKU</h3>
           <div className="w-full overflow-x-auto">
@@ -607,66 +633,56 @@ export default function SupplyPageNL3YYYY() {
       </section>
 
       {/* Allocatie — geselecteerde SKU (komende maand) */}
-      {(() => {
-        const sel = selectedSku && forecasts.find(f => f.sku === selectedSku);
-        const m = nextMonthLabel;
-        const units = sel?.nextMonths.find(p => p.period === m)?.units ?? 0;
-        const ns = ((shares.map(x => Math.max(0, x.share))).reduce((a,b)=>a+b,0) || 1);
-        const norm = shares.map(x => Math.max(0, x.share) / ns);
-        const rows = shares.map((row, i) => ({ customer: row.customer, units: Math.round(units * norm[i]) }));
-        return sel ? (
-          <section className="rounded-2xl border bg-white p-4">
-            <h3 className="text-base font-semibold mb-1">Allocatie — {selectedSku} ({m})</h3>
-            <div className="text-xs text-gray-600 mb-2">Totaal forecast: <b>{units}</b> units</div>
-            <div className="w-full overflow-x-auto">
-              <table className="w-full text-sm border-collapse min-w-[520px]">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="text-left py-2 px-2">Klant</th>
-                    <th className="text-left py-2 px-2">Units</th>
+      {allocSelected && (
+        <section className="rounded-2xl border bg-white p-4">
+          <h3 className="text-base font-semibold mb-1">Allocatie — {selectedSku} ({allocSelected.period})</h3>
+          <div className="text-xs text-gray-600 mb-2">Totaal forecast: <b>{allocSelected.total}</b> units</div>
+          <div className="w-full overflow-x-auto">
+            <table className="w-full text-sm border-collapse min-w-[520px]">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="text-left py-2 px-2">Klant</th>
+                  <th className="text-left py-2 px-2">Units</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allocSelected.rows.map((r, i) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-2 px-2">{r.customer}</td>
+                    <td className="py-2 px-2">{r.units}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r, i) => (
-                    <tr key={i} className="border-b last:border-0">
-                      <td className="py-2 px-2">{r.customer}</td>
-                      <td className="py-2 px-2">{r.units}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        ) : null;
-      })()}
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* Allocatie — totaal (alle SKUs, komende maand) */}
-      <section className="rounded-2xl border bg-white p-4">
-        <h3 className="text-base font-semibold mb-1">Allocatie — Totaal ({nextMonthLabel})</h3>
-        <div className="text-xs text-gray-600 mb-2">Totaal forecast (alle SKU’s): <b>{totalNextMonth}</b> units</div>
-        <div className="w-full overflow-x-auto">
-          <table className="w-full text-sm border-collapse min-w-[520px]">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="text-left py-2 px-2">Klant</th>
-                <th className="text-left py-2 px-2">Units</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(() => {
-                const ns = ((shares.map(x => Math.max(0, x.share))).reduce((a,b)=>a+b,0) || 1);
-                const norm = shares.map(x => Math.max(0, x.share) / ns);
-                return shares.map((row, i) => (
+      {allocTotal && (
+        <section className="rounded-2xl border bg-white p-4">
+          <h3 className="text-base font-semibold mb-1">Allocatie — Totaal ({allocTotal.period})</h3>
+          <div className="text-xs text-gray-600 mb-2">Totaal forecast (alle SKU’s): <b>{allocTotal.total}</b> units</div>
+          <div className="w-full overflow-x-auto">
+            <table className="w-full text-sm border-collapse min-w-[520px]">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="text-left py-2 px-2">Klant</th>
+                  <th className="text-left py-2 px-2">Units</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allocTotal.rows.map((r, i) => (
                   <tr key={i} className="border-b last:border-0">
-                    <td className="py-2 px-2">{row.customer}</td>
-                    <td className="py-2 px-2">{Math.round(totalNextMonth * norm[i])}</td>
+                    <td className="py-2 px-2">{r.customer}</td>
+                    <td className="py-2 px-2">{r.units}</td>
                   </tr>
-                ));
-              })()}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
