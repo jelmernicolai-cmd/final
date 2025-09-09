@@ -203,8 +203,12 @@ export default function SupplyPage() {
     return labels;
   }
   const labels = useMemo(()=>buildTimelineAll(),[series,horizon]);
+function seriesToMap(s: SkuSeries) {
+  const m = new Map<string, number>();
+  s.series.forEach((p) => m.set(p.period, p.y));
+  return m;
+}
 
-  function seriesToMap(s:Skk: SkuSeries){ const m=new Map<string,number>(); Skk.series.forEach(p=>m.set(p.period,p.y)); return m; }
   function buildChartForSku(sku:string){
     const s=series.find(x=>x.sku===sku); const f=forecasts.find(x=>x.sku===sku);
     if(!s||!f) return { actual: labels.map(()=>0), forecast: labels.map(()=>0) };
