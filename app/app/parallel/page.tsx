@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-/** ==== Kleine helpers ==== */
+/** ==== Helpers ==== */
 const eur = (n: number, d = 0) =>
   new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: d })
     .format(Number.isFinite(n) ? n : 0);
@@ -13,28 +13,34 @@ const compact = (n: number) =>
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const round = (n: number, d = 0) => Math.round((Number.isFinite(n) ? n : 0) * 10 ** d) / 10 ** d;
 
-/** ==== Model (bewust simpel) ==== 
+/** ==== Model (bewust simpel) ====
   Inputs: List NL, front %, bonus %, EU landed prijs, units/maand.
   Afleidingen:
    - NetOriginator = list * (1 - front)
    - NL effectief (koper) = NetOriginator * (1 - bonus)
    - Gap = NL effectief - EU landed
-   - PI-share = min(CAP, max(0, (Gap - THRESHOLD) * SLOPE)) met ramp-in.
+   - PI-share (model) = min(CAP, max(0, (Gap - THRESHOLD) * SLOPE)) met ramp-in.
+   Handmatig: zet manualPI=true en vul eind-PI-share + ramp in.
 */
 type Inputs = {
   listNL: number;         // €/unit
   front: number;          // 0..1
   bonus: number;          // 0..1
-  euLanded: number;       // €/unit (laagste EU landed richting NL)
-  units: number;          // units/maand (NL market size)
+  euLanded: number;       // €/unit
+  units: number;          // units/maand
+
+  // Handmatige PI-share (optioneel)
+  manualPI: boolean;      // aan/uit
+  manualPIShare: number;  // 0..1 (eindniveau)
+  manualPIRamp: number;   // maanden naar eindniveau
 };
 
 type Settings = {
   threshold: number;      // €/unit drempel voordat PI "gaat lopen"
   slope: number;          // gevoeligheid PI-share per €/gap
   cap: number;            // max PI-share
-  rampMonths: number;     // ramp-in
-  horizon: number;        // maanden voor KPI Y1 en horizon
+  rampMonths: number;     // ramp-in (modelmodus)
+  horizon: number;        // maanden
   cogs: number;           // COGS% op originator net
 };
 
@@ -57,7 +63,7 @@ type KPIs = {
   endSharePI: number;
   endNetOriginator: number;
   endGap: number;
-  neededBonusDeltaPP: number; // percentagepunten bonus extra nodig om gap <= threshold te krijgen
+  neededBonusDeltaPP: number; // pp bonus extra nodig om gap ≤ threshold te krijgen
 };
 
 const DEFAULT_INPUTS: Inputs = {
@@ -66,6 +72,9 @@ const DEFAULT_INPUTS: Inputs = {
   bonus: 0.06,
   euLanded: 65,
   units: 9000,
+  manualPI: false,
+  manualPIShare: 0.15,
+  manualPIRamp: 2,
 };
 
 const DEFAULT_SETTINGS: Settings = {
@@ -77,7 +86,7 @@ const DEFAULT_SETTINGS: Settings = {
   cogs: 0.20,
 };
 
-/** ==== Simpel simulatiemodel ==== */
+/** ==== Simulatie ==== */
 function simulate(inp: Inputs, cfg: Settings) {
   const pts: Point[] = [];
   const netOriginator0 = inp.listNL * (1 - inp.front);
@@ -87,17 +96,24 @@ function simulate(inp: Inputs, cfg: Settings) {
     const netEffective = netOriginator * (1 - inp.bonus);
     const gap = netEffective - inp.euLanded;
 
-    // PI-share op basis van gap, drempel, slope en cap + ramp-in
-    let sharePI = 0;
-    if (gap > cfg.threshold) {
-      sharePI = Math.min(cfg.cap, (gap - cfg.threshold) * cfg.slope);
-      const ramp = Math.min(1, cfg.rampMonths > 0 ? t / cfg.rampMonths : 1);
-      sharePI *= ramp;
+    let sharePI: number;
+    if (inp.manualPI) {
+      // Handmatige modus: jouw marktinschatting
+      const target = clamp(inp.manualPIShare, 0, cfg.cap);
+      const ramp = Math.min(1, inp.manualPIRamp > 0 ? t / inp.manualPIRamp : 1);
+      sharePI = clamp(target * ramp, 0, cfg.cap);
+    } else {
+      // Modelmodus: op basis van gap
+      sharePI = 0;
+      if (gap > cfg.threshold) {
+        sharePI = Math.min(cfg.cap, (gap - cfg.threshold) * cfg.slope);
+        const ramp = Math.min(1, cfg.rampMonths > 0 ? t / cfg.rampMonths : 1);
+        sharePI *= ramp;
+      }
+      sharePI = clamp(sharePI, 0, cfg.cap);
     }
-    sharePI = clamp(sharePI, 0, cfg.cap);
 
     const shareOriginator = 1 - sharePI;
-
     const netSalesPI = inp.units * sharePI * inp.euLanded;
     const netSalesOriginator = inp.units * shareOriginator * netOriginator;
     const ebitdaOriginator = netSalesOriginator * (1 - cfg.cogs);
@@ -111,7 +127,6 @@ function simulate(inp: Inputs, cfg: Settings) {
   // Slimme suggestie: hoeveel bonus extra is nodig om gap ≤ threshold te maken?
   const end = pts.at(-1)!;
   const neededEffective = inp.euLanded + cfg.threshold;
-  // netOriginator * (1 - bonusNeeded) = neededEffective
   const bonusNeeded = 1 - neededEffective / (netOriginator0 || 1);
   const neededBonusDelta = Math.max(0, bonusNeeded - inp.bonus); // absolute (0..1)
 
@@ -129,7 +144,7 @@ function simulate(inp: Inputs, cfg: Settings) {
   return { points: pts, kpis, netOriginator0 };
 }
 
-/** ==== Kleine UI bouwstenen ==== */
+/** ==== UI bouwstenen ==== */
 function FieldNumber({
   label, value, onChange, step = 1, min, max, suffix,
 }: {
@@ -211,9 +226,11 @@ function LineChart({
 export default function ParallelSimplePage() {
   const [inpA, setInpA] = useState<Inputs>({ ...DEFAULT_INPUTS });
   const [useCompare, setUseCompare] = useState(true);
-  // Voor de vergelijking: we passen alleen de bonus aan volgens de suggestie (kan je vervolgens handmatig fine-tunen)
+
+  // Simulatie huidig beleid (A)
   const simA = useMemo(() => simulate(inpA, DEFAULT_SETTINGS), [inpA]);
 
+  // Voorstel (B): alleen bonus ophogen tot voorgestelde gap-closure
   const suggestedBonus = clamp(inpA.bonus + simA.kpis.neededBonusDeltaPP / 100, 0, 0.5);
   const inpB: Inputs = useMemo(
     () => ({ ...inpA, bonus: suggestedBonus }),
@@ -222,7 +239,7 @@ export default function ParallelSimplePage() {
   );
   const simB = useMemo(() => simulate(inpB, DEFAULT_SETTINGS), [inpB]);
 
-  // Delta’s B - A (alleen als vergelijken aan staat)
+  // Delta’s B - A
   const deltas = {
     orgNetY1: simB.kpis.orgNetY1 - simA.kpis.orgNetY1,
     piNetY1: simB.kpis.piNetY1 - simA.kpis.piNetY1,
@@ -250,6 +267,22 @@ export default function ParallelSimplePage() {
         </div>
       </header>
 
+      {/* Uitleg & interpretatie */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h2 className="text-base font-semibold">Uitleg & interpretatie</h2>
+        <ul className="mt-2 text-sm text-gray-700 list-disc pl-5 space-y-1">
+          <li><b>NL effectief</b> = List × (1 − front) × (1 − bonus). Dit is de prijs die jouw Nederlandse klant ervaart.</li>
+          <li><b>EU landed</b> is de laagste haalbare inkoop elders in de EU plus logistiek. Parallelhandel vergelijkt hiertegen.</li>
+          <li><b>Gap</b> = NL effectief − EU landed. Als gap &gt; €{DEFAULT_SETTINGS.threshold.toFixed(0)} wordt PI aantrekkelijk en groeit PI-share richting een cap.</li>
+          <li><b>Voorstel (B)</b> verhoogt alléén de bonus zodat <i>gap ≤ drempel</i>. Je list blijft ongemoeid (IRP-vriendelijk).</li>
+          <li><b>Handmatige modus</b>: zet een eigen PI-share pad als jouw marktkennis sterker is dan het simpele gap-model.</li>
+        </ul>
+        <p className="mt-2 text-xs text-gray-600">
+          Realisme: dit is een <i>early-warning</i> en <i>what-if</i> tool. Tenders, volumes per verpakking en beschikbaarheid per land kunnen het beeld beïnvloeden.
+          Gebruik dit om snel richting te bepalen en vervolganalyses te prioriteren.
+        </p>
+      </section>
+
       {/* Inputs */}
       <section className="rounded-2xl border bg-white p-4">
         <h2 className="text-base font-semibold mb-3">Parameters</h2>
@@ -266,22 +299,48 @@ export default function ParallelSimplePage() {
             onChange={(v) => setInpA(s => ({ ...s, units: Math.max(0, v) }))} />
         </div>
 
-        {/* Uitleg in 3 regels */}
-        <ul className="mt-3 text-xs text-gray-600 list-disc pl-5 space-y-1">
-          <li><b>NL effectief</b> = List × (1 − front) × (1 − bonus).</li>
-          <li><b>Gap</b> = NL effectief − EU landed. Als gap groter is dan de drempel (vast: €{DEFAULT_SETTINGS.threshold}), neemt PI-share toe.</li>
-          <li><b>Voorstel</b> = verhoog bonus zodat gap ≤ drempel. List blijft ongemoeid (IRP-vriendelijk).</li>
-        </ul>
+        {/* Handmatige PI-share toggle */}
+        <hr className="my-3" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="text-sm w-full inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={inpA.manualPI}
+              onChange={(e) => setInpA(s => ({ ...s, manualPI: e.target.checked }))}
+            />
+            <span className="font-medium">PI-share handmatig invullen</span>
+          </label>
+
+          <FieldPct
+            label="Handmatige PI-share (eind)"
+            value={inpA.manualPIShare}
+            onChange={(v) => setInpA(s => ({ ...s, manualPIShare: clamp(v, 0, 1) }))}
+          />
+
+          <FieldNumber
+            label="Ramp-in (maanden) — handmatig"
+            value={inpA.manualPIRamp}
+            min={0}
+            step={1}
+            onChange={(v) => setInpA(s => ({ ...s, manualPIRamp: Math.max(0, Math.round(v)) }))}
+          />
+        </div>
+
+        {inpA.manualPI && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+            Handmatige modus actief: PI-share volgt jouw invoer (met ramp) en wordt niet uit de prijs-gap berekend.
+          </p>
+        )}
       </section>
 
-      {/* KPI’s */}
+      {/* KPI’s — huidig beleid */}
       <section className="rounded-2xl border bg-white p-4">
-        <h3 className="text-base font-semibold mb-3">KPI’s — Huidig beleid</h3>
+        <h3 className="text-base font-semibold mb-3">KPI’s — Huidig beleid (A)</h3>
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
           <Kpi title="NL effectief (einde)" value={eur(simA.points.at(-1)?.netEffective ?? 0, 0)}
                help={`Net originator: ${eur(simA.netOriginator0, 0)}`} />
           <Kpi title="EU landed (referentie)" value={eur(inpA.euLanded, 0)}
-               help={`Gap eind: ${eur(simA.kpis.endGap, 0)}`} />
+               help={`Gap (einde): ${eur(simA.kpis.endGap, 0)}`} />
           <Kpi title="PI-share (einde)" value={pctS(simA.kpis.endSharePI, 1)}
                help={`Cap: ${pctS(DEFAULT_SETTINGS.cap, 0)}`} />
           <Kpi title="Originator Net — Jaar 1" value={eur(simA.kpis.orgNetY1)} />
@@ -298,7 +357,7 @@ export default function ParallelSimplePage() {
           <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
             <Kpi title="Bonus voorstel"
                  value={`${round(deltas.bonusPP, 1)} pp`}
-                 help={`A: ${pctS(inpA.bonus,1)} → B: ${pctS(inpB.bonus,1)}`} />
+                 help={`A: ${pctS(inpA.bonus,1)} → B: ${pctS(clamp(inpA.bonus + simA.kpis.neededBonusDeltaPP/100,0,0.5),1)}`} />
             <Kpi title="Δ PI-share (einde)"
                  value={pctS(deltas.endSharePI, 1)}
                  help={`A: ${pctS(simA.kpis.endSharePI,1)} → B: ${pctS(simB.kpis.endSharePI,1)}`} />
@@ -322,21 +381,21 @@ export default function ParallelSimplePage() {
         </div>
       </section>
 
-      {/* Praktische aanbevelingen op basis van je invoer */}
+      {/* Praktische aanbevelingen */}
       <section className="rounded-2xl border bg-white p-4">
         <h3 className="text-base font-semibold mb-2">Aanbevolen acties</h3>
         <ul className="text-sm text-gray-700 list-disc pl-5 space-y-2">
           {(() => {
             const tips: string[] = [];
-            if (simA.kpis.endGap > DEFAULT_SETTINGS.threshold) {
+            if (!inpA.manualPI && simA.kpis.endGap > DEFAULT_SETTINGS.threshold) {
               tips.push(`Verhoog bonus op realisatie met ~${round(simA.kpis.neededBonusDeltaPP, 1)} pp om de gap te sluiten tot ≤ €${DEFAULT_SETTINGS.threshold}.`);
-            } else {
+            } else if (!inpA.manualPI) {
               tips.push("Gap is binnen drempel; houd maandelijkse EU-landed check aan en borg prijsdiscipline.");
             }
-            if (simA.kpis.endSharePI > 0.25) {
-              tips.push("Introduceer performance-bonussen of bundelkortingen i.p.v. vlakke front-end korting om switchprikkels te beperken.");
+            if ((inpA.manualPI && inpA.manualPIShare > 0.25) || (!inpA.manualPI && simA.kpis.endSharePI > 0.25)) {
+              tips.push("Schuif korting van front-end naar performance-bonus om switchprikkels te beperken, zonder list te raken.");
             }
-            tips.push("Rapporteer maandelijks: NL effectief, EU landed, gap, PI-share (einde), Net Y1, benodigde bonus-pp.");
+            tips.push("Rapporteer maandelijks: NL effectief, EU landed, gap, PI-share (einde), Net Y1 en benodigde bonus-pp.");
             return tips.map((t, i) => <li key={i}>{t}</li>);
           })()}
         </ul>
