@@ -160,21 +160,56 @@ export function parseNumber(val: any): number {
   return isFinite(n) ? n : 0;
 }
 
-// Accepteer: "2024-01", "202401", "2024/01", "2024-Q1", "2024 Q1", "2024"
+// Accepteer: "2024-01", "202401", "2024/01", "2024-Q1", "2024 Q1", "2024",
+//            "03-2025", "03/2025", "January 2025", "Jan 2025", "Januari 2025"
 export function normalizePeriod(input: any): string | null {
   if (!input && input !== 0) return null;
   let s = String(input).trim().toUpperCase();
+
+  // YYYY-MM of YYYY/MM
   let m = s.match(/^(\d{4})[-\/](\d{1,2})$/);
   if (m) return `${m[1]}-${String(Number(m[2])).padStart(2, "0")}`;
+
+  // MM-YYYY of MM/YYYY
+  m = s.match(/^(\d{1,2})[-\/](\d{4})$/);
+  if (m) return `${m[2]}-${String(Number(m[1])).padStart(2, "0")}`;
+
+  // YYYYMM
   m = s.match(/^(\d{4})(\d{2})$/);
   if (m) return `${m[1]}-${m[2]}`;
+
+  // YYYY Q1-Q4
   m = s.match(/^(\d{4})\s*Q([1-4])$/);
   if (m) {
     const map: Record<number, string> = { 1: "01", 2: "04", 3: "07", 4: "10" };
     return `${m[1]}-${map[Number(m[2])]}`;
   }
+
+  // Alleen jaar
   m = s.match(/^(\d{4})$/);
   if (m) return `${m[1]}-01`;
+
+  // Month YYYY (EN/NL)
+  const MONTHS: Record<string, string> = {
+    JAN: "01", JANUARY: "01", JANUARI: "01",
+    FEB: "02", FEBRUARY: "02", FEBRUARI: "02",
+    MAR: "03", MARCH: "03", MAART: "03",
+    APR: "04", APRIL: "04",
+    MAY: "05", MEI: "05",
+    JUN: "06", JUNE: "06", JUNI: "06",
+    JUL: "07", JULY: "07", JULI: "07",
+    AUG: "08", AUGUST: "08", AUGUSTUS: "08",
+    SEP: "09", SEPT: "09", SEPTEMBER: "09",
+    OCT: "10", OKT: "10", OCTOBER: "10", OKTOBER: "10",
+    NOV: "11", NOVEMBER: "11",
+    DEC: "12", DECEMBER: "12",
+  };
+  m = s.match(/^([A-ZÄÖÜÉÈÍÓÁ]+)\s+(\d{4})$/);
+  if (m) {
+    const mm = MONTHS[m[1]];
+    if (mm) return `${m[2]}-${mm}`;
+  }
+
   return null;
 }
 
