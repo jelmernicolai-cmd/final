@@ -11,6 +11,21 @@ export const metadata = {
 export default function Home() {
   return (
     <>
+ 
+      import PersonaBlocks from "@/components/marketing/PersonaBlocks";
+import TrustBar from "@/components/marketing/TrustBar";
+
+export default function Home() {
+  return (
+    <>
+      {/* ... bestaande Hero ... */}
+      <TrustBar />
+      <PersonaBlocks />
+      {/* ... bestaande content (waterfall demo e.d.) ... */}
+    </>
+  );
+}
+
       {/* Hero */}
       <section className="relative overflow-hidden bg-gradient-to-b from-sky-50 to-white">
         <div className="mx-auto max-w-6xl px-4 py-16 md:py-20 grid md:grid-cols-2 gap-10 items-center">
