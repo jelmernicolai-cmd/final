@@ -15,8 +15,6 @@ const compact = (n: number) =>
 const pctS = (p: number, d = 0) => `${((Number.isFinite(p) ? p : 0) * 100).toFixed(d)}%`;
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const round = (n: number, d = 0) => Math.round((Number.isFinite(n) ? n : 0) * 10 ** d) / 10 ** d;
-const sign = (n: number) => (n > 0 ? "+" : n < 0 ? "−" : "±");
-const tone = (n: number, goodIfPositive = true) => (goodIfPositive ? (n >= 0 ? "good" : "bad") : (n <= 0 ? "good" : "bad"));
 
 /** ================= Types ================= */
 type TenderEvent = { month: number; shareLoss: number };
@@ -218,7 +216,9 @@ function FieldNumber({
     </label>
   );
 }
-function FieldPct({ label, value, onChange, max = 1, help }: { label: string; value: number; onChange: (v: number) => void; max?: number; help?: string }) {
+function FieldPct({
+  label, value, onChange, max = 1, help,
+}: { label: string; value: number; onChange: (v: number) => void; max?: number; help?: string }) {
   return (
     <label className="text-sm w-full min-w-0">
       <div className="font-medium">{label}</div>
@@ -233,7 +233,9 @@ function FieldPct({ label, value, onChange, max = 1, help }: { label: string; va
     </label>
   );
 }
-function Kpi({ title, value, help, tone = "default", titleTooltip }: { title: string; value: string; help?: string; tone?: "default" | "good" | "warn" | "bad"; titleTooltip?: string; }) {
+function Kpi({ title, value, help, tone = "default", titleTooltip }:{
+  title: string; value: string; help?: string; tone?: "default"|"good"|"warn"|"bad"; titleTooltip?: string;
+}) {
   const color =
     tone === "good" ? "border-emerald-200 bg-emerald-50" :
     tone === "warn" ? "border-amber-200 bg-amber-50" :
@@ -244,6 +246,19 @@ function Kpi({ title, value, help, tone = "default", titleTooltip }: { title: st
       <div className="text-lg sm:text-xl font-semibold mt-1 leading-tight break-words">{value}</div>
       {help ? <div className="text-[11px] sm:text-xs text-gray-500 mt-1 leading-snug break-words">{help}</div> : null}
     </div>
+  );
+}
+function Badge({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span
+      className={
+        "px-2 py-1 rounded-full text-[11px] border " +
+        (ok ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200")
+      }
+      title={ok ? "OK" : "Controleer parameters"}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -420,17 +435,13 @@ export default function LOEPage() {
   // UI helpers
   const active = scenarios.find((s) => s.id === activeId)!;
   const activeSim = active.id === "A" ? simA : simB;
+  const applyPreset = (name: keyof typeof PRESETS) => updateScenario(active.id, (i) => ({ ...i, ...PRESETS[name] }));
 
-  const applyPreset = (name: keyof typeof PRESETS) => {
-    updateScenario(active.id, (i) => ({ ...i, ...PRESETS[name] }));
-  };
-
-  // What-if quick edits
-  const bump = (field: keyof Inputs, delta: number, clampTo?: [number, number]) => {
+  // Quick what-ifs
+  const bump = (field: keyof Inputs, delta: number, band?: [number, number]) => {
     updateScenario(active.id, (i) => {
-      const next = { ...i, [field]: (i as any)[field] + delta };
-      if (clampTo) (next as any)[field] = clamp((next as any)[field], clampTo[0], clampTo[1]);
-      if (field === "tender1") return next; // not used here
+      const next = { ...i, [field]: (i as any)[field] + delta } as Inputs;
+      if (band) (next as any)[field] = clamp((next as any)[field], band[0], band[1]);
       return next;
     });
   };
@@ -498,11 +509,7 @@ export default function LOEPage() {
             <div className="text-sm font-medium mb-2">Presets (farma-archetypen)</div>
             <div className="flex flex-wrap gap-2">
               {Object.keys(PRESETS).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => applyPreset(p)}
-                  className="text-xs rounded border px-3 py-1.5 hover:bg-gray-50"
-                >
+                <button key={p} onClick={() => applyPreset(p as keyof typeof PRESETS)} className="text-xs rounded border px-3 py-1.5 hover:bg-gray-50">
                   {p}
                 </button>
               ))}
@@ -580,4 +587,65 @@ export default function LOEPage() {
       </section>
 
       {/* Delta B t.o.v. A — compact besluitkader */}
-      <section className="rounded
+      <section className="rounded-2xl border bg-white p-4">
+        <h3 className="text-base font-semibold mb-3">Verschil Scenario B t.o.v. A</h3>
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+          <Kpi title="Δ Net Sales (Y1)" value={`${dNetY1 >= 0 ? "+" : "−"}${eur(Math.abs(dNetY1))}`} tone={dNetY1 >= 0 ? "good" : "bad"} />
+          <Kpi title="Δ EBITDA (Horizon)" value={`${dEbitda >= 0 ? "+" : "−"}${eur(Math.abs(dEbitda))}`} tone={dEbitda >= 0 ? "good" : "bad"} />
+          <Kpi title="Δ Eind-share (pp)" value={`${dEndShare >= 0 ? "+" : "−"}${(Math.abs(dEndShare) * 100).toFixed(1)}pp`} tone={dEndShare >= 0 ? "good" : "bad"} />
+          <Kpi title="Δ Eind net €/unit" value={`${dEndNet >= 0 ? "+" : "−"}${eur(Math.abs(dEndNet), 0)}`} tone={dEndNet >= 0 ? "good" : "warn"} />
+        </div>
+        <p className="text-xs text-gray-600 mt-2">
+          Gebruik dit blok als besluitkader: is het voorstel (B) aantoonbaar beter dan basis (A) op Net, EBITDA, share en/of eind-netto prijs?
+        </p>
+      </section>
+
+      {/* KPI’s per scenario — RESPONSIVE zonder overlap */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h3 className="text-base font-semibold mb-3">KPI’s — Originator, Generieken en Markt</h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          {[{ sc: sA, sim: simA }, { sc: sB, sim: simB }].map(({ sc, sim }) => (
+            <div key={sc.id} className="rounded-2xl border p-4">
+              <div className="flex items-center gap-2 mb-2 min-w-0">
+                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: sc.color }} />
+                <div className="font-semibold truncate">{sc.name}</div>
+              </div>
+
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+                <Kpi title="Originator — Net Y1" value={eur(sim.kpis.orgNetY1)} help={`Ø share Y1: ${pctS(sim.kpis.orgAvgShareY1, 1)}`} />
+                <Kpi title="Originator — EBITDA (Horizon)" value={eur(sim.kpis.orgEbitdaTotal)} help={`Eind-share: ${pctS(sim.kpis.orgEndShare, 1)}`} />
+                <Kpi title="Generieken — Net Y1" value={eur(sim.kpis.genNetY1)} help={`Eind-share: ${pctS(sim.kpis.genEndShare, 1)}`} />
+                <Kpi title="Markt — Net (Horizon)" value={eur(sim.kpis.mktNetTotal)} help={`Originator eind-net: ${eur(sim.kpis.orgEndNet, 0)}`} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Grafieken */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border bg-white p-4">
+          <h3 className="text-sm font-semibold mb-2">Net sales per maand — Originator vs. Generieken</h3>
+          <MultiLineChart name="Net sales" series={seriesNetSales} yFmt={(v) => compact(v)} />
+          <p className="text-xs text-gray-600 mt-2">Lijnen per scenario en partij. Optellen van originator + generieken ≈ marktontwikkeling.</p>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-4">
+          <h3 className="text-sm font-semibold mb-2">Marktaandeel (%) — Originator vs. Generieken</h3>
+          <MultiLineChart name="Share %" series={seriesShare} yFmt={(v) => `${v.toFixed(0)}%`} />
+          <p className="text-xs text-gray-600 mt-2">Tender verlaagt het niveau blijvend (geen herstel). Meer generieken ⇒ snellere daling.</p>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-4 lg:col-span-2">
+          <h3 className="text-sm font-semibold mb-2">Netto prijs per unit (€) — Originator vs. Generiek</h3>
+          <MultiLineChart
+            name="Net €/unit"
+            series={seriesNetPrice}
+            yFmt={(v) => new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 0 }).format(v)}
+          />
+          <p className="text-xs text-gray-600 mt-2">Generiek-net is een % van pre-LOE net (instelbaar). Originator heeft een net-floor t.o.v. pre-LOE net.</p>
+        </div>
+      </section>
+    </div>
+  );
+}
