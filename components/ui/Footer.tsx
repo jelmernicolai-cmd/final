@@ -4,7 +4,7 @@ export default function Footer() {
 
   return (
     <footer className="mt-24">
-      {/* CTA-band (stackt op mobiel, naast elkaar op >=md) */}
+      {/* CTA-band */}
       <section className="mx-auto w-full max-w-7xl px-4">
         <div className="rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 text-white p-5 sm:p-6 md:p-8 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -16,7 +16,6 @@ export default function Footer() {
                 Korte demo met jouw casus — zonder verplichtingen.
               </p>
             </div>
-
             <div className="flex w-full flex-col sm:flex-row md:w-auto gap-2">
               <a
                 href="mailto:sales@pharmagtn.com?subject=Plan%20demo%20PharmaGtN&body=Bedrijf%3A%0AUse%20case%3A%0AWens%20datum%2Ftijd%3A%0A"
@@ -35,11 +34,67 @@ export default function Footer() {
         </div>
       </section>
 
-      {/* Hoofdfooter (responsieve grid: 1 kolom → 2 → 5) */}
-      <div className="mt-10 border-t bg-white">
-        <div className="mx-auto w-full max-w-7xl px-4 py-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-5">
-          {/* Brand + badges (neemt 2 kolommen op >=lg) */}
-          <div className="lg:col-span-2">
+      {/* Mobiel: compacte accordions */}
+      <div className="mt-10 border-t bg-white md:hidden">
+        <div className="mx-auto w-full max-w-7xl px-4 py-8 space-y-4">
+          {/* Brand-blok */}
+          <div>
+            <a href="/" className="text-lg font-semibold">PharmaGtN</a>
+            <p className="mt-2 text-sm text-slate-600">
+              Helder inzicht in Gross-to-Net, scenario’s en governance — gebouwd voor farma.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-700">
+              <span className="rounded-full border px-3 py-1">EU-hosting</span>
+              <span className="rounded-full border px-3 py-1">Dataminimalisatie</span>
+              <span className="rounded-full border px-3 py-1">Audit logging</span>
+            </div>
+          </div>
+
+          {/* Accordeon secties */}
+          <details className="rounded-xl border">
+            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">Product</summary>
+            <ul className="px-4 pb-3 space-y-2">
+              <FooterLink href="/features">Features</FooterLink>
+              <FooterLink href="/pricing">Pricing</FooterLink>
+              <FooterLink href="/templates">Templates</FooterLink>
+              <FooterLink href="/login">Portal login</FooterLink>
+            </ul>
+          </details>
+
+          <details className="rounded-xl border">
+            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">Bedrijf</summary>
+            <ul className="px-4 pb-3 space-y-2">
+              <FooterLink href="/about">Over ons</FooterLink>
+              <FooterLink href="/about#security">Security</FooterLink>
+              <FooterLink href="/contact">Contact</FooterLink>
+            </ul>
+          </details>
+
+          <details className="rounded-xl border">
+            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">Volg ons</summary>
+            <ul className="px-4 pb-3 space-y-2">
+              <li>
+                <a
+                  className="inline-flex items-center gap-2 text-sm text-slate-700 hover:underline break-words"
+                  href="https://www.linkedin.com/company/pharmagtn"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="PharmaGtN op LinkedIn (opent in nieuw tabblad)"
+                >
+                  <LinkedInIcon className="h-4 w-4" />
+                  LinkedIn
+                </a>
+              </li>
+            </ul>
+          </details>
+        </div>
+      </div>
+
+      {/* Tablet/desktop: vaste kolomgrid */}
+      <div className="hidden md:block mt-10 border-t bg-white">
+        <div className="mx-auto w-full max-w-7xl px-4 py-10 grid gap-8 md:grid-cols-4 lg:grid-cols-5">
+          {/* Brand + badges (2 kolommen op lg) */}
+          <div className="md:col-span-1 lg:col-span-2">
             <a href="/" className="text-lg font-semibold">PharmaGtN</a>
             <p className="mt-3 text-sm text-slate-600 max-w-md">
               Helder inzicht in Gross-to-Net, scenario’s en governance — gebouwd voor farma.
@@ -51,7 +106,6 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Product */}
           <FooterCol title="Product">
             <FooterLink href="/features">Features</FooterLink>
             <FooterLink href="/pricing">Pricing</FooterLink>
@@ -59,39 +113,39 @@ export default function Footer() {
             <FooterLink href="/login">Portal login</FooterLink>
           </FooterCol>
 
-          {/* Bedrijf */}
           <FooterCol title="Bedrijf">
             <FooterLink href="/about">Over ons</FooterLink>
             <FooterLink href="/about#security">Security</FooterLink>
             <FooterLink href="/contact">Contact</FooterLink>
           </FooterCol>
 
-          {/* Volg ons */}
           <FooterCol title="Volg ons">
-            <a
-              className="inline-flex items-center gap-2 text-sm text-slate-700 hover:underline break-words"
-              href="https://www.linkedin.com/company/pharmagtn"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="PharmaGtN op LinkedIn (opent in nieuw tabblad)"
-            >
-              <LinkedInIcon className="h-4 w-4" />
-              LinkedIn
-            </a>
+            <li>
+              <a
+                className="inline-flex items-center gap-2 text-sm text-slate-700 hover:underline break-words"
+                href="https://www.linkedin.com/company/pharmagtn"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="PharmaGtN op LinkedIn (opent in nieuw tabblad)"
+              >
+                <LinkedInIcon className="h-4 w-4" />
+                LinkedIn
+              </a>
+            </li>
           </FooterCol>
         </div>
+      </div>
 
-        {/* Bottom bar (wrapt netjes op mobiel) */}
-        <div className="border-t">
-          <div className="mx-auto w-full max-w-7xl px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <div className="text-center md:text-left">© {year} PharmaGtN. Alle rechten voorbehouden.</div>
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <a href="/terms" className="hover:underline">Voorwaarden</a>
-              <span className="hidden md:inline">•</span>
-              <a href="/privacy" className="hover:underline">Privacy</a>
-              <span className="hidden md:inline">•</span>
-              <a href="/cookies" className="hover:underline">Cookies</a>
-            </div>
+      {/* Bottom bar */}
+      <div className="border-t">
+        <div className="mx-auto w-full max-w-7xl px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <div className="text-center md:text-left">© {year} PharmaGtN. Alle rechten voorbehouden.</div>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <a href="/terms" className="hover:underline">Voorwaarden</a>
+            <span className="hidden md:inline">•</span>
+            <a href="/privacy" className="hover:underline">Privacy</a>
+            <span className="hidden md:inline">•</span>
+            <a href="/cookies" className="hover:underline">Cookies</a>
           </div>
         </div>
       </div>
@@ -99,7 +153,6 @@ export default function Footer() {
   );
 }
 
-/** Kleine hulpcomponenten voor nette, consistente typografie */
 function FooterCol({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
@@ -119,7 +172,6 @@ function FooterLink({ href, children }: { href: string; children: React.ReactNod
   );
 }
 
-/** Inline LinkedIn pictogram (geen extra dependency nodig) */
 function LinkedInIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
