@@ -1,213 +1,247 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 
-/** ================= Helpers ================= */
+/** ============ Helpers ============ */
 const eur = (n: number, d = 0) =>
-  new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: d }).format(
-    Number.isFinite(n) ? n : 0
-  );
+  new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: d })
+    .format(Number.isFinite(n) ? n : 0);
+const pctS = (p: number, d = 1) =>
+  `${((Number.isFinite(p) ? p : 0) * 100).toFixed(d)}%`;
 const compact = (n: number) =>
-  new Intl.NumberFormat("nl-NL", { notation: "compact", maximumFractionDigits: 1 }).format(
-    Number.isFinite(n) ? n : 0
-  );
-const pctS = (p: number, d = 0) => `${((Number.isFinite(p) ? p : 0) * 100).toFixed(d)}%`;
+  new Intl.NumberFormat("nl-NL", { notation: "compact", maximumFractionDigits: 1 })
+    .format(Number.isFinite(n) ? n : 0);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-const round = (n: number, d = 0) => Math.round((Number.isFinite(n) ? n : 0) * 10 ** d) / 10 ** d;
 
-/** ================= Types ================= */
-type TenderEvent = { month: number; shareLoss: number };
-
+/** ============ Types ============ */
 type Inputs = {
-  horizon: number;
-  list0: number;
-  baseUnits: number;
-  gtn: number;
-  cogs: number;
-  entrants: number;
-  priceDropPerEntrant: number;
-  timeErosion12m: number;
-  netFloorOfPre: number;
-  elasticity: number;
-  tender1?: TenderEvent;
-  rampDownMonths: number;
-  genericNetOfPre: number;
+  /** Basis */
+  horizon: number;          // maanden
+  list0: number;            // €/unit pre-LOE
+  baseUnits: number;        // units/maand
+  gtn: number;              // 0..1 (pre-LOE GTN)
+  cogs: number;             // 0..1 van net (EBITDA = net * (1 - cogs))
+
+  /** Segmenten (som ≈ 1) */
+  segPreferent: number;     // 0..1
+  segVrij: number;          // 0..1
+  segZkh: number;           // 0..1
+
+  /** Preferentiebeleid */
+  prefStartM: number;       // maand vanaf LOE
+  prefRampM: number;        // ramp-in maanden
+  prefOriginatorAllowance: number; // 0..0.15 (med. noodzaak/uitzondering)
+  prefGenericNetOfPre: number;     // 0.15..0.35 (≈ 65–85% korting t.o.v. pre-LOE net)
+
+  /** Vrij volume (open retail/wholesale) */
+  openGenericNetOfPre: number;     // 0.35..0.6
+  openOriginatorAddlDisc: number;  // extra korting 0..0.4 t.o.v. pre-LOE net
+  openElasticity: number;          // 0..1 (hoe gevoelig share is voor net-gap)
+  openBaseShare: number;           // 0.3..0.8 (startpunt aandeel ori in vrij segment)
+  openTargetGapEUR: number;        // gewenste max gap (€/unit) voor aanbeveling
+
+  /** Ziekenhuis (tender) */
+  hospBaseShare: number;           // 0.3..0.9 (ori vóór tender)
+  hospTenderMonth: number;         // maand
+  hospTenderLoss: number;          // 0..0.9 (proportioneel verlies van ori-share)
+  hospRampM: number;               // ramp naar nieuw niveau
+  hospGenericNetOfPre: number;     // 0.35..0.55
+  hospOriginatorAddlDisc: number;  // extra korting 0..0.4 vs pre-LOE net
+
+  /** Net-floor */
+  netFloorOfPre: number;           // 0.3..1 (minimaal ori net vs pre-LOE net)
 };
 
 type Point = {
   t: number;
-  list: number;
-  netOriginator: number;
-  netGeneric: number;
-  shareOriginator: number;
-  shareGenerics: number;
-  unitsOriginator: number;
-  unitsGenerics: number;
-  netSalesOriginator: number;
-  netSalesGenerics: number;
-  netSalesTotal: number;
-  cogsOriginator: number;
-  ebitdaOriginator: number;
-};
+  unitsPref: number;
+  unitsOpen: number;
+  unitsHosp: number;
 
-type Scenario = { id: "A" | "B"; name: string; color: string; inputs: Inputs };
+  /** Net €/unit per segment */
+  netOriPref: number;
+  netGenPref: number;
+  netOriOpen: number;
+  netGenOpen: number;
+  netOriHosp: number;
+  netGenHosp: number;
+
+  /** Shares per segment */
+  shareOriPref: number;
+  shareOriOpen: number;
+  shareOriHosp: number;
+
+  /** Totals per maand */
+  netSalesOri: number;
+  netSalesGen: number;
+  shareOriTotal: number;   // gewogen totaal
+};
 
 type KPIs = {
-  orgNetY1: number;
-  orgNetTotal: number;
-  orgEbitdaTotal: number;
-  orgAvgShareY1: number;
-  orgEndShare: number;
-  orgEndNet: number;
+  oriNetY1: number;
+  oriNetH: number;
+  oriEBITDAH: number;
   genNetY1: number;
-  genNetTotal: number;
-  genEndShare: number;
-  mktNetY1: number;
-  mktNetTotal: number;
+  totalNetH: number;
+  endShareOri: number;
+
+  mixPref: number;
+  mixOpen: number;
+  mixHosp: number;
+
+  endOpenGapEUR: number;
 };
 
-/** ================= Defaults ================= */
+/** ============ Defaults & Presets ============ */
 const DEFAULTS: Inputs = {
   horizon: 36,
   list0: 100,
-  baseUnits: 10000,
+  baseUnits: 12000,
   gtn: 0.25,
   cogs: 0.20,
-  entrants: 2,
-  priceDropPerEntrant: 0.10,
-  timeErosion12m: 0.04,
-  netFloorOfPre: 0.45,
-  elasticity: 0.20,
-  tender1: { month: 6, shareLoss: 0.15 },
-  rampDownMonths: 3,
-  genericNetOfPre: 0.50,
+
+  segPreferent: 0.65,
+  segVrij: 0.20,
+  segZkh: 0.15,
+
+  prefStartM: 0,
+  prefRampM: 2,
+  prefOriginatorAllowance: 0.05,
+  prefGenericNetOfPre: 0.20, // ≈ 80% korting t.o.v. pre-LOE net
+
+  openGenericNetOfPre: 0.48,
+  openOriginatorAddlDisc: 0.08,
+  openElasticity: 0.35,
+  openBaseShare: 0.55,
+  openTargetGapEUR: 5,
+
+  hospBaseShare: 0.70,
+  hospTenderMonth: 6,
+  hospTenderLoss: 0.25,
+  hospRampM: 2,
+  hospGenericNetOfPre: 0.45,
+  hospOriginatorAddlDisc: 0.06,
+
+  netFloorOfPre: 0.42,
 };
 
-const COLORS = { A: "#0ea5e9", B: "#f59e0b", GEN_A: "#10b981", GEN_B: "#22c55e" };
+const PRESETS: Record<string, Partial<Inputs>> = {
+  "Preferentie hoog (verzekeraar)":
+    { segPreferent: 0.75, segVrij: 0.15, segZkh: 0.10, prefStartM: 0, prefRampM: 2, prefOriginatorAllowance: 0.03, prefGenericNetOfPre: 0.18, openGenericNetOfPre: 0.52 },
+  "Retail-gedreven (wholesale)":
+    { segPreferent: 0.45, segVrij: 0.40, segZkh: 0.15, openGenericNetOfPre: 0.46, openOriginatorAddlDisc: 0.12, openElasticity: 0.45, openBaseShare: 0.6 },
+  "Ziekenhuis zwaar (tenders)":
+    { segPreferent: 0.40, segVrij: 0.20, segZkh: 0.40, hospBaseShare: 0.65, hospTenderMonth: 4, hospTenderLoss: 0.35, hospRampM: 2, hospGenericNetOfPre: 0.42 },
+  "Geleidelijke adoptie":
+    { prefStartM: 3, prefRampM: 4, prefOriginatorAllowance: 0.07, openGenericNetOfPre: 0.50, openOriginatorAddlDisc: 0.06, hospTenderMonth: 9, hospTenderLoss: 0.18 },
+};
 
-/** ================= Model ================= */
-function erosionFrac(t: number, entrants: number, perEntrant: number, overTime12m: number) {
-  const direct = 1 - Math.exp(-Math.max(0, entrants) * clamp(perEntrant, 0, 1) * 3.5);
-  const overtime = Math.min((t / 12) * clamp(overTime12m, 0, 1), 0.5);
-  return clamp(direct + overtime, 0, 0.98);
-}
-function shareCurveBase(t: number, entrants: number) {
-  if (entrants <= 0) return 1;
-  const k = 0.10 + Math.max(0, entrants) * 0.06;
-  return clamp(Math.exp(-k * t), 0.05, 1);
-}
-function tenderMultiplier(t: number, rampDownMonths: number, ev?: TenderEvent) {
-  if (!ev || ev.shareLoss <= 0) return 1;
-  const m0 = Math.max(0, Math.floor(ev.month));
-  const loss = clamp(ev.shareLoss, 0, 0.95);
-  const floor = 1 - loss;
-  if (t < m0) return 1;
-  const r = Math.max(0, Math.floor(rampDownMonths));
-  if (r <= 0 || t >= m0 + r) return floor;
-  const frac = (t - m0) / r;
-  return 1 - loss * clamp(frac, 0, 1);
-}
-
+/** ============ Core model ============ */
 function simulate(inp: Inputs) {
   const points: Point[] = [];
-  const preNet = Math.max(0, inp.list0) * (1 - clamp(inp.gtn, 0, 0.9));
-  const genericNetAbs = preNet * clamp(inp.genericNetOfPre, 0.2, 0.9);
+  const preNet = inp.list0 * (1 - inp.gtn); // referentie
 
-  for (let t = 0; t < Math.max(1, Math.floor(inp.horizon)); t++) {
-    const eros = erosionFrac(t, inp.entrants, inp.priceDropPerEntrant, inp.timeErosion12m);
-    const list = Math.max(0, inp.list0) * (1 - eros);
-    let netOriginator = list * (1 - clamp(inp.gtn, 0, 0.9));
-    netOriginator = Math.max(netOriginator, preNet * clamp(inp.netFloorOfPre, 0, 1));
+  const ramp = (t: number, start: number, rampM: number) => {
+    if (t < start) return 0;
+    if (rampM <= 0) return 1;
+    return clamp((t - start) / rampM, 0, 1);
+  };
 
-    let share = shareCurveBase(t, inp.entrants);
-    share *= tenderMultiplier(t, inp.rampDownMonths, inp.tender1);
-    share = clamp(share, 0.05, 1);
+  for (let t = 0; t < inp.horizon; t++) {
+    const unitsTotal = inp.baseUnits;
 
-    const relative = (netOriginator - genericNetAbs) / (preNet || 1);
-    const elastAdj = 1 - clamp(relative * clamp(inp.elasticity, 0, 1), -0.5, 0.5);
+    // Segment volumes (constante mix; preferent bouwt via ramp “effectief” op via share)
+    const unitsPref = unitsTotal * inp.segPreferent;
+    const unitsOpen = unitsTotal * inp.segVrij;
+    const unitsHosp = unitsTotal * inp.segZkh;
 
-    const totalUnits = Math.max(0, inp.baseUnits);
-    const unitsOriginator = Math.max(0, totalUnits * share * elastAdj);
-    const unitsGenerics = Math.max(0, totalUnits - unitsOriginator);
+    /** Preferentiebeleid */
+    const prefOn = ramp(t, inp.prefStartM, inp.prefRampM);   // 0→1
+    const shareOriPref = clamp(inp.prefOriginatorAllowance * prefOn, 0, 0.15);
+    const netGenPref = preNet * inp.prefGenericNetOfPre;
+    const netOriPref = Math.max(preNet * (1 - inp.openOriginatorAddlDisc), preNet * inp.netFloorOfPre); // ori maakt zelden deal in preferent; neem basis/open als bovengrens
 
-    const netSalesOriginator = netOriginator * unitsOriginator;
-    const netSalesGenerics = genericNetAbs * unitsGenerics;
-    const netSalesTotal = netSalesOriginator + netSalesGenerics;
+    /** Vrij volume (open retail/wholesale) */
+    const netGenOpen = preNet * inp.openGenericNetOfPre;
+    const netOriOpen = Math.max(preNet * (1 - inp.openOriginatorAddlDisc), preNet * inp.netFloorOfPre);
+    // lineaire share-respons op net-gap, rond baseShare
+    const rel = (netOriOpen - netGenOpen) / Math.max(1, preNet);
+    const shareAdj = clamp(1 - inp.openElasticity * rel, 0.05, 0.95);
+    const shareOriOpen = clamp(inp.openBaseShare * shareAdj, 0.05, 0.95);
 
-    const cogsOriginator = netSalesOriginator * clamp(inp.cogs, 0, 0.95);
-    const ebitdaOriginator = netSalesOriginator - cogsOriginator;
+    /** Ziekenhuis (tender) */
+    const m = inp.hospTenderMonth;
+    const tgt = inp.hospBaseShare * (1 - inp.hospTenderLoss);
+    const tenderPhase = t < m ? 0 : clamp((t - m) / Math.max(1, inp.hospRampM), 0, 1);
+    const shareOriHosp = clamp(inp.hospBaseShare * (1 - tenderPhase * inp.hospTenderLoss), 0.05, 0.95);
+    const netGenHosp = preNet * inp.hospGenericNetOfPre;
+    const netOriHosp = Math.max(preNet * (1 - inp.hospOriginatorAddlDisc), preNet * inp.netFloorOfPre);
+
+    /** Netto’s × units → Net Sales per segment */
+    const nsOriPref = unitsPref * shareOriPref * netOriPref;
+    const nsGenPref = unitsPref * (1 - shareOriPref) * netGenPref;
+
+    const nsOriOpen = unitsOpen * shareOriOpen * netOriOpen;
+    const nsGenOpen = unitsOpen * (1 - shareOriOpen) * netGenOpen;
+
+    const nsOriHosp = unitsHosp * shareOriHosp * netOriHosp;
+    const nsGenHosp = unitsHosp * (1 - shareOriHosp) * netGenHosp;
+
+    const netSalesOri = nsOriPref + nsOriOpen + nsOriHosp;
+    const netSalesGen = nsGenPref + nsGenOpen + nsGenHosp;
+
+    const shareOriTotal =
+      (unitsPref * shareOriPref + unitsOpen * shareOriOpen + unitsHosp * shareOriHosp) /
+      Math.max(1, unitsTotal);
 
     points.push({
       t,
-      list,
-      netOriginator,
-      netGeneric: genericNetAbs,
-      shareOriginator: share,
-      shareGenerics: 1 - share,
-      unitsOriginator,
-      unitsGenerics,
-      netSalesOriginator,
-      netSalesGenerics,
-      netSalesTotal,
-      cogsOriginator,
-      ebitdaOriginator,
+      unitsPref, unitsOpen, unitsHosp,
+      netOriPref, netGenPref,
+      netOriOpen, netGenOpen,
+      netOriHosp, netGenHosp,
+      shareOriPref, shareOriOpen, shareOriHosp,
+      netSalesOri, netSalesGen, shareOriTotal,
     });
   }
 
-  const sum = (f: (p: Point) => number) => points.reduce((a, p) => a + f(p), 0);
   const y1 = points.slice(0, Math.min(12, points.length));
+  const sum = (f: (p: Point) => number) => points.reduce((a, p) => a + f(p), 0);
 
   const kpis: KPIs = {
-    orgNetY1: y1.reduce((a, p) => a + p.netSalesOriginator, 0),
-    orgNetTotal: sum((p) => p.netSalesOriginator),
-    orgEbitdaTotal: sum((p) => p.ebitdaOriginator),
-    orgAvgShareY1: y1.length ? y1.reduce((a, p) => a + p.shareOriginator, 0) / y1.length : 0,
-    orgEndShare: points.at(-1)?.shareOriginator ?? 0,
-    orgEndNet: points.at(-1)?.netOriginator ?? 0,
+    oriNetY1: y1.reduce((a, p) => a + p.netSalesOri, 0),
+    oriNetH: sum((p) => p.netSalesOri),
+    oriEBITDAH: sum((p) => p.netSalesOri) * (1 - clamp(DEFAULTS.cogs, 0, 0.95)), // cogs uit active inputs zetten we later
+    genNetY1: y1.reduce((a, p) => a + p.netSalesGen, 0),
+    totalNetH: sum((p) => p.netSalesOri + p.netSalesGen),
+    endShareOri: points.at(-1)?.shareOriTotal ?? 0,
 
-    genNetY1: y1.reduce((a, p) => a + p.netSalesGenerics, 0),
-    genNetTotal: sum((p) => p.netSalesGenerics),
-    genEndShare: points.at(-1)?.shareGenerics ?? 0,
+    mixPref: (points.reduce((a, p) => a + p.unitsPref, 0) / (points.length * (DEFAULTS.baseUnits || 1))) || 0,
+    mixOpen: (points.reduce((a, p) => a + p.unitsOpen, 0) / (points.length * (DEFAULTS.baseUnits || 1))) || 0,
+    mixHosp: (points.reduce((a, p) => a + p.unitsHosp, 0) / (points.length * (DEFAULTS.baseUnits || 1))) || 0,
 
-    mktNetY1: y1.reduce((a, p) => a + p.netSalesTotal, 0),
-    mktNetTotal: sum((p) => p.netSalesTotal),
+    endOpenGapEUR: Math.max(0, (points.at(-1)?.netOriOpen ?? 0) - (points.at(-1)?.netGenOpen ?? 0)),
   };
 
-  const health = {
-    horizonOK: Number.isFinite(inp.horizon) && inp.horizon >= 12 && inp.horizon <= 72,
-    tenderOK: inp.tender1 ? inp.tender1.month >= 0 && inp.tender1.shareLoss >= 0 && inp.tender1.shareLoss <= 0.8 : true,
-    pctBandsOK:
-      clamp(inp.gtn, 0, 1) <= 0.8 &&
-      clamp(inp.cogs, 0, 1) <= 0.9 &&
-      clamp(inp.priceDropPerEntrant, 0, 1) <= 0.4 &&
-      clamp(inp.timeErosion12m, 0, 1) <= 0.5,
-    mathOK:
-      Number.isFinite(kpis.orgNetY1) &&
-      Number.isFinite(kpis.mktNetTotal) &&
-      Number.isFinite(kpis.orgEbitdaTotal),
-  };
-
-  return { points, kpis, preNet, genericNetAbs, health };
+  return { points, kpis, preNet };
 }
 
-/** ================= Kleine UI ================= */
+/** ============ UI helpers ============ */
 function FieldNumber({
   label, value, onChange, step = 1, min, max, suffix, help,
 }: {
-  label: string; value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; suffix?: string; help?: string;
+  label: string; value: number; onChange: (v: number) => void;
+  step?: number; min?: number; max?: number; suffix?: string; help?: string;
 }) {
   return (
-    <label className="text-sm w-full min-w-0">
+    <label className="text-sm w-full">
       <div className="font-medium">{label}</div>
       {help ? <div className="text-xs text-gray-500">{help}</div> : null}
       <div className="mt-1 flex items-center gap-2">
         <input
           type="number"
           value={Number.isFinite(value) ? value : 0}
-          step={step}
-          min={min}
-          max={max}
+          step={step} min={min} max={max}
           onChange={(e) => onChange(parseFloat(e.target.value))}
           className="w-full rounded-lg border px-3 py-2"
         />
@@ -217,54 +251,35 @@ function FieldNumber({
   );
 }
 function FieldPct({
-  label, value, onChange, max = 1, help,
-}: { label: string; value: number; onChange: (v: number) => void; max?: number; help?: string }) {
+  label, value, onChange, min = 0, max = 1, help,
+}: {
+  label: string; value: number; onChange: (v: number) => void; min?: number; max?: number; help?: string;
+}) {
   return (
-    <label className="text-sm w-full min-w-0">
+    <label className="text-sm w-full">
       <div className="font-medium">{label}</div>
       {help ? <div className="text-xs text-gray-500">{help}</div> : null}
       <div className="mt-1 grid grid-cols-[1fr_auto_auto] items-center gap-2">
-        <input type="range" min={0} max={max} step={0.005} value={Number.isFinite(value) ? value : 0}
+        <input type="range" min={min} max={max} step={0.005} value={Number.isFinite(value) ? value : 0}
                onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full" />
-        <input type="number" step={0.01} min={0} max={max} value={Number.isFinite(value) ? value : 0}
+        <input type="number" min={min} max={max} step={0.01} value={Number.isFinite(value) ? value : 0}
                onChange={(e) => onChange(parseFloat(e.target.value))} className="w-24 rounded-lg border px-3 py-2" />
         <span className="text-gray-500">{pctS(value)}</span>
       </div>
     </label>
   );
 }
-function Kpi({ title, value, help, tone = "default", titleTooltip }:{
-  title: string; value: string; help?: string; tone?: "default"|"good"|"warn"|"bad"; titleTooltip?: string;
-}) {
-  const color =
-    tone === "good" ? "border-emerald-200 bg-emerald-50" :
-    tone === "warn" ? "border-amber-200 bg-amber-50" :
-    tone === "bad"  ? "border-rose-200 bg-rose-50" : "border-gray-200 bg-white";
-  return (
-    <div className={`w-full min-w-0 rounded-2xl border ${color} p-3 sm:p-4`} title={titleTooltip}>
-      <div className="text-[12px] text-gray-500 leading-snug break-words">{title}</div>
-      <div className="text-lg sm:text-xl font-semibold mt-1 leading-tight break-words">{value}</div>
-      {help ? <div className="text-[11px] sm:text-xs text-gray-500 mt-1 leading-snug break-words">{help}</div> : null}
-    </div>
-  );
-}
 function Badge({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <span
-      className={
-        "px-2 py-1 rounded-full text-[11px] border " +
-        (ok ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200")
-      }
-      title={ok ? "OK" : "Controleer parameters"}
-    >
+    <span className={`px-2 py-1 rounded-full text-[11px] border ${ok ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"}`}>
       {label}
     </span>
   );
 }
 
-/** ================= Charts (SVG) ================= */
+/** ============ Charts (SVG) ============ */
 function MultiLineChart({
-  name, series, yFmt = (v: number) => v.toFixed(0), height = 240,
+  name, series, yFmt = (v: number) => v.toFixed(0), height = 220,
 }: {
   name: string;
   series: { name: string; color: string; values: number[] }[];
@@ -272,8 +287,8 @@ function MultiLineChart({
   height?: number;
 }) {
   const w = 960, h = height, padX = 46, padY = 28;
-  const maxLen = Math.max(1, ...series.map((s) => s.values.length));
-  const all = series.flatMap((s) => s.values);
+  const maxLen = Math.max(1, ...series.map(s => s.values.length));
+  const all = series.flatMap(s => s.values);
   const maxY = Math.max(1, ...all);
   const minY = 0;
   const x = (i: number) => padX + (i / Math.max(1, maxLen - 1)) * (w - 2 * padX);
@@ -281,369 +296,352 @@ function MultiLineChart({
   const ticks = Array.from({ length: 5 }, (_, i) => (maxY / 4) * i);
 
   return (
-    <div className="w-full">
-      <svg className="w-full h-auto" viewBox={`0 0 ${w} ${h}`} role="img" aria-label={name} preserveAspectRatio="xMidYMid meet">
-        <rect x={12} y={12} width={w - 24} height={h - 24} rx={16} fill="#fff" stroke="#e5e7eb" />
-        {ticks.map((tv, i) => (
-          <g key={i}>
-            <line x1={padX} y1={y(tv)} x2={w - padX} y2={y(tv)} stroke="#f3f4f6" />
-            <text x={padX - 8} y={y(tv) + 4} fontSize="10" textAnchor="end" fill="#6b7280">
-              {yFmt(tv)}
+    <svg className="w-full h-auto" viewBox={`0 0 ${w} ${h}`} role="img" aria-label={name} preserveAspectRatio="xMidYMid meet">
+      <rect x={12} y={12} width={w - 24} height={h - 24} rx={16} fill="#fff" stroke="#e5e7eb" />
+      {ticks.map((tv, i) => (
+        <g key={i}>
+          <line x1={padX} y1={y(tv)} x2={w - padX} y2={y(tv)} stroke="#f3f4f6" />
+          <text x={padX - 8} y={y(tv) + 4} fontSize="10" textAnchor="end" fill="#6b7280">{yFmt(tv)}</text>
+        </g>
+      ))}
+      {series.map((s, si) => {
+        const d = s.values.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
+        return (
+          <g key={si}>
+            <path d={d} fill="none" stroke={s.color} strokeWidth={2} />
+            {s.values.map((v, i) => (
+              <circle key={i} cx={x(i)} cy={y(v)} r={2} fill={s.color}>
+                <title>{`${s.name} • m${i + 1}: ${yFmt(v)}`}</title>
+              </circle>
+            ))}
+            <text x={w - padX} y={y(s.values.at(-1) || 0) - 6} fontSize="10" textAnchor="end" fill={s.color}>
+              {s.name}
             </text>
           </g>
-        ))}
-        {series.map((s, si) => {
-          const d = s.values.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
-          return (
-            <g key={si}>
-              <path d={d} fill="none" stroke={s.color} strokeWidth={2} />
-              {s.values.map((v, i) => (
-                <circle key={i} cx={x(i)} cy={y(v)} r={2} fill={s.color}>
-                  <title>{`${s.name} • m${i + 1}: ${yFmt(v)}`}</title>
-                </circle>
-              ))}
-              <text x={w - padX} y={y(s.values.at(-1) || 0) - 6} fontSize="10" textAnchor="end" fill={s.color}>
-                {s.name}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
+        );
+      })}
+    </svg>
   );
 }
 
-/** ================= Export CSV ================= */
-function toCSV(rows: (string | number)[][]) {
-  const esc = (v: string | number) =>
-    typeof v === "number" ? String(v) : /[",;\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
-  return rows.map((r) => r.map(esc).join(",")).join("\n");
-}
-function downloadCSV(name: string, rows: (string | number)[][]) {
-  const blob = new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
+/** ============ Page ============ */
+const COLORS = { A: "#0ea5e9", B: "#f59e0b", Gen: "#10b981" };
 
-/** ================= Presets & What-ifs ================= */
-const PRESETS: Record<string, Partial<Inputs>> = {
-  "Tendergedreven (ziekenhuis)": { entrants: 2, priceDropPerEntrant: 0.08, timeErosion12m: 0.03, tender1: { month: 4, shareLoss: 0.30 }, rampDownMonths: 2, netFloorOfPre: 0.42 },
-  "Retail langstaart": { entrants: 5, priceDropPerEntrant: 0.06, timeErosion12m: 0.08, tender1: { month: 24, shareLoss: 0.0 }, rampDownMonths: 0, netFloorOfPre: 0.48 },
-  "Snelle commoditisatie": { entrants: 6, priceDropPerEntrant: 0.12, timeErosion12m: 0.10, tender1: { month: 6, shareLoss: 0.25 }, rampDownMonths: 1, netFloorOfPre: 0.40 },
-  "Langzame LOE": { entrants: 1, priceDropPerEntrant: 0.05, timeErosion12m: 0.02, tender1: { month: 12, shareLoss: 0.10 }, rampDownMonths: 4, netFloorOfPre: 0.50 },
-};
+export default function LOEPlanner() {
+  const [A, setA] = useState<Inputs>({ ...DEFAULTS });
+  const [B, setB] = useState<Inputs>({
+    ...DEFAULTS,
+    segPreferent: 0.70,
+    segVrij: 0.20,
+    segZkh: 0.10,
+    prefOriginatorAllowance: 0.03,
+    openOriginatorAddlDisc: 0.12,
+    hospTenderMonth: 4,
+    hospTenderLoss: 0.30,
+  });
+  const [active, setActive] = useState<"A" | "B">("A");
 
-/** ================= Page ================= */
-export default function LOEPage() {
-  const [scenarios, setScenarios] = useState<Scenario[]>([
-    { id: "A", name: "Scenario A (basis)", color: COLORS.A, inputs: { ...DEFAULTS } },
-    {
-      id: "B",
-      name: "Scenario B (meer druk)",
-      color: COLORS.B,
-      inputs: {
-        ...DEFAULTS,
-        entrants: 4,
-        priceDropPerEntrant: 0.12,
-        timeErosion12m: 0.06,
-        netFloorOfPre: 0.40,
-        tender1: { month: 6, shareLoss: 0.22 },
-        rampDownMonths: 2,
-        genericNetOfPre: 0.45,
-      },
-    },
-  ]);
-  const [activeId, setActiveId] = useState<"A" | "B">("A");
-  const sA = scenarios[0], sB = scenarios[1];
+  const simA = useMemo(() => simulate(A), [A]);
+  const simB = useMemo(() => simulate(B), [B]);
 
-  const simA = useMemo(() => simulate(sA.inputs), [sA.inputs]);
-  const simB = useMemo(() => simulate(sB.inputs), [sB.inputs]);
+  // Correcte EBITDA met respectievelijke cogs
+  const kpisA = { ...simA.kpis, oriEBITDAH: simA.kpis.oriNetH * (1 - clamp(A.cogs, 0, 0.95)) };
+  const kpisB = { ...simB.kpis, oriEBITDAH: simB.kpis.oriNetH * (1 - clamp(B.cogs, 0, 0.95)) };
 
-  const updateScenario = (id: "A" | "B", fn: (i: Inputs) => Inputs) =>
-    setScenarios((prev) => prev.map((s) => (s.id === id ? { ...s, inputs: fn(s.inputs) } : s)));
-
-  const resetActive = () =>
-    setScenarios((prev) => prev.map((s) => (s.id === activeId ? { ...s, inputs: { ...DEFAULTS } } : s)));
-  const resetBoth = () =>
-    setScenarios([
-      { id: "A", name: "Scenario A (basis)", color: COLORS.A, inputs: { ...DEFAULTS } },
-      {
-        id: "B",
-        name: "Scenario B (meer druk)",
-        color: COLORS.B,
-        inputs: {
-          ...DEFAULTS,
-          entrants: 4,
-          priceDropPerEntrant: 0.12,
-          timeErosion12m: 0.06,
-          netFloorOfPre: 0.40,
-          tender1: { month: 6, shareLoss: 0.22 },
-          rampDownMonths: 2,
-          genericNetOfPre: 0.45,
-        },
-      },
-    ]);
-
-  const exportCSV = () => {
-    const rows: (string | number)[][] = [];
-    rows.push([
-      "scenario","orgNetY1","orgNetTotal","orgEbitdaTotal","orgAvgShareY1","orgEndShare","orgEndNet","genNetY1","genNetTotal","genEndShare","mktNetY1","mktNetTotal",
-    ]);
-    [
-      { name: sA.name, k: simA.kpis },
-      { name: sB.name, k: simB.kpis },
-    ].forEach(({ name, k }) =>
-      rows.push([
-        name, Math.round(k.orgNetY1), Math.round(k.orgNetTotal), Math.round(k.orgEbitdaTotal),
-        round(k.orgAvgShareY1, 4), round(k.orgEndShare, 4), round(k.orgEndNet, 2),
-        Math.round(k.genNetY1), Math.round(k.genNetTotal), round(k.genEndShare, 4),
-        Math.round(k.mktNetY1), Math.round(k.mktNetTotal),
-      ])
-    );
-    downloadCSV("loe_export.csv", rows);
-  };
-
-  // Reeksen
-  const seriesNetSales = [
-    { name: `${sA.name} – Originator`, color: sA.color, values: simA.points.map((p) => p.netSalesOriginator) },
-    { name: `${sA.name} – Generieken`, color: COLORS.GEN_A, values: simA.points.map((p) => p.netSalesGenerics) },
-    { name: `${sB.name} – Originator`, color: sB.color, values: simB.points.map((p) => p.netSalesOriginator) },
-    { name: `${sB.name} – Generieken`, color: COLORS.GEN_B, values: simB.points.map((p) => p.netSalesGenerics) },
+  const seriesNet = [
+    { name: "Originator — A", color: COLORS.A, values: simA.points.map(p => p.netSalesOri) },
+    { name: "Generieken — A", color: COLORS.Gen, values: simA.points.map(p => p.netSalesGen) },
+    { name: "Originator — B", color: COLORS.B, values: simB.points.map(p => p.netSalesOri) },
   ];
   const seriesShare = [
-    { name: `${sA.name} – Originator`, color: sA.color, values: simA.points.map((p) => p.shareOriginator * 100) },
-    { name: `${sA.name} – Generieken`, color: COLORS.GEN_A, values: simA.points.map((p) => p.shareGenerics * 100) },
-    { name: `${sB.name} – Originator`, color: sB.color, values: simB.points.map((p) => p.shareOriginator * 100) },
-    { name: `${sB.name} – Generieken`, color: COLORS.GEN_B, values: simB.points.map((p) => p.shareGenerics * 100) },
-  ];
-  const seriesNetPrice = [
-    { name: `${sA.name} – Originator`, color: sA.color, values: simA.points.map((p) => p.netOriginator) },
-    { name: `${sA.name} – Generiek`, color: COLORS.GEN_A, values: simA.points.map((p) => p.netGeneric) },
-    { name: `${sB.name} – Originator`, color: sB.color, values: simB.points.map((p) => p.netOriginator) },
-    { name: `${sB.name} – Generiek`, color: COLORS.GEN_B, values: simB.points.map((p) => p.netGeneric) },
+    { name: "Share ori — A", color: COLORS.A, values: simA.points.map(p => p.shareOriTotal * 100) },
+    { name: "Share ori — B", color: COLORS.B, values: simB.points.map(p => p.shareOriTotal * 100) },
   ];
 
-  // Delta B t.o.v. A (jaar 1 / einde)
-  const dNetY1 = simB.kpis.orgNetY1 - simA.kpis.orgNetY1;
-  const dEbitda = simB.kpis.orgEbitdaTotal - simA.kpis.orgEbitdaTotal;
-  const dEndShare = simB.kpis.orgEndShare - simA.kpis.orgEndShare;
-  const dEndNet = simB.kpis.orgEndNet - simA.kpis.orgEndNet;
+  // Acties / aanbevelingen
+  const actions = useMemo(() => {
+    const act: { title: string; detail: string }[] = [];
+    const a = active === "A" ? A : B;
+    const sim = active === "A" ? simA : simB;
 
-  // UI helpers
-  const active = scenarios.find((s) => s.id === activeId)!;
-  const activeSim = active.id === "A" ? simA : simB;
-  const applyPreset = (name: keyof typeof PRESETS) => updateScenario(active.id, (i) => ({ ...i, ...PRESETS[name] }));
+    // 1) Open gap → voorstel extra korting tot target gap
+    const gap = sim.kpis.endOpenGapEUR;
+    if (gap > a.openTargetGapEUR) {
+      const need = Math.max(0, gap - a.openTargetGapEUR);         // € nodig
+      const extraDiscPct = need / Math.max(1, sim.preNet);         // als % van preNet
+      act.push({
+        title: "Verlaag gap in vrij volume",
+        detail: `Open gap is ${eur(gap,0)}. Overweeg ~${pctS(extraDiscPct,1)} extra korting op vrij volume om gap≈${eur(a.openTargetGapEUR,0)} te bereiken.`,
+      });
+    }
 
-  // Quick what-ifs
-  const bump = (field: keyof Inputs, delta: number, band?: [number, number]) => {
-    updateScenario(active.id, (i) => {
-      const next = { ...i, [field]: (i as any)[field] + delta } as Inputs;
-      if (band) (next as any)[field] = clamp((next as any)[field], band[0], band[1]);
-      return next;
-    });
-  };
+    // 2) Preferent allowance zeer laag?
+    const lastPrefShareOri = (sim.points.at(-1)?.shareOriPref ?? 0);
+    if (a.segPreferent > 0.6 && lastPrefShareOri < 0.04) {
+      act.push({
+        title: "Minimaliseer preferentieverlies via uitzonderingstraject",
+        detail: "Allowance <4% bij hoog preferent aandeel. Borg medische noodzaak-flows en P1-SKU’s met dossier-proces.",
+      });
+    }
+
+    // 3) Tenderverlies groot?
+    const hospDrop = Math.max(0, a.hospTenderLoss);
+    if (a.segZkh >= 0.2 && hospDrop >= 0.3) {
+      act.push({
+        title: "Tender-strategie aanscherpen",
+        detail: "Ziekenhuissegment ≥20% en tenderverlies ≥30%. Overweeg bundelprijzen of value-add (educatie/logistiek) i.p.v. puur korting.",
+      });
+    }
+
+    // 4) Mix: preferent >70% → focus op vrij & zkh
+    if (a.segPreferent >= 0.7) {
+      act.push({
+        title: "Focus op vrij/zkh segmenten",
+        detail: "Preferent domineert. Stuur op wholesaledeals (staffels, bonus) en klinische inzet voor ziekenhuizen.",
+      });
+    }
+
+    return act.slice(0, 3);
+  }, [active, A, B, simA, simB]);
+
+  const setActiveInputs = (fn: (i: Inputs) => Inputs) =>
+    active === "A" ? setA(fn(A)) : setB(fn(B));
+
+  const applyPreset = (name: keyof typeof PRESETS) =>
+    setActiveInputs(i => ({ ...i, ...PRESETS[name] }));
+
+  const bump = (field: keyof Inputs, delta: number, min = -Infinity, max = Infinity) =>
+    setActiveInputs(i => ({ ...i, [field]: clamp((i as any)[field] + delta, min as number, max as number) } as Inputs));
 
   return (
     <div className="max-w-screen-xl mx-auto px-3 sm:px-4 lg:px-6 py-4 space-y-6">
-      {/* Header + compare bar */}
+      {/* Header */}
       <header className="rounded-2xl border bg-white p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold truncate">Loss of Exclusivity — Originator vs. Generieken</h1>
-            <p className="text-gray-600 text-sm">
-              LOE op t=0. Meerdere generieken drukken prijs en aandeel. Tender verlaagt originator blijvend (optioneel, met ramp-down).
+            <h1 className="text-xl sm:text-2xl font-semibold truncate">LOE Planner — Preferentie • Vrij volume • Ziekenhuis</h1>
+            <p className="text-sm text-gray-700">
+              Plan scenario’s bij patentverloop: preferentiebeleid (80%+ korting), wholesale-deals op vrij volume, en ziekenhuistenders.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={exportCSV} className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Export CSV</button>
-            <button onClick={() => setActiveId(activeId === "A" ? "B" : "A")} className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">
-              Bewerk: {activeId === "A" ? "Scenario B" : "Scenario A"}
-            </button>
-            <button onClick={resetActive} className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Reset actief</button>
-            <button onClick={resetBoth} className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Reset beide</button>
+            <button onClick={() => setActive("A")} className={`text-sm rounded border px-3 py-2 ${active==="A"?"bg-gray-50":""}`}>Bewerk A</button>
+            <button onClick={() => setActive("B")} className={`text-sm rounded border px-3 py-2 ${active==="B"?"bg-gray-50":""}`}>Bewerk B</button>
           </div>
         </div>
 
-        {/* Compacte vergelijking A vs B */}
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {[{ sc: sA, sim: simA }, { sc: sB, sim: simB }].map(({ sc, sim }) => (
-            <div key={sc.id} className="rounded-xl border p-3">
-              <div className="text-xs text-gray-500 mb-1 flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full" style={{ background: sc.color }} />
-                {sc.name}
-              </div>
-              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                <span title="Net sales jaar 1">Net Y1: <b>{eur(sim.kpis.orgNetY1)}</b></span>
-                <span title="Einde marktaandeel originator">Eind share: <b>{pctS(sim.kpis.orgEndShare, 1)}</b></span>
-                <span title="Netto koperprijs originator op einde horizon">Eind net €/u: <b>{eur(sim.kpis.orgEndNet, 0)}</b></span>
-              </div>
+        {/* Compacte vergelijking */}
+        <div className="mt-4 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+          <div className="rounded-xl border p-3">
+            <div className="text-xs text-gray-500 mb-1 flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full" style={{ background: COLORS.A }} /> Scenario A
             </div>
-          ))}
+            <div className="text-sm flex flex-wrap gap-x-6 gap-y-1">
+              <span>Net Y1: <b>{eur(kpisA.oriNetY1)}</b></span>
+              <span>Eind share: <b>{pctS(kpisA.endShareOri)}</b></span>
+            </div>
+          </div>
+          <div className="rounded-xl border p-3">
+            <div className="text-xs text-gray-500 mb-1 flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full" style={{ background: COLORS.B }} /> Scenario B
+            </div>
+            <div className="text-sm flex flex-wrap gap-x-6 gap-y-1">
+              <span>Net Y1: <b>{eur(kpisB.oriNetY1)}</b></span>
+              <span>Eind share: <b>{pctS(kpisB.endShareOri)}</b></span>
+            </div>
+          </div>
         </div>
       </header>
 
-      {/* Navigatie links */}
-      <div className="flex flex-wrap gap-2">
-        <Link href="/app/waterfall" className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Waterfall</Link>
-        <Link href="/app/consistency" className="shrink-0 whitespace-nowrap text-sm rounded border px-3 py-2 hover:bg-gray-50">Consistency</Link>
-      </div>
-
-      {/* Presets + what-if shortcuts */}
+      {/* Presets & What-ifs */}
       <section className="rounded-2xl border bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full" style={{ background: active.color }} />
-            <h2 className="text-base font-semibold">{active.name} — Presets & What-ifs</h2>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setActiveId("A")} className={`text-xs rounded border px-2 py-1 ${activeId === "A" ? "bg-gray-50" : ""}`}>Scenario A</button>
-            <button onClick={() => setActiveId("B")} className={`text-xs rounded border px-2 py-1 ${activeId === "B" ? "bg-gray-50" : ""}`}>Scenario B</button>
+          <h2 className="text-base font-semibold">Presets & What-ifs ({active})</h2>
+          <div className="flex gap-2 text-xs">
+            <button onClick={() => applyPreset("Preferentie hoog (verzekeraar)")} className="rounded border px-3 py-1.5 hover:bg-gray-50">Preferentie hoog</button>
+            <button onClick={() => applyPreset("Retail-gedreven (wholesale)")} className="rounded border px-3 py-1.5 hover:bg-gray-50">Retail-gedreven</button>
+            <button onClick={() => applyPreset("Ziekenhuis zwaar (tenders)")} className="rounded border px-3 py-1.5 hover:bg-gray-50">Zkh zwaar</button>
+            <button onClick={() => applyPreset("Geleidelijke adoptie")} className="rounded border px-3 py-1.5 hover:bg-gray-50">Geleidelijk</button>
           </div>
         </div>
-
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <div className="rounded-xl border p-3">
-            <div className="text-sm font-medium mb-2">Presets (farma-archetypen)</div>
-            <div className="flex flex-wrap gap-2">
-              {Object.keys(PRESETS).map((p) => (
-                <button key={p} onClick={() => applyPreset(p as keyof typeof PRESETS)} className="text-xs rounded border px-3 py-1.5 hover:bg-gray-50">
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-xl border p-3">
-            <div className="text-sm font-medium mb-2">What-if snelknoppen</div>
-            <div className="flex flex-wrap gap-2 text-xs">
-              <button onClick={() => bump("entrants", +1, [0, 8])} className="rounded border px-3 py-1.5 hover:bg-gray-50">+1 entrant</button>
-              <button onClick={() => bump("entrants", -1, [0, 8])} className="rounded border px-3 py-1.5 hover:bg-gray-50">−1 entrant</button>
-              <button onClick={() => updateScenario(active.id, (i) => ({ ...i, tender1: { month: Math.max(0, (i.tender1?.month ?? 6) - 3), shareLoss: i.tender1?.shareLoss ?? 0.15 } }))} className="rounded border px-3 py-1.5 hover:bg-gray-50">Tender 3 mnd eerder</button>
-              <button onClick={() => updateScenario(active.id, (i) => ({ ...i, tender1: { month: (i.tender1?.month ?? 6) + 3, shareLoss: i.tender1?.shareLoss ?? 0.15 } }))} className="rounded border px-3 py-1.5 hover:bg-gray-50">Tender 3 mnd later</button>
-              <button onClick={() => bump("gtn", +0.02, [0, 0.8])} className="rounded border px-3 py-1.5 hover:bg-gray-50">GTN +2pp</button>
-              <button onClick={() => bump("gtn", -0.02, [0, 0.8])} className="rounded border px-3 py-1.5 hover:bg-gray-50">GTN −2pp</button>
-              <button onClick={() => bump("genericNetOfPre", -0.05, [0.2, 0.9])} className="rounded border px-3 py-1.5 hover:bg-gray-50">Generiek net −5pp</button>
-            </div>
-          </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <button onClick={() => bump("openOriginatorAddlDisc", +0.02, 0, 0.4)} className="rounded border px-3 py-1.5 hover:bg-gray-50">Vrij: +2pp korting</button>
+          <button onClick={() => bump("openOriginatorAddlDisc", -0.02, 0, 0.4)} className="rounded border px-3 py-1.5 hover:bg-gray-50">Vrij: −2pp korting</button>
+          <button onClick={() => bump("prefOriginatorAllowance", +0.02, 0, 0.15)} className="rounded border px-3 py-1.5 hover:bg-gray-50">Allowance +2pp</button>
+          <button onClick={() => bump("hospTenderLoss", +0.05, 0, 0.9)} className="rounded border px-3 py-1.5 hover:bg-gray-50">Tenderverlies +5pp</button>
+          <button onClick={() => bump("hospTenderLoss", -0.05, 0, 0.9)} className="rounded border px-3 py-1.5 hover:bg-gray-50">Tenderverlies −5pp</button>
         </div>
       </section>
 
-      {/* Parameters actief scenario */}
+      {/* Parameters — compact en duidelijk, volledig responsive */}
       <section className="rounded-2xl border bg-white p-4">
-        <div className="text-sm text-gray-700 mb-3">
-          Stel de parameters voor <b>{active.name}</b> in. Pre-LOE net = list × (1 − GTN). Originator heeft net-floor t.o.v. pre-LOE net.
+        <h3 className="text-base font-semibold mb-3">Parameters ({active})</h3>
+        <div className="grid gap-4 lg:grid-cols-3 sm:grid-cols-2 grid-cols-1">
+          {/* Basis */}
+          <FieldNumber label="Horizon (mnd)" value={(active==="A"?A:B).horizon} min={12} max={72} step={6}
+            onChange={(v)=>setActiveInputs(i=>({...i,horizon:Math.round(clamp(v,12,72))}))}/>
+          <FieldNumber label="List €/unit t=0" value={(active==="A"?A:B).list0} min={1} step={1}
+            onChange={(v)=>setActiveInputs(i=>({...i,list0:Math.max(0,v)}))}/>
+          <FieldNumber label="Units/maand (markt)" value={(active==="A"?A:B).baseUnits} min={100} step={500}
+            onChange={(v)=>setActiveInputs(i=>({...i,baseUnits:Math.max(0,Math.round(v))}))}/>
+          <FieldPct label="GTN % (pre-LOE)" value={(active==="A"?A:B).gtn}
+            onChange={(v)=>setActiveInputs(i=>({...i,gtn:clamp(v,0,0.8)}))}/>
+          <FieldPct label="COGS % (vs net)" value={(active==="A"?A:B).cogs}
+            onChange={(v)=>setActiveInputs(i=>({...i,cogs:clamp(v,0,0.95)}))}/>
+          <FieldPct label="Net-floor vs pre-LOE net" value={(active==="A"?A:B).netFloorOfPre}
+            onChange={(v)=>setActiveInputs(i=>({...i,netFloorOfPre:clamp(v,0.3,1)}))}/>
+
+          {/* Mix */}
+          <FieldPct label="Segment — Preferent" value={(active==="A"?A:B).segPreferent}
+            onChange={(v)=>setActiveInputs(i=>({...i,segPreferent:clamp(v,0,0.95), segVrij: clamp(i.segVrij,0,1-v-i.segZkh)}))}/>
+          <FieldPct label="Segment — Vrij" value={(active==="A"?A:B).segVrij}
+            onChange={(v)=>setActiveInputs(i=>({...i,segVrij:clamp(v,0,1-i.segPreferent-i.segZkh)}))}/>
+          <FieldPct label="Segment — Ziekenhuis" value={(active==="A"?A:B).segZkh}
+            onChange={(v)=>setActiveInputs(i=>({...i,segZkh:clamp(v,0,1-i.segPreferent-i.segVrij)}))}/>
+
+          {/* Preferent */}
+          <FieldNumber label="Preferent start (mnd)" value={(active==="A"?A:B).prefStartM} min={0} step={1}
+            onChange={(v)=>setActiveInputs(i=>({...i,prefStartM:Math.max(0,Math.round(v))}))}/>
+          <FieldNumber label="Preferent ramp (mnd)" value={(active==="A"?A:B).prefRampM} min={0} step={1}
+            onChange={(v)=>setActiveInputs(i=>({...i,prefRampM:Math.max(0,Math.round(v))}))}/>
+          <FieldPct label="Allowance (ori binnen preferent)" value={(active==="A"?A:B).prefOriginatorAllowance}
+            onChange={(v)=>setActiveInputs(i=>({...i,prefOriginatorAllowance:clamp(v,0,0.15)}))}/>
+          <FieldPct label="Generiek-net % (preferent)" value={(active==="A"?A:B).prefGenericNetOfPre}
+            onChange={(v)=>setActiveInputs(i=>({...i,prefGenericNetOfPre:clamp(v,0.15,0.35)}))}/>
+
+          {/* Vrij */}
+          <FieldPct label="Generiek-net % (vrij)" value={(active==="A"?A:B).openGenericNetOfPre}
+            onChange={(v)=>setActiveInputs(i=>({...i,openGenericNetOfPre:clamp(v,0.35,0.6)}))}/>
+          <FieldPct label="Ori extra korting (vrij)" value={(active==="A"?A:B).openOriginatorAddlDisc}
+            onChange={(v)=>setActiveInputs(i=>({...i,openOriginatorAddlDisc:clamp(v,0,0.4)}))}/>
+          <FieldPct label="Elasticiteit (vrij)" value={(active==="A"?A:B).openElasticity}
+            onChange={(v)=>setActiveInputs(i=>({...i,openElasticity:clamp(v,0,1)}))}/>
+          <FieldPct label="Base share ori (vrij)" value={(active==="A"?A:B).openBaseShare}
+            onChange={(v)=>setActiveInputs(i=>({...i,openBaseShare:clamp(v,0.3,0.8)}))}/>
+          <FieldNumber label="Target gap (€/u) vrij" value={(active==="A"?A:B).openTargetGapEUR} min={0} step={1}
+            onChange={(v)=>setActiveInputs(i=>({...i,openTargetGapEUR:Math.max(0,Math.round(v))}))}/>
+
+          {/* Ziekenhuis */}
+          <FieldPct label="Base share ori (zkh)" value={(active==="A"?A:B).hospBaseShare}
+            onChange={(v)=>setActiveInputs(i=>({...i,hospBaseShare:clamp(v,0.3,0.9)}))}/>
+          <FieldNumber label="Tender maand" value={(active==="A"?A:B).hospTenderMonth} min={0} step={1}
+            onChange={(v)=>setActiveInputs(i=>({...i,hospTenderMonth:Math.max(0,Math.round(v))}))}/>
+          <FieldPct label="Tenderverlies (ori)" value={(active==="A"?A:B).hospTenderLoss}
+            onChange={(v)=>setActiveInputs(i=>({...i,hospTenderLoss:clamp(v,0,0.9)}))}/>
+          <FieldNumber label="Ramp (mnd)" value={(active==="A"?A:B).hospRampM} min={0} step={1}
+            onChange={(v)=>setActiveInputs(i=>({...i,hospRampM:Math.max(0,Math.round(v))}))}/>
+          <FieldPct label="Generiek-net % (zkh)" value={(active==="A"?A:B).hospGenericNetOfPre}
+            onChange={(v)=>setActiveInputs(i=>({...i,hospGenericNetOfPre:clamp(v,0.35,0.55)}))}/>
+          <FieldPct label="Ori extra korting (zkh)" value={(active==="A"?A:B).hospOriginatorAddlDisc}
+            onChange={(v)=>setActiveInputs(i=>({...i,hospOriginatorAddlDisc:clamp(v,0,0.4)}))}/>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <FieldNumber label="Horizon (maanden)" value={active.inputs.horizon} min={12} max={72} step={6}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, horizon: Math.round(v) }))} />
-          <FieldNumber label="List price t=0 (€)" value={active.inputs.list0} min={1} step={5}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, list0: v }))} />
-          <FieldNumber label="Units/maand (markt, pre-LOE)" value={active.inputs.baseUnits} min={100} step={500}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, baseUnits: v }))} />
-
-          <FieldPct label="GTN %" value={active.inputs.gtn}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, gtn: clamp(v, 0, 0.8) }))} />
-          <FieldPct label="COGS %" value={active.inputs.cogs}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, cogs: clamp(v, 0, 0.9) }))} />
-
-          <FieldNumber label="# generieke entrants" value={active.inputs.entrants} min={0} max={8} step={1}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, entrants: Math.round(clamp(v, 0, 8)) }))} />
-          <FieldPct label="Prijsdruk per entrant" value={active.inputs.priceDropPerEntrant} help="Effect op list-prijs richting generiek net"
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, priceDropPerEntrant: clamp(v, 0, 0.4) }))} />
-          <FieldPct label="Extra erosie / 12m" value={active.inputs.timeErosion12m}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, timeErosion12m: clamp(v, 0, 0.5) }))} />
-          <FieldPct label="Net floor (vs pre-LOE net)" value={active.inputs.netFloorOfPre}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, netFloorOfPre: clamp(v, 0.2, 1) }))} />
-
-          <FieldNumber label="Tender — maand" value={active.inputs.tender1?.month ?? 6} min={0} step={1}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, tender1: { month: Math.max(0, Math.round(v)), shareLoss: i.tender1?.shareLoss ?? 0.15 } }))} />
-          <FieldPct label="Tender — shareverlies" value={active.inputs.tender1?.shareLoss ?? 0}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, tender1: { month: i.tender1?.month ?? 6, shareLoss: clamp(v, 0, 0.8) } }))} />
-          <FieldNumber label="Ramp-down (maanden)" value={active.inputs.rampDownMonths} min={0} step={1}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, rampDownMonths: Math.max(0, Math.round(v)) }))} />
-
-          <FieldPct label="Generiek net % vs pre-LOE net" value={active.inputs.genericNetOfPre}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, genericNetOfPre: clamp(v, 0.2, 0.9) }))} />
-          <FieldPct label="Elasticiteit (originator penalty)" value={active.inputs.elasticity}
-            onChange={(v) => updateScenario(active.id, (i) => ({ ...i, elasticity: clamp(v, 0, 1) }))} />
-        </div>
-
-        {/* Health */}
-        <div className="mt-3 text-xs">
-          <div className="inline-flex flex-wrap gap-2">
-            <Badge ok={activeSim.health.horizonOK} label="Horizon 12–72" />
-            <Badge ok={activeSim.health.tenderOK} label="Tender ok" />
-            <Badge ok={activeSim.health.pctBandsOK} label="Parameters in band" />
-            <Badge ok={activeSim.health.mathOK} label="Berekening ok" />
-          </div>
-          <div className="text-gray-500 mt-1">
-            Pre-LOE net (originator): {eur(activeSim.preNet, 0)} • Generiek net (aanname): {eur(activeSim.genericNetAbs, 0)}
-          </div>
+        {/* Sanity badges */}
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <Badge ok={(active==="A"?A:B).segPreferent + (active==="A"?A:B).segVrij + (active==="A"?A:B).segZkh <= 1.001} label="Segmenten ≤ 100%" />
+          <Badge ok={(active==="A"?A:B).prefGenericNetOfPre <= 0.25 ? true : false} label="Preferent ~80% korting" />
+          <Badge ok={(active==="A"?A:B).openTargetGapEUR <= 10} label="Gap-target realistisch" />
         </div>
       </section>
 
-      {/* Delta B t.o.v. A — compact besluitkader */}
+      {/* Actie-kader */}
       <section className="rounded-2xl border bg-white p-4">
-        <h3 className="text-base font-semibold mb-3">Verschil Scenario B t.o.v. A</h3>
-        <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
-          <Kpi title="Δ Net Sales (Y1)" value={`${dNetY1 >= 0 ? "+" : "−"}${eur(Math.abs(dNetY1))}`} tone={dNetY1 >= 0 ? "good" : "bad"} />
-          <Kpi title="Δ EBITDA (Horizon)" value={`${dEbitda >= 0 ? "+" : "−"}${eur(Math.abs(dEbitda))}`} tone={dEbitda >= 0 ? "good" : "bad"} />
-          <Kpi title="Δ Eind-share (pp)" value={`${dEndShare >= 0 ? "+" : "−"}${(Math.abs(dEndShare) * 100).toFixed(1)}pp`} tone={dEndShare >= 0 ? "good" : "bad"} />
-          <Kpi title="Δ Eind net €/unit" value={`${dEndNet >= 0 ? "+" : "−"}${eur(Math.abs(dEndNet), 0)}`} tone={dEndNet >= 0 ? "good" : "warn"} />
+        <div className="flex items-center gap-2">
+          <h3 className="text-base font-semibold">Top aanbevelingen ({active})</h3>
+          <span className="text-xs ml-auto rounded-full border bg-sky-50 text-sky-700 px-2 py-0.5">automatisch</span>
         </div>
-        <p className="text-xs text-gray-600 mt-2">
-          Gebruik dit blok als besluitkader: is het voorstel (B) aantoonbaar beter dan basis (A) op Net, EBITDA, share en/of eind-netto prijs?
-        </p>
+        <ul className="mt-3 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))] text-sm">
+          {actions.length ? actions.map((a,i)=>(
+            <li key={i} className="rounded-xl border p-3">
+              <div className="font-medium">{a.title}</div>
+              <div className="text-gray-700 mt-1">{a.detail}</div>
+            </li>
+          )) : <li className="text-gray-600">Geen acute acties; scenario ligt binnen drempels.</li>}
+        </ul>
       </section>
 
-      {/* KPI’s per scenario — RESPONSIVE zonder overlap */}
+      {/* KPI’s per scenario */}
       <section className="rounded-2xl border bg-white p-4">
-        <h3 className="text-base font-semibold mb-3">KPI’s — Originator, Generieken en Markt</h3>
+        <h3 className="text-base font-semibold mb-3">KPI’s — Originator (Y1/Horizon) & Mix</h3>
         <div className="grid gap-4 md:grid-cols-2">
-          {[{ sc: sA, sim: simA }, { sc: sB, sim: simB }].map(({ sc, sim }) => (
-            <div key={sc.id} className="rounded-2xl border p-4">
-              <div className="flex items-center gap-2 mb-2 min-w-0">
-                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: sc.color }} />
-                <div className="font-semibold truncate">{sc.name}</div>
+          {[{ name:"Scenario A", col: COLORS.A, k: kpisA }, { name:"Scenario B", col: COLORS.B, k: kpisB }].map(({name,col,k})=>(
+            <div key={name} className="rounded-2xl border p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-3 h-3 rounded-full" style={{background:col}} />
+                <div className="font-semibold">{name}</div>
               </div>
-
-              <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
-                <Kpi title="Originator — Net Y1" value={eur(sim.kpis.orgNetY1)} help={`Ø share Y1: ${pctS(sim.kpis.orgAvgShareY1, 1)}`} />
-                <Kpi title="Originator — EBITDA (Horizon)" value={eur(sim.kpis.orgEbitdaTotal)} help={`Eind-share: ${pctS(sim.kpis.orgEndShare, 1)}`} />
-                <Kpi title="Generieken — Net Y1" value={eur(sim.kpis.genNetY1)} help={`Eind-share: ${pctS(sim.kpis.genEndShare, 1)}`} />
-                <Kpi title="Markt — Net (Horizon)" value={eur(sim.kpis.mktNetTotal)} help={`Originator eind-net: ${eur(sim.kpis.orgEndNet, 0)}`} />
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))] text-sm">
+                <div className="rounded-xl border p-3">
+                  <div className="text-xs text-gray-500">Net Sales (Y1)</div>
+                  <div className="text-lg font-semibold mt-1">{eur(k.oriNetY1)}</div>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <div className="text-xs text-gray-500">EBITDA (Horizon)</div>
+                  <div className="text-lg font-semibold mt-1">{eur(k.oriEBITDAH)}</div>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <div className="text-xs text-gray-500">Eind-share ori</div>
+                  <div className="text-lg font-semibold mt-1">{pctS(k.endShareOri)}</div>
+                </div>
+                <div className="rounded-xl border p-3">
+                  <div className="text-xs text-gray-500">Segment-mix</div>
+                  <div className="text-sm mt-1">
+                    Pref <b>{pctS(k.mixPref)}</b> · Vrij <b>{pctS(k.mixOpen)}</b> · Zkh <b>{pctS(k.mixHosp)}</b>
+                  </div>
+                </div>
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Delta B t.o.v. A */}
+      <section className="rounded-2xl border bg-white p-4">
+        <h3 className="text-base font-semibold mb-3">Verschil B t.o.v. A — besluitkader</h3>
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))] text-sm">
+          {(() => {
+            const dNetY1 = kpisB.oriNetY1 - kpisA.oriNetY1;
+            const dEBITDA = kpisB.oriEBITDAH - kpisA.oriEBITDAH;
+            const dShare = kpisB.endShareOri - kpisA.endShareOri;
+            return (
+              <>
+                <div className={`rounded-xl border p-3 ${dNetY1>=0?"bg-emerald-50 border-emerald-200":"bg-rose-50 border-rose-200"}`}>
+                  <div className="text-xs text-gray-700">Δ Net Sales (Y1)</div>
+                  <div className="text-lg font-semibold mt-1">{dNetY1>=0?"+":"−"}{eur(Math.abs(dNetY1))}</div>
+                </div>
+                <div className={`rounded-xl border p-3 ${dEBITDA>=0?"bg-emerald-50 border-emerald-200":"bg-rose-50 border-rose-200"}`}>
+                  <div className="text-xs text-gray-700">Δ EBITDA (Horizon)</div>
+                  <div className="text-lg font-semibold mt-1">{dEBITDA>=0?"+":"−"}{eur(Math.abs(dEBITDA))}</div>
+                </div>
+                <div className={`rounded-xl border p-3 ${dShare>=0?"bg-emerald-50 border-emerald-200":"bg-amber-50 border-amber-200"}`}>
+                  <div className="text-xs text-gray-700">Δ Eind-share (pp)</div>
+                  <div className="text-lg font-semibold mt-1">{(Math.abs(dShare)*100).toFixed(1)}pp {dShare>=0? "↑":"↓"}</div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </section>
 
       {/* Grafieken */}
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border bg-white p-4">
-          <h3 className="text-sm font-semibold mb-2">Net sales per maand — Originator vs. Generieken</h3>
-          <MultiLineChart name="Net sales" series={seriesNetSales} yFmt={(v) => compact(v)} />
-          <p className="text-xs text-gray-600 mt-2">Lijnen per scenario en partij. Optellen van originator + generieken ≈ marktontwikkeling.</p>
-        </div>
-
-        <div className="rounded-2xl border bg-white p-4">
-          <h3 className="text-sm font-semibold mb-2">Marktaandeel (%) — Originator vs. Generieken</h3>
-          <MultiLineChart name="Share %" series={seriesShare} yFmt={(v) => `${v.toFixed(0)}%`} />
-          <p className="text-xs text-gray-600 mt-2">Tender verlaagt het niveau blijvend (geen herstel). Meer generieken ⇒ snellere daling.</p>
-        </div>
-
-        <div className="rounded-2xl border bg-white p-4 lg:col-span-2">
-          <h3 className="text-sm font-semibold mb-2">Netto prijs per unit (€) — Originator vs. Generiek</h3>
+          <h3 className="text-sm font-semibold mb-2">Net sales per maand</h3>
           <MultiLineChart
-            name="Net €/unit"
-            series={seriesNetPrice}
-            yFmt={(v) => new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 0 }).format(v)}
+            name="Net sales"
+            series={seriesNet}
+            yFmt={(v)=>compact(v)}
           />
-          <p className="text-xs text-gray-600 mt-2">Generiek-net is een % van pre-LOE net (instelbaar). Originator heeft een net-floor t.o.v. pre-LOE net.</p>
+          <p className="text-xs text-gray-600 mt-2">Lijnen: Ori A/B en Generieken A. (Generieken B volgt trendmatig.)</p>
+        </div>
+        <div className="rounded-2xl border bg-white p-4">
+          <h3 className="text-sm font-semibold mb-2">Marktaandeel originator (%)</h3>
+          <MultiLineChart
+            name="Share %"
+            series={seriesShare}
+            yFmt={(v)=>`${v.toFixed(0)}%`}
+          />
+          <p className="text-xs text-gray-600 mt-2">Preferentie en tender verlagen het niveau; vrij volume kun je sturen met net-gap.</p>
         </div>
       </section>
     </div>
