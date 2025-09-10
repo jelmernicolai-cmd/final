@@ -391,7 +391,7 @@ export default function ConsistencyPage() {
             }`}
             onClick={() => setTab("size")}
           >
-            By Size (Small/Medium/Large)
+            Op omzet (Small/Medium/Large)
           </button>
         </div>
 
