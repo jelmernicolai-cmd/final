@@ -1,43 +1,47 @@
 // components/ui/Footer.tsx
 export default function Footer() {
   const year = new Date().getFullYear();
+
   return (
     <footer className="mt-24">
-      {/* CTA-band */}
-      <section className="mx-auto max-w-6xl px-4">
-        <div className="rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 text-white p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
-          <div>
-            <h3 className="text-2xl font-semibold leading-snug">
-              Zien hoe PharmaGtN jouw marge optimaliseert?
-            </h3>
-            <p className="mt-1 text-white/90 text-sm">
-              Korte demo met eigen casus — zonder verplichtingen.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <a
-              href="mailto:sales@pharmagtn.com?subject=Plan%20demo%20PharmaGtN&body=Bedrijf%3A%0AUse%20case%3A%0AWens%20datum%2Ftijd%3A%0A"
-              className="rounded-xl bg-white/10 backdrop-blur border border-white/30 px-4 py-2 text-sm hover:bg-white/15"
-            >
-              Plan demo
-            </a>
-            <a
-              href="/pricing"
-              className="rounded-xl bg-white text-slate-900 px-4 py-2 text-sm font-medium hover:bg-slate-100"
-            >
-              Bekijk pricing
-            </a>
+      {/* CTA-band (stackt op mobiel, naast elkaar op >=md) */}
+      <section className="mx-auto w-full max-w-7xl px-4">
+        <div className="rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 text-white p-5 sm:p-6 md:p-8 shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-xl sm:text-2xl font-semibold leading-snug">
+                Zien hoe PharmaGtN jouw Gross-to-Net versnelt?
+              </h3>
+              <p className="text-white/90 text-sm">
+                Korte demo met jouw casus — zonder verplichtingen.
+              </p>
+            </div>
+
+            <div className="flex w-full flex-col sm:flex-row md:w-auto gap-2">
+              <a
+                href="mailto:sales@pharmagtn.com?subject=Plan%20demo%20PharmaGtN&body=Bedrijf%3A%0AUse%20case%3A%0AWens%20datum%2Ftijd%3A%0A"
+                className="inline-flex items-center justify-center rounded-xl bg-white/10 backdrop-blur border border-white/30 px-4 py-2 text-sm hover:bg-white/15 w-full sm:w-auto"
+              >
+                Plan demo
+              </a>
+              <a
+                href="/pricing"
+                className="inline-flex items-center justify-center rounded-xl bg-white text-slate-900 px-4 py-2 text-sm font-medium hover:bg-slate-100 w-full sm:w-auto"
+              >
+                Bekijk pricing
+              </a>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Hoofdfooter */}
+      {/* Hoofdfooter (responsieve grid: 1 kolom → 2 → 5) */}
       <div className="mt-10 border-t bg-white">
-        <div className="mx-auto max-w-6xl px-4 py-10 grid gap-8 md:grid-cols-5">
-          {/* Brand + badges */}
-          <div className="md:col-span-2">
+        <div className="mx-auto w-full max-w-7xl px-4 py-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-5">
+          {/* Brand + badges (neemt 2 kolommen op >=lg) */}
+          <div className="lg:col-span-2">
             <a href="/" className="text-lg font-semibold">PharmaGtN</a>
-            <p className="mt-3 text-sm text-slate-600">
+            <p className="mt-3 text-sm text-slate-600 max-w-md">
               Helder inzicht in Gross-to-Net, scenario’s en governance — gebouwd voor farma.
             </p>
             <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-slate-700">
@@ -48,55 +52,44 @@ export default function Footer() {
           </div>
 
           {/* Product */}
-          <div>
-            <div className="text-sm font-medium">Product</div>
-            <ul className="mt-3 space-y-2 text-sm text-slate-700">
-              <li><a className="hover:underline" href="/features">Features</a></li>
-              <li><a className="hover:underline" href="/pricing">Pricing</a></li>
-              <li><a className="hover:underline" href="/templates">Templates</a></li>
-              <li><a className="hover:underline" href="/login">Portal login</a></li>
-            </ul>
-          </div>
+          <FooterCol title="Product">
+            <FooterLink href="/features">Features</FooterLink>
+            <FooterLink href="/pricing">Pricing</FooterLink>
+            <FooterLink href="/templates">Templates</FooterLink>
+            <FooterLink href="/login">Portal login</FooterLink>
+          </FooterCol>
 
           {/* Bedrijf */}
-          <div>
-            <div className="text-sm font-medium">Bedrijf</div>
-            <ul className="mt-3 space-y-2 text-sm text-slate-700">
-              <li><a className="hover:underline" href="/about">Over ons</a></li>
-              <li><a className="hover:underline" href="/about#security">Security</a></li>
-              <li><a className="hover:underline" href="/contact">Contact</a></li>
-            </ul>
-          </div>
+          <FooterCol title="Bedrijf">
+            <FooterLink href="/about">Over ons</FooterLink>
+            <FooterLink href="/about#security">Security</FooterLink>
+            <FooterLink href="/contact">Contact</FooterLink>
+          </FooterCol>
 
           {/* Volg ons */}
-          <div>
-            <div className="text-sm font-medium">Volg ons</div>
-            <ul className="mt-3 space-y-2 text-sm text-slate-700">
-              <li>
-                <a
-                  className="inline-flex items-center gap-2 hover:underline"
-                  href="https://www.linkedin.com/company/pharmagtn"
-                  target="_blank"
-                  rel="noopener"
-                >
-                  <LinkedInIcon className="h-4 w-4" />
-                  LinkedIn
-                </a>
-              </li>
-              {/* Voeg indien gewenst meer kanalen toe */}
-            </ul>
-          </div>
+          <FooterCol title="Volg ons">
+            <a
+              className="inline-flex items-center gap-2 text-sm text-slate-700 hover:underline break-words"
+              href="https://www.linkedin.com/company/pharmagtn"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="PharmaGtN op LinkedIn (opent in nieuw tabblad)"
+            >
+              <LinkedInIcon className="h-4 w-4" />
+              LinkedIn
+            </a>
+          </FooterCol>
         </div>
 
-        {/* Bottom bar */}
+        {/* Bottom bar (wrapt netjes op mobiel) */}
         <div className="border-t">
-          <div className="mx-auto max-w-6xl px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <div>© {year} PharmaGtN. Alle rechten voorbehouden.</div>
-            <div className="flex items-center gap-3">
+          <div className="mx-auto w-full max-w-7xl px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+            <div className="text-center md:text-left">© {year} PharmaGtN. Alle rechten voorbehouden.</div>
+            <div className="flex flex-wrap items-center justify-center gap-3">
               <a href="/terms" className="hover:underline">Voorwaarden</a>
-              <span>•</span>
+              <span className="hidden md:inline">•</span>
               <a href="/privacy" className="hover:underline">Privacy</a>
-              <span>•</span>
+              <span className="hidden md:inline">•</span>
               <a href="/cookies" className="hover:underline">Cookies</a>
             </div>
           </div>
@@ -106,7 +99,27 @@ export default function Footer() {
   );
 }
 
-/* Inline LinkedIn pictogram (geen extra dependency) */
+/** Kleine hulpcomponenten voor nette, consistente typografie */
+function FooterCol({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-sm font-medium">{title}</div>
+      <ul className="mt-3 space-y-2">{children}</ul>
+    </div>
+  );
+}
+
+function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <li>
+      <a href={href} className="text-sm text-slate-700 hover:underline break-words">
+        {children}
+      </a>
+    </li>
+  );
+}
+
+/** Inline LinkedIn pictogram (geen extra dependency nodig) */
 function LinkedInIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
