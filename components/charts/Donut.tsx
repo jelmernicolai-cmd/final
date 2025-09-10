@@ -1,27 +1,72 @@
+// components/charts/Donut.tsx
 "use client";
 import React from "react";
 
+type Props = {
+  value: number;            // 0..100
+  label?: string;
+  size?: number;            // totale svg size (px)
+  stroke?: number;          // donut dikte
+  className?: string;       // kleur via parent
+  showCenterText?: boolean; // optioneel percentage in center
+};
+
 export default function Donut({
-  value, label = "Gem. korting", size = 140, thickness = 14,
-  format = (v:number)=>v.toFixed(1)+"%"
-}: {
-  value: number; label?: string; size?: number; thickness?: number; format?: (v:number)=>string;
-}) {
-  const r = (size - thickness) / 2;
-  const c = size / 2;
-  const circ = 2 * Math.PI * r;
-  const clamp = Math.max(0, Math.min(100, value));
-  const dash = (clamp / 100) * circ;
+  value,
+  label = "Donut chart",
+  size = 72,
+  stroke = 8,
+  className,
+  showCenterText = false,
+}: Props) {
+  const pct = Math.max(0, Math.min(100, value));
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const dash = (pct / 100) * c;
 
   return (
-    <div className="inline-flex flex-col items-center" style={{width:size}}>
-      <svg width={size} height={size} role="img" aria-label={`${label} ${format(value)}`}>
-        <circle cx={c} cy={c} r={r} stroke="currentColor" strokeOpacity={0.15} strokeWidth={thickness} fill="none"/>
-        <circle cx={c} cy={c} r={r} stroke="currentColor" strokeWidth={thickness}
-          fill="none" strokeDasharray={`${dash} ${circ - dash}`} transform={`rotate(-90 ${c} ${c})`} />
-      </svg>
-      <div className="text-sm font-medium -mt-[calc(50%+4px)]">{format(value)}</div>
-      <div className="text-xs text-gray-600 mt-[calc(50%+8px)]">{label}</div>
-    </div>
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      role="img"
+      aria-label={`${label}: ${pct.toFixed(0)}%`}
+      className={className}
+    >
+      {/* Track in neutrale kleur */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        className="text-slate-200 dark:text-slate-700"
+        stroke="currentColor"
+        strokeWidth={stroke}
+        fill="none"
+      />
+      {/* Progress volgt parent text color */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        stroke="currentColor"
+        strokeWidth={stroke}
+        fill="none"
+        strokeDasharray={`${dash} ${c - dash}`}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+
+      {showCenterText && (
+        <text
+          x="50%"
+          y="50%"
+          dominantBaseline="middle"
+          textAnchor="middle"
+          className="text-[10px] fill-slate-700 dark:fill-slate-200"
+        >
+          {pct.toFixed(0)}%
+        </text>
+      )}
+    </svg>
   );
 }
