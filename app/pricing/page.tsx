@@ -12,7 +12,7 @@ export default function PricingNL() {
   return (
     <>
       {/* Hero */}
-      <section className="bg-gradient-to-b from-white to-gray-50 border-b">
+      <section className="bg-gradient-to-b from-sky-50 to-white border-b">
         <div className="mx-auto max-w-6xl px-4 py-12 md:py-16 text-center">
           <h1 className="text-3xl md:text-5xl font-bold">Prijzen</h1>
           <p className="mt-4 text-gray-700">
