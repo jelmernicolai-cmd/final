@@ -15,11 +15,11 @@ export default function FeaturesNL() {
         <div className="mx-auto max-w-6xl px-4 py-12 md:py-16 grid md:grid-cols-2 gap-10 items-center">
           <div className="min-w-0">
             <h1 className="text-3xl md:text-5xl font-semibold leading-tight">
-              Inzicht, controle en zekerheid over netto-prijzen en tenders
+              Inzicht, controle en zekerheid over kortingen en netto-prijzen 
             </h1>
             <p className="mt-4 text-gray-700">
-              PharmaGtN ondersteunt pricing- en contractingteams met scenario’s, heldere KPI’s en een herleidbare werkwijze.
-              Gericht op Nederland. Conservatief met data. Geen modeltraining op klantdata.
+              PharmGtN ondersteunt pricing- en contractingteams met scenario’s, heldere KPI’s en een gestructureerde werkwijze.
+              Gericht op de Nederlandse geneesmiddelen markt. Slim met data. Direct resultaat.
             </p>
 
             {/* Vertrouwens-badges */}
@@ -40,7 +40,7 @@ export default function FeaturesNL() {
                 Licentie & tarieven
               </Link>
               <Link href="/contact" className="px-5 py-3 rounded-lg border hover:bg-gray-50">
-                Plan een demo
+                Plan demo
               </Link>
             </div>
           </div>
@@ -59,62 +59,26 @@ export default function FeaturesNL() {
         </div>
       </section>
 
-      {/* RESULTAATGERICHT */}
-      <section className="mx-auto max-w-6xl px-4 py-14">
+      {/* MODULES (kort en zakelijk) */}
+      <section className="mx-auto max-w-6xl px-4">
         <h2 className="text-2xl md:text-3xl font-semibold">Wat u mag verwachten</h2>
         <div className="mt-8 grid md:grid-cols-3 gap-6">
           {[
             {
-              h: "Besluitvorming versnellen",
-              p: "Scenario’s naast elkaar, met Net sales (Y1/Horizon), EBITDA en marktaandeel. Eén bron van waarheid richting Finance en Legal.",
-              img: "/images/value-speed.png",
-            },
-            {
-              h: "Marges beschermen",
-              p: "Transparante GTN-waterfalls tonen precies waar korting weglekt. Inzicht in verbeterpunten voordat u onderhandelt.",
-              img: "/images/value-margin.png",
-            },
-            {
-              h: "Tenderzekerheid",
-              p: "Realistische LOE- en tendercurves (inclusief ramp-down). Geen verrassingen na gunning, wel herleidbare keuzes.",
-              img: "/images/value-tender.png",
-            },
-          ].map((c) => (
-            <div key={c.h} className="rounded-xl border p-6 bg-white">
-              <Image
-                src={c.img}
-                alt={c.h}
-                width={800}
-                height={500}
-                className="w-full rounded-lg border bg-white"
-              />
-              <h3 className="mt-4 font-medium text-lg">{c.h}</h3>
-              <p className="mt-2 text-gray-700">{c.p}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* MODULES (kort en zakelijk) */}
-      <section className="mx-auto max-w-6xl px-4">
-        <h2 className="text-2xl md:text-3xl font-semibold">Modules</h2>
-        <div className="mt-8 grid md:grid-cols-3 gap-6">
-          {[
-            {
-              t: "LOE & Tender Scenario’s",
-              d: "Vergelijk twee scenario’s (A/B), inclusief tender-ramp-down. Exporteer KPI’s en onderbouwing.",
+              t: "Loss of Exclusivity & Tender Scenario’s",
+              d: "Vergelijk twee scenario’s (A/B), inclusief tender-ramp-down. Duidelijke KPI’s en onderbouwing.",
               img: "/images/feat-scenarios.png",
               link: "/app/loe",
             },
             {
               t: "GTN-Waterfall",
-              d: "Van bruto naar netto per kanaal/klanttype. Identificeer margeruis en pak gericht terug.",
+              d: "Van bruto naar netto per kanaal/klanttype. Transparante GTN-waterfalls tonen precies waar korting weglekt. Inzicht in verbeterpunten voordat u onderhandelt.",
               img: "/images/feat-waterfall.png",
               link: "/app/waterfall",
             },
             {
               t: "Consistentie-analyse",
-              d: "Controle op redelijkheid van kortingniveaus vs. prijsbanden. Voorkom precedentwerking.",
+              d: "Controle op de consistentie van uw kortingsbeleid. Voorkom margeverlies en scherp uw beleid direct aan.",
               img: "/images/feat-scatter.png",
               link: "/app/consistency",
             },
@@ -187,9 +151,8 @@ export default function FeaturesNL() {
             <h2 className="text-2xl md:text-3xl font-semibold">Security, privacy en governance</h2>
             <ul className="mt-4 text-gray-700 space-y-2">
               <li>• EU-hosting (NL/EU) en dataminimalisatie.</li>
-              <li>• Geen gebruik van klantdata voor modeltraining.</li>
+              <li>• Geuploade data wordt nergens op servers opgeslagen.</li>
               <li>• Rol-gebaseerde toegang en 4-ogen-goedkeuring.</li>
-              <li>• Audit trail en export voor interne audits.</li>
             </ul>
           </div>
           <div>
