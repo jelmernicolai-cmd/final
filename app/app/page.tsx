@@ -83,6 +83,8 @@ export default function PortalDashboard() {
     (r.d_mandatory || 0) +
     (r.d_local || 0);
 
+  const fmtPct = (v: number) => `${v.toFixed(1)}%`;
+
   // ---- Aggregaties
   const {
     grossTotal,
@@ -90,6 +92,9 @@ export default function PortalDashboard() {
     periodPctSeries,
     topDeviation,
     totalPotential,
+    lastPct,
+    minPct,
+    maxPct,
   } = useMemo(() => {
     let grossTotal = 0, discTotal = 0;
 
@@ -120,6 +125,11 @@ export default function PortalDashboard() {
     const periods = [...byPeriod.entries()].sort((a, b) => a[0].localeCompare(b[0]));
     const periodPctSeries = periods.map(([_, v]) => (v.gross ? (v.disc / v.gross) * 100 : 0));
 
+    // Range + last voor korte uitleg
+    const lastPct = periodPctSeries.length ? periodPctSeries[periodPctSeries.length - 1] : 0;
+    const minPct = periodPctSeries.length ? Math.min(...periodPctSeries) : 0;
+    const maxPct = periodPctSeries.length ? Math.max(...periodPctSeries) : 0;
+
     // Consistency-afwijking t.o.v. overall benchmark (simpel & snel voor dashboard)
     const deviations = [...byCustomer.entries()].map(([cust, v]) => {
       const pct = v.gross ? (v.disc / v.gross) * 100 : 0;
@@ -134,12 +144,13 @@ export default function PortalDashboard() {
 
     const totalPotential = topDeviation.reduce((s, c) => s + c.potential, 0);
 
-    return { grossTotal, avgDiscountPct, periodPctSeries, topDeviation, totalPotential };
+    return { grossTotal, avgDiscountPct, periodPctSeries, topDeviation, totalPotential, lastPct, minPct, maxPct };
   }, [rows]);
 
   // Voor stabiele props naar de charts
   const deviationValues = useMemo(() => topDeviation.map(x => x.deviation), [topDeviation]);
   const deviationLabels = useMemo(() => topDeviation.map(x => x.cust), [topDeviation]);
+  const topAbove = useMemo(() => topDeviation.filter(x => x.deviation > 0).length, [topDeviation]);
 
   // ---- Acties (Top 3) — concreet en bedraggedreven
   const actions = useMemo(() => {
@@ -177,7 +188,6 @@ export default function PortalDashboard() {
       return null;
     }).filter(Boolean) as { key: string; title: string; desc: string; amount: number; type: string }[];
 
-    // Sorteer primair op bedrag (descending), retentie-acties zonder bedrag komen laatst
     return items.sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 3);
   }, [topDeviation]);
 
@@ -204,21 +214,43 @@ export default function PortalDashboard() {
 
       {/* KPIs + charts */}
       <section className="grid md:grid-cols-3 gap-4" aria-label="Kern-KPI's en grafieken">
-        <article className="rounded-2xl border bg-white p-4 flex items-center justify-between" aria-label="Totaal Gross en gemiddelde korting">
-          <div>
-            <div className="text-sm text-gray-500">Totaal Gross</div>
-            <div className="text-lg font-semibold mt-1">{eur0(grossTotal)}</div>
+        {/* Donut-kaart: sky */}
+        <article
+          className="rounded-2xl border bg-white p-4 flex flex-col gap-3 text-sky-700 dark:text-sky-400"
+          aria-label="Totaal Gross en gemiddelde korting"
+          title={`Gemiddelde korting: ${fmtPct(avgDiscountPct)} • Totaal gross: ${eur0(grossTotal)}`}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm text-gray-500">Totaal Gross</div>
+              <div className="text-lg font-semibold mt-1">{eur0(grossTotal)}</div>
+            </div>
+            <Donut value={avgDiscountPct} label="Gem. korting (overall)" />
           </div>
-          <Donut value={avgDiscountPct} label="Gem. korting (overall)" />
+          <p className="text-xs text-gray-600">
+            <span className="font-medium">{fmtPct(avgDiscountPct)}</span> gem. korting over alle rijen.
+          </p>
         </article>
 
-        <article className="rounded-2xl border bg-white p-4" aria-label="Kortingpercentage over tijd">
+        {/* Sparkline-kaart: indigo */}
+        <article
+          className="rounded-2xl border bg-white p-4 text-indigo-700 dark:text-indigo-400"
+          aria-label="Kortingpercentage over tijd"
+          title={`Korting% over tijd • Laatste: ${fmtPct(lastPct)} • Range: ${fmtPct(minPct)}–${fmtPct(maxPct)}`}
+        >
           <div className="text-sm text-gray-500">Korting% over tijd</div>
           <Sparkline data={periodPctSeries} />
-          <div className="text-xs text-gray-600 mt-1">Benchmark op detail zie Consistency.</div>
+          <div className="mt-2 text-xs text-gray-600">
+            Laatste: <b>{fmtPct(lastPct)}</b> • Range: {fmtPct(minPct)}–{fmtPct(maxPct)}. Benchmark op detail zie Consistency.
+          </div>
         </article>
 
-        <article className="rounded-2xl border bg-white p-4" aria-label="Besparingspotentieel top 10 klanten">
+        {/* MiniBar-kaart: sky */}
+        <article
+          className="rounded-2xl border bg-white p-4 text-sky-700 dark:text-sky-400"
+          aria-label="Besparingspotentieel top 10 klanten"
+          title={`Top 10 afwijkingen tov. benchmark • Potentieel: ${eur0(totalPotential)}`}
+        >
           <div className="text-sm text-gray-500">Besparingspotentieel (Top 10 klanten)</div>
           <div className="text-lg font-semibold mt-1">{eur0(totalPotential)}</div>
           <div className="mt-2">
@@ -226,8 +258,11 @@ export default function PortalDashboard() {
               values={deviationValues}
               labels={deviationLabels}
               valueFmt={(v) => v.toFixed(1) + 'pp'}
-              tooltip={(_, v, l) => `${l}: ${v.toFixed(1)} pp`}
+              tooltip={(_, v, l) => `${l}: ${v.toFixed(1)} pp tov. benchmark`}
             />
+          </div>
+          <div className="mt-2 text-xs text-gray-600">
+            {topAbove} van de top 10 liggen <b>boven</b> benchmark (positief = hogere korting).
           </div>
         </article>
       </section>
@@ -243,7 +278,7 @@ export default function PortalDashboard() {
         <ul className="mt-3 grid md:grid-cols-3 gap-3">
           {actions.length ? (
             actions.map((a) => (
-              <li key={a.key} className="rounded-xl border p-3">
+              <li key={a.key} className="rounded-xl border p-3" title={a.desc}>
                 <div className="font-medium">{a.title}</div>
                 <p className="text-sm text-gray-700 mt-1">{a.desc}</p>
                 {a.amount > 0 ? (
@@ -277,7 +312,7 @@ export default function PortalDashboard() {
         </p>
 
         <div className="mt-3 grid sm:grid-cols-2 gap-3">
-          <div className="rounded-xl border p-4">
+          <div className="rounded-xl border p-4" title="Vervang de huidige dataset of voeg een periode toe (Excel)">
             <div className="text-sm font-medium">Upload / Replace</div>
             <p className="text-sm text-gray-600 mt-1">
               Vervang de huidige dataset of voeg een nieuwe periode toe (Excel).
@@ -292,7 +327,7 @@ export default function PortalDashboard() {
             </div>
           </div>
 
-          <div className="rounded-xl border p-4">
+          <div className="rounded-xl border p-4" title="Download template en bekijk kolomdefinities">
             <div className="text-sm font-medium">Templates &amp; Datamapping</div>
             <p className="text-sm text-gray-600 mt-1">
               Download het Excel-template en bekijk kolomdefinities.
@@ -314,6 +349,7 @@ export default function PortalDashboard() {
         <Link
           href="/app/waterfall"
           className="rounded-xl border bg-white p-4 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
+          title="Uitsplitsing van korting-componenten en margebrug"
         >
           <div className="text-sm font-medium">Waterfall</div>
           <p className="text-sm text-gray-600">Uitsplitsing van korting-componenten en margebrug.</p>
@@ -321,6 +357,7 @@ export default function PortalDashboard() {
         <Link
           href="/app/consistency"
           className="rounded-xl border bg-white p-4 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
+          title="Benchmark per klant en direct besparingspotentieel"
         >
           <div className="text-sm font-medium">Consistency</div>
           <p className="text-sm text-gray-600">Benchmark per klant en direct besparingspotentieel.</p>
