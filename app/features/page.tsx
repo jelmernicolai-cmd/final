@@ -148,11 +148,12 @@ export default function FeaturesNL() {
       <section className="mx-auto max-w-6xl px-4 py-14">
         <div className="rounded-2xl border bg-white p-6 md:p-8 grid md:grid-cols-2 gap-8 items-center">
           <div className="min-w-0">
-            <h2 className="text-2xl md:text-3xl font-semibold">Security, privacy en governance</h2>
+            <h2 className="text-2xl md:text-3xl font-semibold">Veiligheid, privacy en controle/h2>
             <ul className="mt-4 text-gray-700 space-y-2">
               <li>• EU-hosting (NL/EU) en dataminimalisatie.</li>
-              <li>• Geuploade data wordt nergens op servers opgeslagen.</li>
-              <li>• Rol-gebaseerde toegang en 4-ogen-goedkeuring.</li>
+              <li>• Geüploade bestanden worden alleen in je eigen browser verwerkt.</li>
+               <li>• Alleen jij hebt toegang tot je data zolang je ingelogd bent in de portal.</li>
+              <li>• We slaan niets op onze servers op. Je data wordt dus niet gedeeld met derden en ook niet gebruikt om modellen te trainen.</li>
             </ul>
           </div>
           <div>
