@@ -59,45 +59,53 @@ export default function FeaturesNL() {
         </div>
       </section>
 
-      {/* MODULES (kort en zakelijk) */}
-      <section className="mx-auto max-w-6xl px-4">
-        <h2 className="text-2xl md:text-3xl font-semibold">Wat u mag verwachten</h2>
-        <div className="mt-8 grid md:grid-cols-3 gap-6">
-          {[
-            {
-              t: "Loss of Exclusivity & Tender Scenario’s",
-              d: "Vergelijk twee scenario’s (A/B), inclusief tender-ramp-down. Duidelijke KPI’s en onderbouwing.",
-              img: "/images/feat-scenarios.png",
-              link: "/app/loe",
-            },
-            {
-              t: "GTN-Waterfall",
-              d: "Van bruto naar netto per kanaal/klanttype. Transparante GTN-waterfalls tonen precies waar korting weglekt. Inzicht in verbeterpunten voordat u onderhandelt.",
-              img: "/images/feat-waterfall.png",
-              link: "/app/waterfall",
-            },
-            {
-              t: "Consistentie-analyse",
-              d: "Controle op de consistentie van uw kortingsbeleid. Voorkom margeverlies en scherp uw beleid direct aan.",
-              img: "/images/feat-scatter.png",
-              link: "/app/consistency",
-            },
-          ].map((card) => (
-            <Link key={card.t} href={card.link} className="rounded-xl border p-5 hover:shadow-sm transition block bg-white">
-              <Image
-                src={card.img}
-                alt={card.t}
-                width={900}
-                height={560}
-                className="w-full rounded-lg border bg-white"
-              />
-              <h3 className="mt-4 font-medium">{card.t}</h3>
-              <p className="mt-2 text-sm text-gray-700">{card.d}</p>
-              <span className="mt-3 inline-block text-sm text-sky-700">Open module →</span>
-            </Link>
-          ))}
-        </div>
-      </section>
+ {/* MODULES (kort en zakelijk) */}
+<section className="mx-auto max-w-6xl px-4 py-14">
+  <h2 className="text-2xl md:text-3xl font-semibold text-center md:text-left">
+    Wat u mag verwachten
+  </h2>
+  <div className="mt-10 grid md:grid-cols-3 gap-8">
+    {[
+      {
+        t: "Loss of Exclusivity & Tender Scenario’s",
+        d: "Vergelijk twee scenario’s (A/B), inclusief tender-ramp-down. Duidelijke KPI’s en onderbouwing.",
+        img: "/images/feat-scenarios.png",
+        link: "/app/loe",
+      },
+      {
+        t: "GTN-Waterfall",
+        d: "Van bruto naar netto per kanaal/klanttype. Transparante GTN-waterfalls tonen precies waar korting weglekt. Inzicht in verbeterpunten voordat u onderhandelt.",
+        img: "/images/feat-waterfall.png",
+        link: "/app/waterfall",
+      },
+      {
+        t: "Consistentie-analyse",
+        d: "Controle op de consistentie van uw kortingsbeleid. Voorkom margeverlies en scherp uw beleid direct aan.",
+        img: "/images/feat-scatter.png",
+        link: "/app/consistency",
+      },
+    ].map((card) => (
+      <Link
+        key={card.t}
+        href={card.link}
+        className="rounded-xl border p-6 hover:shadow-md transition block bg-white flex flex-col"
+      >
+        <Image
+          src={card.img}
+          alt={card.t}
+          width={900}
+          height={560}
+          className="w-full rounded-lg border bg-white"
+        />
+        <h3 className="mt-5 font-medium text-lg">{card.t}</h3>
+        <p className="mt-3 text-sm text-gray-700 flex-grow">{card.d}</p>
+        <span className="mt-4 inline-block text-sm font-medium text-sky-700">
+          Open module →
+        </span>
+      </Link>
+    ))}
+  </div>
+</section>
 
       {/* WERKWIJZE (duidelijk en beknopt) */}
       <section className="bg-gray-50 border-y">
