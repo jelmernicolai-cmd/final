@@ -266,7 +266,7 @@ export default function ConsistencyPage() {
             className={`px-3 py-1.5 text-sm rounded-t ${tab === "size" ? "bg-gray-900 text-white" : "hover:bg-gray-50 border"}`}
             onClick={() => setTab("size")}
           >
-            By Size (Small/Medium/Large)
+            Op grootte (Small/Medium/Large)
           </button>
         </div>
 
