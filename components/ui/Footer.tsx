@@ -8,10 +8,10 @@ export default function Footer() {
         <div className="rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 text-white p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
           <div>
             <h3 className="text-2xl font-semibold leading-snug">
-              Zien hoe PharmaGtN jouw Gross-to-Net versnelt?
+              Zien hoe PharmaGtN jouw marge optimaliseert?
             </h3>
             <p className="mt-1 text-white/90 text-sm">
-              Korte demo met jouw casus — zonder verplichtingen.
+              Korte demo met eigen casus — zonder verplichtingen.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
