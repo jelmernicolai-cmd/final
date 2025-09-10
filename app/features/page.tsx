@@ -132,7 +132,7 @@ export default function FeaturesNL() {
               { n: "1", h: "Upload", p: "Gebruik de Excel-template (zonder PII/PHI). Snel klaar, direct bruikbaar." },
               { n: "2", h: "Validatie", p: "Automatische controles op volledigheid en uitbijters. U houdt regie." },
               { n: "3", h: "Analyse", p: "Dashboards en scenario’s met KPI’s. Herleidbare aannames en rationale." },
-              { n: "4", h: "Besluit", p: "Exporteer onderbouwing voor Finance/Legal en borg de afspraak." },
+              { n: "4", h: "Besluit", p: "Duidelijk overzicht voor commerciële teams en heldere aanbevelingen voor actie." },
             ].map((s) => (
               <div key={s.n} className="rounded-xl border bg-white p-6">
                 <div className="text-sm text-gray-500">Stap {s.n}</div>
