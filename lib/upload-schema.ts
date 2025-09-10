@@ -149,19 +149,51 @@ export function resolveHeader(name: string): string | null {
   return ALIASES[n] || null;
 }
 
+// ✅ Verbeterde parseNumber: robuust voor EU/US notatie & negatieve bedragen
 export function parseNumber(val: any): number {
   if (val == null) return 0;
   if (typeof val === "number" && isFinite(val)) return val;
-  let s = String(val).trim();
+
+  let s = String(val)
+    .replace(/\u00A0/g, " ")     // non-breaking space
+    .replace(/[€$]/g, "")        // valuta
+    .trim();
+
   if (!s) return 0;
-  s = s.replace(/[€$,]/g, "").replace(/\s/g, "");
-  s = s.replace(/(\d)[,](\d)/, "$1.$2");
+
+  // Verwijder spaties in cijfers (bv. "1 234,56")
+  s = s.replace(/\s+/g, "");
+
+  const hasComma = s.includes(",");
+  const hasDot = s.includes(".");
+
+  if (hasComma && hasDot) {
+    const lastComma = s.lastIndexOf(",");
+    const lastDot = s.lastIndexOf(".");
+    if (lastComma > lastDot) {
+      // EU: 1.234,56 -> verwijder punten (duizend), vervang komma door punt
+      s = s.replace(/\./g, "").replace(",", ".");
+    } else {
+      // US: 1,234.56 -> verwijder komma’s
+      s = s.replace(/,/g, "");
+    }
+  } else if (hasComma && !hasDot) {
+    // Alleen komma: decimaal
+    s = s.replace(",", ".");
+  }
+
+  // Als er meerdere punten overblijven, verwijder alle behalve de laatste (duizendtallen)
+  const parts = s.split(".");
+  if (parts.length > 2) {
+    const dec = parts.pop();
+    s = parts.join("") + (dec ? "." + dec : "");
+  }
+
   const n = Number(s);
   return isFinite(n) ? n : 0;
 }
 
-// Accepteer: "2024-01", "202401", "2024/01", "2024-Q1", "2024 Q1", "2024",
-//            "03-2025", "03/2025", "January 2025", "Jan 2025", "Januari 2025"
+// ✅ Uitgebreide normalizePeriod: ondersteunt YYYY-MM, MM-YYYY, maandnamen EN/NL
 export function normalizePeriod(input: any): string | null {
   if (!input && input !== 0) return null;
   let s = String(input).trim().toUpperCase();
