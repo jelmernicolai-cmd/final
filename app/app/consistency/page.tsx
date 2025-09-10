@@ -5,7 +5,7 @@ import { useMemo, useState, useRef } from "react";
 import { loadWaterfallRows, eur0 } from "@/lib/waterfall-storage";
 import type { Row } from "@/lib/waterfall-types";
 
-/** Helpers */
+/* ================= Helpers ================= */
 function sumDiscounts(r: Row) {
   return (
     (r.d_channel || 0) +
@@ -37,7 +37,7 @@ const bucketColor = (b: Bucket) =>
 const fmtCompactNL = (n: number) =>
   Intl.NumberFormat("nl-NL", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 
-/** Lightweight floating tooltip (portal-vrij) */
+/* ================= UI: Floating tooltip ================= */
 function FloatingTooltip({
   x,
   y,
@@ -50,11 +50,7 @@ function FloatingTooltip({
   return (
     <div
       className="pointer-events-none fixed z-50 rounded-md border bg-white px-2 py-1 text-xs shadow-md"
-      style={{
-        left: Math.max(8, x + 12),
-        top: Math.max(8, y + 12),
-        maxWidth: 280,
-      }}
+      style={{ left: Math.max(8, x + 12), top: Math.max(8, y + 12), maxWidth: 280 }}
       role="status"
       aria-live="polite"
     >
@@ -63,7 +59,7 @@ function FloatingTooltip({
   );
 }
 
-/** Responsieve scatter + benchmark-lijn(en) (zonder libs) + hover tooltip */
+/* ================= Chart: Scatter met benchmarks & hover ================= */
 function ScatterChart({
   points,
   width = 720,
@@ -104,12 +100,11 @@ function ScatterChart({
   const onPointEnter = (
     e: React.MouseEvent<SVGCircleElement, MouseEvent>,
     p: { x: number; y: number; label: string; bucket: Bucket }
-  ) => {
-    setHover({ p, screenX: e.clientX, screenY: e.clientY });
-  };
-  const onPointMove = (e: React.MouseEvent<SVGCircleElement, MouseEvent>) => {
+  ) => setHover({ p, screenX: e.clientX, screenY: e.clientY });
+
+  const onPointMove = (e: React.MouseEvent<SVGCircleElement, MouseEvent>) =>
     setHover((h) => (h.p ? { ...h, screenX: e.clientX, screenY: e.clientY } : h));
-  };
+
   const onLeaveAll = () => setHover({ p: null, screenX: 0, screenY: 0 });
 
   return (
@@ -122,9 +117,10 @@ function ScatterChart({
         aria-label="Kortingpercentage versus omzet per klant"
         onMouseLeave={onLeaveAll}
       >
-        {/* Axes */}
+        {/* Assen */}
         <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="#e5e7eb" />
         <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="#e5e7eb" />
+
         {/* X ticks */}
         {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
           const vx = xMin + (xMax - xMin) * t;
@@ -138,6 +134,7 @@ function ScatterChart({
             </g>
           );
         })}
+
         {/* Y ticks */}
         {Array.from({ length: 6 }).map((_, i) => {
           const vy = (yMax / 5) * i;
@@ -152,7 +149,7 @@ function ScatterChart({
           );
         })}
 
-        {/* Benchmark line(s) */}
+        {/* Benchmark-lijnen */}
         {mode === "overall" ? (
           <>
             <line
@@ -166,7 +163,6 @@ function ScatterChart({
             <text x={w - pad} y={yScale(overallLine) - 6} fontSize="10" textAnchor="end" fill="#111827">
               Benchmark overall {overallLine.toFixed(1)}%
             </text>
-            {/* Hover hint via <title> voor screenreaders/browser-tooltips */}
             <title>{`Benchmark overall: ${overallLine.toFixed(1)}%`}</title>
           </>
         ) : (
@@ -186,7 +182,7 @@ function ScatterChart({
           })
         )}
 
-        {/* Points */}
+        {/* Punten */}
         {points.map((p, i) => (
           <g key={i} transform={`translate(${xScale(p.x)}, ${yScale(p.y)})`} opacity={0.95}>
             <circle
@@ -196,10 +192,7 @@ function ScatterChart({
               onMouseEnter={(e) => onPointEnter(e, p)}
               onMouseMove={onPointMove}
             />
-            {/* Native tooltip fallback */}
-            <title>
-              {`${p.label}\nOmzet: ${eur0(p.x)}\nKorting: ${p.y.toFixed(1)}%`}
-            </title>
+            <title>{`${p.label}\nOmzet: ${eur0(p.x)}\nKorting: ${p.y.toFixed(1)}%`}</title>
           </g>
         ))}
       </svg>
@@ -207,12 +200,8 @@ function ScatterChart({
       {hover.p && (
         <FloatingTooltip x={hover.screenX} y={hover.screenY}>
           <div className="font-medium">{hover.p.label}</div>
-          <div className="text-gray-700">
-            Omzet: <b>{eur0(hover.p.x)}</b>
-          </div>
-          <div className="text-gray-700">
-            Korting: <b>{hover.p.y.toFixed(1)}%</b>
-          </div>
+          <div className="text-gray-700">Omzet: <b>{eur0(hover.p.x)}</b></div>
+          <div className="text-gray-700">Korting: <b>{hover.p.y.toFixed(1)}%</b></div>
           <div className="mt-1 text-[10px] text-gray-500">Bucket: {hover.p.bucket}</div>
         </FloatingTooltip>
       )}
@@ -220,6 +209,7 @@ function ScatterChart({
   );
 }
 
+/* ================= Pagina ================= */
 export default function ConsistencyPage() {
   const rows: Row[] = loadWaterfallRows();
   const [tab, setTab] = useState<"overall" | "size">("size");
@@ -228,20 +218,20 @@ export default function ConsistencyPage() {
 
   if (!rows.length) {
     return (
-      <div className="space-y-6">
+      <main className="space-y-6">
         <header>
           <h1 className="text-xl font-semibold">Consistency</h1>
         </header>
-        <div className="rounded-2xl border bg-white p-6">
+        <section className="rounded-2xl border bg-white p-6">
           <p className="text-gray-600">
             Geen data gevonden. Ga naar{" "}
-            <Link className="underline" href="/app/upload">
+            <Link className="underline" href="/app/waterfall#upload">
               Upload
             </Link>
             , sla op en kom terug.
           </p>
-        </div>
-      </div>
+        </section>
+      </main>
     );
   }
 
@@ -293,9 +283,7 @@ export default function ConsistencyPage() {
       const i = clamp(Math.floor((pcts.length - 1) * p), 0, pcts.length - 1);
       return pcts[i] ?? 0;
     };
-    const p25 = q(0.25),
-      p50 = q(0.5),
-      p75 = q(0.75);
+    const p25 = q(0.25), p50 = q(0.5), p75 = q(0.75);
     const spreadPP = p75 - p25;
 
     return { customers, points, overallPct, sizeBench, bounds: { t1, t2 }, grossTotal, p25, p50, p75, spreadPP };
@@ -358,7 +346,7 @@ export default function ConsistencyPage() {
   }, [base, tab, minorPP]);
 
   return (
-    <div className="space-y-6">
+    <main className="space-y-6">
       {/* Header */}
       <header className="flex items-center justify-between gap-2">
         <div>
@@ -373,23 +361,25 @@ export default function ConsistencyPage() {
         </Link>
       </header>
 
-      {/* Tabs + sliders */}
+      {/* Tabs + drempels */}
       <section className="rounded-2xl border bg-white p-4">
         {/* Tabs */}
         <div className="flex gap-2 border-b pb-2">
           <button
             className={`px-3 py-1.5 text-sm rounded-t ${
-              tab === "overall" ? "bg-gray-900 text-white" : "hover:bg-gray-50 border"
+              tab === "overall" ? "bg-gradient-to-r from-sky-600 to-indigo-600 text-white" : "hover:bg-gray-50 border"
             }`}
             onClick={() => setTab("overall")}
+            aria-pressed={tab === "overall"}
           >
             Overall
           </button>
           <button
             className={`px-3 py-1.5 text-sm rounded-t ${
-              tab === "size" ? "bg-gray-900 text-white" : "hover:bg-gray-50 border"
+              tab === "size" ? "bg-gradient-to-r from-sky-600 to-indigo-600 text-white" : "hover:bg-gray-50 border"
             }`}
             onClick={() => setTab("size")}
+            aria-pressed={tab === "size"}
           >
             Op Omzet (Small/Medium/Large)
           </button>
@@ -411,6 +401,7 @@ export default function ConsistencyPage() {
             )}
             <div className="mt-1 text-xs text-gray-500">Buckets op basis van tertielen van jaaromzet (gross).</div>
           </div>
+
           <label className="rounded-lg border p-3">
             <div className="font-medium">Lichte actie drempel (pp)</div>
             <input
@@ -421,9 +412,11 @@ export default function ConsistencyPage() {
               value={minorPP}
               onChange={(e) => setMinorPP(parseFloat(e.target.value))}
               className="w-full mt-2"
+              aria-label="Lichte actie drempel in procentpunten"
             />
             <div className="text-xs text-gray-500 mt-1">{minorPP} pp</div>
           </label>
+
           <label className="rounded-lg border p-3">
             <div className="font-medium">Zware actie drempel (pp)</div>
             <input
@@ -434,6 +427,7 @@ export default function ConsistencyPage() {
               value={majorPP}
               onChange={(e) => setMajorPP(parseFloat(e.target.value))}
               className="w-full mt-2"
+              aria-label="Zware actie drempel in procentpunten"
             />
             <div className="text-xs text-gray-500 mt-1">{majorPP} pp</div>
           </label>
@@ -459,9 +453,16 @@ export default function ConsistencyPage() {
             </span>
           </div>
         </div>
+
         <div className="mt-2">
-          <ScatterChart points={base.points} mode={tab} overallLine={base.overallPct} sizeLines={base.sizeBench as any} />
+          <ScatterChart
+            points={base.points}
+            mode={tab}
+            overallLine={base.overallPct}
+            sizeLines={base.sizeBench as any}
+          />
         </div>
+
         <p className="mt-2 text-xs text-gray-500">
           Elke stip is een klant. Y-as = korting% (kortingen t.o.v. gross), X-as = jaaromzet (gross). Gestreepte lijnen zijn
           de benchmarks per tab. Beweeg met je muis over de punten voor details.
@@ -471,7 +472,7 @@ export default function ConsistencyPage() {
       {/* Rijkere inzichten */}
       <section className="grid md:grid-cols-3 gap-4">
         <div className="rounded-2xl border bg-white p-4">
-          <div className="text-sm text-gray-500">Totale besparingspotentieel</div>
+          <div className="text-sm text-gray-500">Totaal besparingspotentieel</div>
           <div className="mt-1 text-lg font-semibold">{eur0(derived.totalPotential)}</div>
           <div className="mt-1 text-xs text-gray-500">Som van (afwijking boven benchmark in pp × omzet).</div>
         </div>
@@ -516,7 +517,7 @@ export default function ConsistencyPage() {
           <h3 className="mb-2 text-base font-semibold">Te hoge korting (grootste besparingspotentieel)</h3>
           <ul className="space-y-2 text-sm">
             {derived.topOver.map((c) => (
-              <li key={c.cust} className="rounded-lg border p-3">
+              <li key={c.cust} className="rounded-lg border p-3" title={`${c.deviation.toFixed(1)}pp boven benchmark`}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-medium">{c.cust}</div>
                   <div className="text-gray-700">{c.deviation.toFixed(1)} pp</div>
@@ -534,7 +535,7 @@ export default function ConsistencyPage() {
           <h3 className="mb-2 text-base font-semibold">Te lage korting (retentie-risico)</h3>
           <ul className="space-y-2 text-sm">
             {derived.topUnder.map((c) => (
-              <li key={c.cust} className="rounded-lg border p-3">
+              <li key={c.cust} className="rounded-lg border p-3" title={`${Math.abs(c.deviation).toFixed(1)}pp onder benchmark`}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-medium">{c.cust}</div>
                   <div className="text-gray-700">{c.deviation.toFixed(1)} pp</div>
@@ -555,6 +556,7 @@ export default function ConsistencyPage() {
             Drempels: {minorPP}/{majorPP} pp
           </span>
         </div>
+
         <ul className="mt-3 grid gap-3 text-sm md:grid-cols-3">
           {base.customers.length ? (
             (() => {
@@ -602,13 +604,11 @@ export default function ConsistencyPage() {
                 .slice(0, 3) as { key: string; title: string; amount: number; desc: string }[];
 
               return actions.map((a) => (
-                <li key={a.key} className="rounded-xl border p-3">
+                <li key={a.key} className="rounded-xl border p-3" title={a.desc}>
                   <div className="font-medium">{a.title}</div>
                   <p className="mt-1 text-gray-700">{a.desc}</p>
                   {a.amount > 0 ? (
-                    <div className="mt-2">
-                      Potentiële margeverbetering: <b>{eur0(a.amount)}</b>
-                    </div>
+                    <div className="mt-2">Potentiële margeverbetering: <b>{eur0(a.amount)}</b></div>
                   ) : (
                     <div className="mt-2 text-gray-600">Retentie / risicobeperking</div>
                   )}
@@ -628,6 +628,6 @@ export default function ConsistencyPage() {
           )}
         </ul>
       </section>
-    </div>
+    </main>
   );
 }
