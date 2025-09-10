@@ -56,7 +56,7 @@ export default function PortalTopbar() {
         <Link
           href="/"
           className="rounded border px-3 py-1.5 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sky-300"
-          title="Terug naar website"
+          title="Naar website"
         >
           ← Terug naar website
         </Link>
