@@ -2,13 +2,16 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
-import Nav from "@/components/Nav.client"; // of "@/components/Nav" als je wrapper gebruikt
-import Footer from "@/components/Footer";
+import Nav from "@/components/Nav.client";
+
+// ⚠️ Gebruik de nieuwe footer uit /components/ui/Footer.tsx
+import Footer from "@/components/ui/Footer";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.pharmgtn.com"),
   title: { default: "PharmaGtN", template: "%s | PharmaGtN" },
-  description: "PharmaGtN helpt farma-fabrikanten hun gross-to-net en kortingsbeleid te optimaliseren.",
+  description:
+    "PharmaGtN helpt farma-fabrikanten hun gross-to-net en kortingsbeleid te optimaliseren.",
   viewport: { width: "device-width", initialScale: 1 },
 };
 
@@ -23,8 +26,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           >
             Naar inhoud
           </a>
+
           <Nav />
-          <main id="main" className="flex-1">{children}</main>
+          <main id="main" className="flex-1">
+            {children}
+          </main>
+
+          {/* Nieuwe, professionele footer */}
           <Footer />
         </AuthProvider>
       </body>
