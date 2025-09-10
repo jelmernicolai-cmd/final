@@ -99,30 +99,6 @@ export default function FeaturesNL() {
         </div>
       </section>
 
-      {/* VISUAL GALLERY (extra visuals voor overtuiging) */}
-      <section className="mx-auto max-w-6xl px-4 py-14">
-        <h2 className="text-2xl md:text-3xl font-semibold">Zo ziet het eruit in de praktijk</h2>
-        <div className="mt-8 grid md:grid-cols-4 gap-6">
-          {[
-            { img: "/images/gal-loe.png", alt: "Scenario A/B met KPI’s", c: "Scenario A/B met KPI’s" },
-            { img: "/images/gal-waterfall.png", alt: "GTN-waterfall per kanaal", c: "GTN-waterfall per kanaal" },
-            { img: "/images/gal-consistency.png", alt: "Consistentie-scatter", c: "Consistentie-scatter" },
-            { img: "/images/gal-security.png", alt: "Beveiliging en audit", c: "Beveiliging en audit" },
-          ].map((g) => (
-            <figure key={g.alt} className="rounded-xl border bg-white p-3">
-              <Image
-                src={g.img}
-                alt={g.alt}
-                width={800}
-                height={500}
-                className="w-full rounded-lg border bg-white"
-              />
-              <figcaption className="mt-2 text-xs text-gray-600">{g.c}</figcaption>
-            </figure>
-          ))}
-        </div>
-      </section>
-
       {/* WERKWIJZE (duidelijk en beknopt) */}
       <section className="bg-gray-50 border-y">
         <div className="mx-auto max-w-6xl px-4 py-14">
