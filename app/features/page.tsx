@@ -1,187 +1,289 @@
-import Image from "next/image";
+// app/features/page.tsx
 import Link from "next/link";
 
 export const metadata = {
-  title: "PharmaGtN — Functionaliteit voor Pricing & Contracting",
+  title: "Features",
   description:
-    "Scenario-planning (LOE & tender), GTN-waterfall en consistentie-analyses — ontworpen voor Nederlandse farma. EU-hosting, dataminimalisatie en strakke toegangsborging.",
+    "Scenario’s, Gross-to-Net waterfall, KPI’s en exports. Veilig, snel en gemaakt voor farma-teams.",
 };
 
-export default function FeaturesNL() {
+export default function FeaturesPage() {
+  const cards = [
+    {
+      icon: "sparkles",
+      title: "Scenario-analyse",
+      bullets: [
+        "Vergelijk meerdere scenario’s naast elkaar",
+        "Impact in € en % direct zichtbaar",
+        "Sla versies op en deel als PDF/CSV",
+      ],
+      cta: { href: "/pricing", label: "Bekijk licentie" },
+    },
+    {
+      icon: "chart",
+      title: "Gross-to-Net waterfall",
+      bullets: [
+        "Transparant per stap (kortingen/claims)",
+        "Validatie op teken & optellingen",
+        "Export voor rapportage en audit",
+      ],
+      cta: { href: "/app", label: "Bekijk in Portal" },
+    },
+    {
+      icon: "template",
+      title: "Templates & validatie",
+      bullets: [
+        "Excel-templates voor sales/discounts",
+        "Automatische checks bij upload",
+        "Snelle onboarding met dummy-data",
+      ],
+      cta: { href: "/templates", label: "Download templates" },
+    },
+    {
+      icon: "kpi",
+      title: "KPI’s & dashboards",
+      bullets: [
+        "KPI’s per product/kanaal/segment",
+        "Trendgrafieken & toewijzingen",
+        "Exports naar Excel/PDF",
+      ],
+      cta: { href: "/contact", label: "Plan een demo" },
+    },
+    {
+      icon: "shield",
+      title: "Rechten & logging",
+      bullets: [
+        "Role-based access (RBAC)",
+        "Wijzigingslogging (audit-ready)",
+        "Team-brede consistentie",
+      ],
+      cta: { href: "/about#security", label: "Lees security" },
+    },
+    {
+      icon: "cloud",
+      title: "EU-hosting & minimalisatie",
+      bullets: [
+        "EU-hosting, versleuteld in transit/at rest",
+        "Dataminimalisatie (geen PII/health data)",
+        "Werkbaar voor compliance & IT",
+      ],
+      cta: { href: "/about#security", label: "Meer over privacy" },
+    },
+  ];
+
+  const highlights = [
+    { icon: "rocket", k: "Snelle start", v: "in dagen", sub: "met templates" },
+    { icon: "euro", k: "ROI", v: "↑", sub: "minder fouten & tijdverlies" },
+    { icon: "clock", k: "Besparing", v: "uren", sub: "per analysecyclus" },
+    { icon: "check", k: "Adoptie", v: "hoog", sub: "heldere workflow" },
+  ];
+
   return (
-    <>
+    <main>
       {/* HERO */}
-      <section className="bg-gradient-to-b from-sky-50 to-white border-b">
-        <div className="mx-auto max-w-6xl px-4 py-12 md:py-16 grid md:grid-cols-2 gap-10 items-center">
-          <div className="min-w-0">
-            <h1 className="text-3xl md:text-5xl font-semibold leading-tight">
-              Inzicht, controle en zekerheid over kortingen en netto-prijzen 
+      <section className="border-b bg-gradient-to-b from-white to-sky-50">
+        <div className="mx-auto max-w-6xl px-4 py-12 md:py-16">
+          <div className="max-w-3xl">
+            <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-1 text-xs font-medium text-white">
+              <Dot /> Gemaakt voor farma-teams
+            </span>
+            <h1 className="mt-4 text-3xl md:text-5xl font-bold leading-tight">
+              Alles wat je nodig hebt voor <span className="underline decoration-sky-300/60">betrouwbare GtN-analyses</span>
             </h1>
-            <p className="mt-4 text-gray-700">
-              PharmGtN ondersteunt pricing- en contractingteams met scenario’s, heldere KPI’s en een gestructureerde werkwijze.
-              Gericht op de Nederlandse geneesmiddelen markt. Slim met data. Direct resultaat.
+            <p className="mt-4 text-slate-700">
+              Bouw scenario’s, zie de waterfall, check consistentie en exporteer resultaten — zonder zware IT-trajecten.
             </p>
-
-            {/* Vertrouwens-badges */}
-            <div className="mt-5 flex flex-wrap gap-2 text-[12px]">
-              {[
-                "EU-hosting (NL/EU)",
-                "Dataminimalisatie",
-                "Geen modeltraining op klantdata",
-                "Rol-gebaseerde toegang (4-ogen)",
-                "Audit trail & export",
-              ].map((t) => (
-                <span key={t} className="px-2 py-1 rounded-full border bg-white">{t}</span>
-              ))}
-            </div>
-
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/pricing" className="bg-sky-700 text-white px-5 py-3 rounded-lg hover:bg-sky-800">
-                Licentie & tarieven
+              <Link href="/pricing" className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2 text-white hover:opacity-95">
+                Bekijk pricing
               </Link>
-              <Link href="/contact" className="px-5 py-3 rounded-lg border hover:bg-gray-50">
-                Plan demo
+              <Link href="/contact" className="rounded-xl border px-4 py-2 hover:bg-white">
+                Plan een demo
+              </Link>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">EU-hosting • Dataminimalisatie • Exports naar Excel/PDF</p>
+          </div>
+        </div>
+      </section>
+
+      {/* HIGHLIGHTS STRIP */}
+      <section className="border-b bg-white">
+        <div className="mx-auto max-w-6xl px-4 py-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+          {highlights.map((h) => (
+            <div key={h.k} className="flex items-center gap-3 rounded-xl border bg-slate-50 px-4 py-3">
+              <Icon name={h.icon} className="h-5 w-5 text-sky-700" />
+              <div>
+                <div className="text-sm font-semibold">{h.k}</div>
+                <div className="text-xs text-slate-600">{h.v} <span className="text-slate-500">{h.sub}</span></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* FEATURE GRID */}
+      <section className="mx-auto max-w-6xl px-4 py-12">
+        <div className="grid gap-6 md:grid-cols-3">
+          {cards.map((c) => (
+            <article key={c.title} className="group rounded-2xl border bg-white p-6 hover:shadow-md transition">
+              <div className="inline-flex items-center justify-center rounded-xl bg-gradient-to-br from-sky-50 to-indigo-50 ring-1 ring-sky-100/60 p-3">
+                <Icon name={c.icon as IconName} className="h-6 w-6 text-sky-700" />
+              </div>
+              <h2 className="mt-4 text-lg font-semibold">{c.title}</h2>
+              <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                {c.bullets.map((b) => (
+                  <li key={b} className="flex items-start gap-2">
+                    <Check className="mt-0.5 h-4 w-4 text-emerald-600" />
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-5">
+                <Link
+                  href={c.cta.href}
+                  className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm hover:bg-slate-50"
+                >
+                  {c.cta.label} <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* SPLIT SECTION (VISUAL PLACEHOLDERS) */}
+      <section className="mx-auto max-w-6xl px-4 pb-14">
+        <div className="grid items-center gap-6 md:grid-cols-2">
+          <div className="order-2 md:order-1">
+            <h3 className="text-xl font-semibold">Van upload tot besluit, in één flow</h3>
+            <p className="mt-2 text-sm text-slate-700">
+              Upload je data met de templates, controleer consistentie en zie direct de impact in de waterfall of scenario-vergelijking.
+            </p>
+            <ul className="mt-4 space-y-2 text-sm text-slate-700">
+              <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Validatie bij upload</li>
+              <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Waterfall & KPI-overzicht</li>
+              <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Exporteer naar PDF/CSV</li>
+            </ul>
+            <div className="mt-5 flex gap-3">
+              <Link href="/templates" className="rounded-xl border px-4 py-2 hover:bg-slate-50">Download templates</Link>
+              <Link href="/contact" className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2 text-white hover:opacity-95">
+                Vraag demo
               </Link>
             </div>
           </div>
-
-          {/* Hero visual */}
-          <div>
-            <Image
-              src="/images/feature-hero.png"
-              alt="Overzicht van de GtN Portal (dashboard en scenario’s)"
-              width={1200}
-              height={800}
-              className="w-full rounded-xl border shadow-sm bg-white"
-              priority
-            />
+          <div className="order-1 md:order-2">
+            <div className="h-56 rounded-2xl border bg-gradient-to-br from-white to-slate-50 grid place-items-center text-sm text-slate-500">
+              Visual / Screenshot (waterfall)
+            </div>
           </div>
         </div>
       </section>
 
- {/* MODULES (kort en zakelijk) */}
-<section className="mx-auto max-w-6xl px-4 py-14">
-  <h2 className="text-2xl md:text-3xl font-semibold text-center md:text-left">
-    Wat u mag verwachten
-  </h2>
-  <div className="mt-10 grid md:grid-cols-3 gap-8">
-    {[
-      {
-        t: "Loss of Exclusivity & Tender Scenario’s",
-        d: "Vergelijk twee scenario’s (A/B), inclusief tender-ramp-down. Duidelijke KPI’s en onderbouwing.",
-        img: "/images/feat-scenarios.png",
-        link: "/app/loe",
-      },
-      {
-        t: "GTN-Waterfall",
-        d: "Van bruto naar netto per kanaal/klanttype. Transparante GTN-waterfalls tonen precies waar korting weglekt. Inzicht in verbeterpunten voordat u onderhandelt.",
-        img: "/images/feat-waterfall.png",
-        link: "/app/waterfall",
-      },
-      {
-        t: "Consistentie-analyse",
-        d: "Controle op de consistentie van uw kortingsbeleid. Voorkom margeverlies en scherp uw beleid direct aan.",
-        img: "/images/feat-scatter.png",
-        link: "/app/consistency",
-      },
-    ].map((card) => (
-      <Link
-        key={card.t}
-        href={card.link}
-        className="rounded-xl border p-6 hover:shadow-md transition block bg-white flex flex-col"
-      >
-        <Image
-          src={card.img}
-          alt={card.t}
-          width={900}
-          height={560}
-          className="w-full rounded-lg border bg-white"
-        />
-        <h3 className="mt-5 font-medium text-lg">{card.t}</h3>
-        <p className="mt-3 text-sm text-gray-700 flex-grow">{card.d}</p>
-        <span className="mt-4 inline-block text-sm font-medium text-sky-700">
-          Open module →
-        </span>
-      </Link>
-    ))}
-  </div>
-</section>
-
-      {/* WERKWIJZE (duidelijk en beknopt) */}
-      <section className="bg-gray-50 border-y">
-        <div className="mx-auto max-w-6xl px-4 py-14">
-          <h2 className="text-2xl md:text-3xl font-semibold">Van data naar besluit</h2>
-          <div className="mt-8 grid md:grid-cols-4 gap-6">
-            {[
-              { n: "1", h: "Upload", p: "Gebruik de Excel-template (zonder PII/PHI). Snel klaar, direct bruikbaar." },
-              { n: "2", h: "Validatie", p: "Automatische controles op volledigheid en uitbijters. U houdt regie." },
-              { n: "3", h: "Analyse", p: "Dashboards en scenario’s met KPI’s. Herleidbare aannames en rationale." },
-              { n: "4", h: "Besluit", p: "Duidelijk overzicht voor commerciële teams en heldere aanbevelingen voor actie." },
-            ].map((s) => (
-              <div key={s.n} className="rounded-xl border bg-white p-6">
-                <div className="text-sm text-gray-500">Stap {s.n}</div>
-                <h3 className="mt-2 font-medium">{s.h}</h3>
-                <p className="mt-2 text-gray-700">{s.p}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* SECURITY (kort, zakelijk, geruststellend) */}
-      <section className="mx-auto max-w-6xl px-4 py-14">
-        <div className="rounded-2xl border bg-white p-6 md:p-8 grid md:grid-cols-2 gap-8 items-center">
-          <div className="min-w-0">
-            <h2 className="text-2xl md:text-3xl font-semibold">Veiligheid, privacy en controle</h2>
-            <ul className="mt-4 text-gray-700 space-y-2">
-              <li>• EU-hosting (NL/EU) en dataminimalisatie.</li>
-              <li>• Geüploade bestanden worden alleen in je eigen browser verwerkt.</li>
-               <li>• Alleen jij hebt toegang tot je data zolang je ingelogd bent in de portal.</li>
-              <li>• We slaan niets op onze servers op. Je data wordt dus niet gedeeld met derden en ook niet gebruikt om modellen te trainen.</li>
-            </ul>
-          </div>
-          <div>
-            <Image
-              src="/images/feat-security.png"
-              alt="Overzicht van beveiliging, rollen en logging"
-              width={1200}
-              height={800}
-              className="w-full rounded-xl border bg-white"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* QUOTE */}
-      <section className="mx-auto max-w-6xl px-4">
-        <div className="rounded-2xl border bg-white p-8 text-center">
-          <p className="text-lg text-gray-800 max-w-3xl mx-auto italic">
-            “Binnen één sessie lagen de scenario’s en onderbouwing klaar. Duidelijk voor Finance, werkbaar voor Sales.”
-          </p>
-          <div className="mt-3 text-sm text-gray-600">— Commercieel Directeur, farma (NL)</div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="mx-auto max-w-6xl px-4 pb-16">
-        <div className="rounded-2xl border bg-white p-8 md:p-10 text-center">
-          <h2 className="text-2xl md:text-3xl font-semibold">Klaar voor meer grip en minder risico?</h2>
-          <p className="mt-3 text-gray-700">
-            Start met een licentie en gebruik de modules in uw eerstvolgende tender of heronderhandeling.
-          </p>
-          <div className="mt-6 flex gap-3 justify-center">
-            <Link href="/pricing" className="bg-sky-700 text-white px-5 py-3 rounded-lg hover:bg-sky-800">
-              Koop licentie
+      {/* FINAL CTA */}
+      <section className="border-t bg-gradient-to-r from-sky-600 to-indigo-600">
+        <div className="mx-auto max-w-6xl px-4 py-10 text-center text-white">
+          <h4 className="text-2xl font-semibold">Klaar voor duidelijke GtN-analyses?</h4>
+          <p className="mt-2 text-white/90">Start met de templates of plan een demo met je eigen casus.</p>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+            <Link href="/pricing" className="rounded-xl bg-white px-4 py-2 text-slate-900 hover:bg-slate-100">
+              Bekijk pricing
             </Link>
-            <Link href="/contact" className="px-5 py-3 rounded-lg border hover:bg-gray-50">
-              Plan een demo
+            <Link href="/contact" className="rounded-xl border border-white/30 px-4 py-2 hover:bg-white/10">
+              Plan demo
             </Link>
           </div>
-          <div className="mt-4 text-xs text-gray-500">
-            Eigen data • EU-hosting • Herleidbare onderbouwing
-          </div>
         </div>
       </section>
-    </>
+    </main>
+  );
+}
+
+/* ========== Icons (inline, geen dependency) ========== */
+type IconName = "sparkles" | "chart" | "template" | "kpi" | "shield" | "cloud" | "rocket" | "euro" | "clock" | "check";
+
+function Icon({ name, className }: { name: IconName | string; className?: string }) {
+  switch (name) {
+    case "sparkles":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M12 2l1.7 3.8L18 7.5l-3.8 1.7L12 13l-2.2-3.8L6 7.5l4.3-1.7L12 2zM4 13l.9 2.1L7 16l-2.1.9L4 19l-.9-2.1L1 16l2.1-.9L4 13zm14 2l1.3 2.8L22 19l-2.7 1.2L18 23l-1.3-2.8L14 19l2.7-1.2L18 15z"/>
+        </svg>
+      );
+    case "chart":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M3 3h2v18H3V3zm16 10h2v8h-2v-8zM11 9h2v12h-2V9zM7 13h2v8H7v-8zm8-10h2v22h-2V3z"/>
+        </svg>
+      );
+    case "template":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M4 4h16v4H4V4zm0 6h10v10H4V10zm12 0h4v10h-4V10z"/>
+        </svg>
+      );
+    case "kpi":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M3 20h18v1H3v-1zM6 11h3v7H6v-7zm5-4h3v11h-3V7zm5 2h3v9h-3V9z"/>
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M12 2l8 4v6c0 5-3.4 9.7-8 10-4.6-.3-8-5-8-10V6l8-4z"/>
+        </svg>
+      );
+    case "cloud":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M6 18h11a4 4 0 0 0 0-8 6 6 0 0 0-11.7 1.5A3.5 3.5 0 0 0 6 18z"/>
+        </svg>
+      );
+    case "rocket":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M12 2c3 0 6 2 7 5l-5 5-2-2-5 5 2 2-5 5 5-5 2 2 5-5 2 2 5-5c-1-3-4-7-11-7z"/>
+        </svg>
+      );
+    case "euro":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M17 7a6 6 0 0 0-10.7 3H4v2h2.1A6 6 0 0 0 17 17l.9-2.1A4 4 0 0 1 8.7 12H14v-2H8.7A4 4 0 0 1 17 7z"/>
+        </svg>
+      );
+    case "clock":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2zm1 11h5v-2h-4V6h-2v7z"/>
+        </svg>
+      );
+    case "check":
+      return <Check className={className} />;
+    default:
+      return <span className={className}>★</span>;
+  }
+}
+
+function Check(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-7.2 7.2a1 1 0 01-1.4 0L3.3 9.1a1 1 0 011.4-1.4l3 3 6.5-6.5a1 1 0 011.4 0z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+function ArrowRight(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden {...props}>
+      <path d="M10.293 3.293a1 1 0 011.414 0L17 8.586a2 2 0 010 2.828l-5.293 5.293a1 1 0 01-1.414-1.414L13.586 12H4a1 1 0 110-2h9.586l-3.293-3.293a1 1 0 010-1.414z"/>
+    </svg>
+  );
+}
+
+function Dot(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 8 8" aria-hidden {...props} className={"h-2 w-2 fill-white " + (props.className || "")}>
+      <circle cx="4" cy="4" r="4" />
+    </svg>
   );
 }
