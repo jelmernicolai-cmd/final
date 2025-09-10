@@ -77,26 +77,6 @@ export default function PricingNL() {
         </div>
       </section>
 
-import PricingFAQ from "@/components/pricing/PricingFAQ";
-
-export default function PricingPage() {
-  return (
-    <>
-      {/* ... jouw pricing hero/kaart ... */}
-      {/* Vergelijking met alternatieven */}
-      <section className="mx-auto max-w-4xl px-4 py-8">
-        <h2 className="text-xl font-semibold mb-4">Waarom niet Excel of maatwerk IT?</h2>
-        <ul className="list-disc pl-5 space-y-2 text-slate-700">
-          <li>Excel → foutgevoelig, geen audit trail, trage scenario’s</li>
-          <li>Maatwerk IT → duur & lange doorlooptijd</li>
-          <li>PharmaGtN → direct inzicht, governance & export in 1 tool</li>
-        </ul>
-      </section>
-      <PricingFAQ />
-    </>
-  );
-}
-
       {/* FAQ */}
       <section className="bg-gray-50 border-t">
         <div className="mx-auto max-w-6xl px-4 py-14">
