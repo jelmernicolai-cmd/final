@@ -148,7 +148,7 @@ export default function FeaturesNL() {
       <section className="mx-auto max-w-6xl px-4 py-14">
         <div className="rounded-2xl border bg-white p-6 md:p-8 grid md:grid-cols-2 gap-8 items-center">
           <div className="min-w-0">
-            <h2 className="text-2xl md:text-3xl font-semibold">Veiligheid, privacy en controle/h2>
+            <h2 className="text-2xl md:text-3xl font-semibold">Veiligheid, privacy en controle</h2>
             <ul className="mt-4 text-gray-700 space-y-2">
               <li>• EU-hosting (NL/EU) en dataminimalisatie.</li>
               <li>• Geüploade bestanden worden alleen in je eigen browser verwerkt.</li>
