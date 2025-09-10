@@ -15,16 +15,20 @@ export default function PortalDashboard() {
   // Als er nog geen data is -> focus op upload hero
   if (!rows.length) {
     return (
-      <div className="space-y-6">
+      <main className="space-y-6">
         <header className="flex items-center gap-3">
           <h1 className="text-xl font-semibold">Dashboard</h1>
-          <span className="ml-2 text-xs px-2 py-1 rounded-full border bg-amber-50 text-amber-800 border-amber-200">
+          <span
+            className="ml-2 text-xs px-2 py-1 rounded-full border bg-amber-50 text-amber-800 border-amber-200"
+            role="status"
+            aria-live="polite"
+          >
             Geen dataset gevonden
           </span>
         </header>
-// ...
-<OnboardingTips />
-        
+
+        <OnboardingTips />
+
         <section className="rounded-2xl border bg-white p-6">
           <h2 className="text-lg font-semibold">Start met je data</h2>
           <p className="text-gray-600 mt-1">
@@ -38,7 +42,7 @@ export default function PortalDashboard() {
               <div className="mt-3">
                 <Link
                   href="/app/waterfall#upload"
-                  className="inline-flex items-center rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:bg-sky-700"
+                  className="inline-flex items-center rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 text-white text-sm px-4 py-2 hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
                 >
                   Naar upload
                 </Link>
@@ -53,7 +57,7 @@ export default function PortalDashboard() {
               <div className="mt-3">
                 <Link
                   href="/app/waterfall#templates"
-                  className="inline-flex items-center rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
+                  className="inline-flex items-center rounded-lg border px-4 py-2 text-sm hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
                 >
                   Bekijk templates
                 </Link>
@@ -65,7 +69,7 @@ export default function PortalDashboard() {
         <section className="text-sm text-gray-600">
           Tip: je kunt ook onze <Link className="underline" href="/app/waterfall#templates">dummy dataset</Link> gebruiken om het snel te proberen.
         </section>
-      </div>
+      </main>
     );
   }
 
@@ -87,8 +91,7 @@ export default function PortalDashboard() {
     topDeviation,
     totalPotential,
   } = useMemo(() => {
-    let grossTotal = 0,
-      discTotal = 0;
+    let grossTotal = 0, discTotal = 0;
 
     const byCustomer = new Map<string, { gross: number; disc: number }>();
     const byPeriod = new Map<string, { gross: number; disc: number }>();
@@ -134,6 +137,10 @@ export default function PortalDashboard() {
     return { grossTotal, avgDiscountPct, periodPctSeries, topDeviation, totalPotential };
   }, [rows]);
 
+  // Voor stabiele props naar de charts
+  const deviationValues = useMemo(() => topDeviation.map(x => x.deviation), [topDeviation]);
+  const deviationLabels = useMemo(() => topDeviation.map(x => x.cust), [topDeviation]);
+
   // ---- Acties (Top 3) — concreet en bedraggedreven
   const actions = useMemo(() => {
     const majorPP = 5; // zelfde signaal als op Consistency
@@ -171,13 +178,11 @@ export default function PortalDashboard() {
     }).filter(Boolean) as { key: string; title: string; desc: string; amount: number; type: string }[];
 
     // Sorteer primair op bedrag (descending), retentie-acties zonder bedrag komen laatst
-    return items
-      .sort((a, b) => (b.amount || 0) - (a.amount || 0))
-      .slice(0, 3);
+    return items.sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 3);
   }, [topDeviation]);
 
   return (
-    <div className="space-y-6">
+    <main className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-end gap-2">
         <div className="flex-1">
           <h1 className="text-xl font-semibold">Dashboard</h1>
@@ -187,48 +192,48 @@ export default function PortalDashboard() {
         </div>
 
         {/* Snelkoppelingen */}
-        <div className="flex items-center gap-2">
-          <Link href="/app/waterfall" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">
+        <nav aria-label="Snelkoppelingen" className="flex items-center gap-2">
+          <Link href="/app/waterfall" className="text-sm rounded border px-3 py-2 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600">
             Naar Waterfall
           </Link>
-          <Link href="/app/consistency" className="text-sm rounded border px-3 py-2 hover:bg-gray-50">
+          <Link href="/app/consistency" className="text-sm rounded border px-3 py-2 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600">
             Naar Consistency
           </Link>
-        </div>
+        </nav>
       </header>
 
       {/* KPIs + charts */}
-      <section className="grid md:grid-cols-3 gap-4">
-        <div className="rounded-2xl border bg-white p-4 flex items-center justify-between">
+      <section className="grid md:grid-cols-3 gap-4" aria-label="Kern-KPI's en grafieken">
+        <article className="rounded-2xl border bg-white p-4 flex items-center justify-between" aria-label="Totaal Gross en gemiddelde korting">
           <div>
             <div className="text-sm text-gray-500">Totaal Gross</div>
             <div className="text-lg font-semibold mt-1">{eur0(grossTotal)}</div>
           </div>
           <Donut value={avgDiscountPct} label="Gem. korting (overall)" />
-        </div>
+        </article>
 
-        <div className="rounded-2xl border bg-white p-4">
+        <article className="rounded-2xl border bg-white p-4" aria-label="Kortingpercentage over tijd">
           <div className="text-sm text-gray-500">Korting% over tijd</div>
           <Sparkline data={periodPctSeries} />
           <div className="text-xs text-gray-600 mt-1">Benchmark op detail zie Consistency.</div>
-        </div>
+        </article>
 
-        <div className="rounded-2xl border bg-white p-4">
+        <article className="rounded-2xl border bg-white p-4" aria-label="Besparingspotentieel top 10 klanten">
           <div className="text-sm text-gray-500">Besparingspotentieel (Top 10 klanten)</div>
           <div className="text-lg font-semibold mt-1">{eur0(totalPotential)}</div>
           <div className="mt-2">
             <MiniBar
-              values={topDeviation.map((x) => x.deviation)}
-              labels={topDeviation.map((x) => x.cust)}
+              values={deviationValues}
+              labels={deviationLabels}
               valueFmt={(v) => v.toFixed(1) + 'pp'}
               tooltip={(_, v, l) => `${l}: ${v.toFixed(1)} pp`}
             />
           </div>
-        </div>
+        </article>
       </section>
 
       {/* Top 3 acties */}
-      <section className="rounded-2xl border bg-white p-4">
+      <section className="rounded-2xl border bg-white p-4" aria-label="Aanbevolen acties">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold">Top 3 acties om marge te optimaliseren</h2>
           <span className="ml-auto text-xs px-2 py-1 rounded-full border bg-sky-50 text-sky-700 border-sky-200">
@@ -251,7 +256,7 @@ export default function PortalDashboard() {
                 <div className="mt-3">
                   <Link
                     href="/app/consistency"
-                    className="inline-flex items-center rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
+                    className="inline-flex items-center rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
                   >
                     Bekijk details →
                   </Link>
@@ -264,8 +269,8 @@ export default function PortalDashboard() {
         </ul>
       </section>
 
-      {/* Upload & beheer – compact blok, in lijn met je Waterfall-sectie */}
-      <section className="rounded-2xl border bg-white p-4">
+      {/* Data & Upload */}
+      <section className="rounded-2xl border bg-white p-4" aria-label="Data en upload">
         <h2 className="text-lg font-semibold">Data & Upload</h2>
         <p className="text-gray-600 text-sm mt-1">
           Werk je dataset bij om analyses up-to-date te houden.
@@ -280,7 +285,7 @@ export default function PortalDashboard() {
             <div className="mt-2">
               <Link
                 href="/app/waterfall#upload"
-                className="inline-flex items-center rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:bg-sky-700"
+                className="inline-flex items-center rounded-lg bg-gradient-to-r from-sky-600 to-indigo-600 text-white text-sm px-4 py-2 hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
               >
                 Naar upload
               </Link>
@@ -295,7 +300,7 @@ export default function PortalDashboard() {
             <div className="mt-2">
               <Link
                 href="/app/waterfall#templates"
-                className="inline-flex items-center rounded-lg border px-4 py-2 text-sm hover:bg-gray-50"
+                className="inline-flex items-center rounded-lg border px-4 py-2 text-sm hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
               >
                 Bekijk templates
               </Link>
@@ -305,22 +310,22 @@ export default function PortalDashboard() {
       </section>
 
       {/* Snelle links */}
-      <section className="grid sm:grid-cols-2 gap-3">
+      <section className="grid sm:grid-cols-2 gap-3" aria-label="Snelle links">
         <Link
           href="/app/waterfall"
-          className="rounded-xl border bg-white p-4 hover:bg-gray-50"
+          className="rounded-xl border bg-white p-4 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
         >
           <div className="text-sm font-medium">Waterfall</div>
           <p className="text-sm text-gray-600">Uitsplitsing van korting-componenten en margebrug.</p>
         </Link>
         <Link
           href="/app/consistency"
-          className="rounded-xl border bg-white p-4 hover:bg-gray-50"
+          className="rounded-xl border bg-white p-4 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
         >
           <div className="text-sm font-medium">Consistency</div>
           <p className="text-sm text-gray-600">Benchmark per klant en direct besparingspotentieel.</p>
         </Link>
       </section>
-    </div>
+    </main>
   );
 }
