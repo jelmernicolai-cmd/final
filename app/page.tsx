@@ -16,7 +16,7 @@ export default function Home() {
         <div className="mx-auto max-w-6xl px-4 py-16 md:py-20 grid md:grid-cols-2 gap-10 items-center">
           <div>
             <h1 className="text-3xl md:text-5xl font-bold leading-tight">
-              Maak <span className="underline decoration-sky-300">Gross-to-Net</span>{" "}
+              Maak <span className="underline decoration-sky-300/70">Gross-to-Net</span>{" "}
               transparant. Stuur gericht op rendement.
             </h1>
             <p className="mt-4 text-lg text-gray-600">
@@ -26,13 +26,13 @@ export default function Home() {
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
                 href="/pricing"
-                className="bg-sky-600 text-white px-5 py-3 rounded-lg font-medium hover:bg-sky-700"
+                className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-5 py-3 text-white font-medium hover:opacity-95"
               >
                 Probeer PharmaGtN
               </Link>
               <Link
                 href="/features"
-                className="px-5 py-3 rounded-lg border hover:bg-gray-50"
+                className="rounded-xl border px-5 py-3 hover:bg-white"
               >
                 Bekijk functionaliteit
               </Link>
@@ -57,23 +57,18 @@ export default function Home() {
 
       {/* Cred-bar / metrics */}
       <section className="border-y bg-white">
-        <div className="mx-auto max-w-6xl px-4 py-6 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-          <div>
-            <div className="text-2xl font-semibold">€100k+</div>
-            <div className="text-xs text-gray-500">Gemiddelde ROI per jaar</div>
-          </div>
-          <div>
-            <div className="text-2xl font-semibold">3–6 mnd</div>
-            <div className="text-xs text-gray-500">Typische implementatietijd</div>
-          </div>
-          <div>
-            <div className="text-2xl font-semibold">Self-service</div>
-            <div className="text-xs text-gray-500">Upload & analyseer direct</div>
-          </div>
-          <div>
-            <div className="text-2xl font-semibold">ISO-ready</div>
-            <div className="text-xs text-gray-500">Privacy & security-first</div>
-          </div>
+        <div className="mx-auto max-w-6xl px-4 py-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { v: "€100k+", l: "Gemiddelde ROI per jaar" },
+            { v: "3–6 mnd", l: "Typische implementatietijd" },
+            { v: "Self-service", l: "Upload & analyseer direct" },
+            { v: "ISO-ready", l: "Privacy & security-first" },
+          ].map((m) => (
+            <div key={m.l} className="rounded-xl border bg-slate-50 px-4 py-3 text-center">
+              <div className="text-xl font-semibold">{m.v}</div>
+              <div className="text-xs text-gray-500">{m.l}</div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -98,7 +93,7 @@ export default function Home() {
               img: "/images/benefit-heatmap.png",
             },
           ].map((b) => (
-            <div key={b.t} className="rounded-xl border p-5 hover:shadow-sm transition">
+            <article key={b.t} className="rounded-xl border bg-white p-5 hover:shadow-sm transition">
               <Image
                 src={b.img}
                 alt={b.t}
@@ -108,7 +103,7 @@ export default function Home() {
               />
               <h3 className="mt-4 font-semibold">{b.t}</h3>
               <p className="mt-2 text-sm text-gray-600">{b.d}</p>
-            </div>
+            </article>
           ))}
         </div>
       </section>
@@ -127,10 +122,10 @@ export default function Home() {
               <li>• Exporteer management-slides en deelbare inzichten.</li>
             </ul>
             <div className="mt-6 flex gap-3">
-              <Link href="/app" className="bg-gray-900 text-white px-5 py-3 rounded-lg">
+              <Link href="/app" className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-5 py-3 text-white hover:opacity-95">
                 Naar de GtN Portal
               </Link>
-              <Link href="/templates" className="px-5 py-3 rounded-lg border">
+              <Link href="/templates" className="rounded-xl border px-5 py-3 hover:bg-white">
                 Download templates
               </Link>
             </div>
@@ -163,7 +158,10 @@ export default function Home() {
             We helpen prioriteiten te kiezen en zorgen dat beslissingen worden vastgelegd.
           </p>
           <div className="mt-6">
-            <Link href="/pricing" className="inline-block bg-sky-600 text-white px-5 py-3 rounded-lg hover:bg-sky-700">
+            <Link
+              href="/pricing"
+              className="inline-block rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-5 py-3 text-white hover:opacity-95"
+            >
               Bekijk licentie (€2.500/jaar)
             </Link>
           </div>
@@ -180,10 +178,10 @@ export default function Home() {
               { q: "De consistentie-analyse gaf ons een helder kader voor discounts.", a: "Head of Commercial" },
               { q: "We zagen binnen weken paralleldruk op top-SKU’s — en stuurden direct bij.", a: "Pricing Manager" },
             ].map((t) => (
-              <div key={t.q} className="rounded-xl border p-6 bg-gray-50">
-                <p className="italic">“{t.q}”</p>
-                <p className="mt-3 text-sm text-gray-600">— {t.a}</p>
-              </div>
+              <figure key={t.q} className="rounded-xl border bg-gray-50 p-6">
+                <blockquote className="italic">“{t.q}”</blockquote>
+                <figcaption className="mt-3 text-sm text-gray-600">— {t.a}</figcaption>
+              </figure>
             ))}
           </div>
         </div>
@@ -193,7 +191,7 @@ export default function Home() {
       <section className="bg-gray-50">
         <div className="mx-auto max-w-6xl px-4 py-14">
           <h2 className="text-2xl md:text-3xl font-bold">Veelgestelde vragen</h2>
-        <div className="mt-6 grid md:grid-cols-2 gap-6">
+          <div className="mt-6 grid md:grid-cols-2 gap-6">
             <div className="rounded-xl border bg-white p-5">
               <h3 className="font-semibold">Welke data heb ik nodig?</h3>
               <p className="mt-2 text-sm text-gray-700">
@@ -231,10 +229,16 @@ export default function Home() {
             Start met de GtN Portal en maak je kortingsbeleid aantoonbaar consistenter en winstgevender.
           </p>
           <div className="mt-6 flex flex-wrap gap-3 justify-center">
-            <Link href="/pricing" className="bg-sky-600 text-white px-5 py-3 rounded-lg hover:bg-sky-700">
+            <Link
+              href="/pricing"
+              className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-5 py-3 text-white hover:opacity-95"
+            >
               Koop licentie
             </Link>
-            <Link href="/contact" className="px-5 py-3 rounded-lg border hover:bg-gray-50">
+            <Link
+              href="/contact"
+              className="rounded-xl border px-5 py-3 hover:bg-white"
+            >
               Plan demo
             </Link>
           </div>
