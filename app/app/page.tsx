@@ -7,6 +7,9 @@ import type { Row } from '@/lib/waterfall-types';
 import Sparkline from '@/components/charts/Sparkline';
 import MiniBar from '@/components/charts/MiniBar';
 import Donut from '@/components/charts/Donut';
+import OnboardingTips from "@/components/app/OnboardingTips";
+// ...
+<OnboardingTips />
 
 export default function PortalDashboard() {
   const rows: Row[] = loadWaterfallRows();
