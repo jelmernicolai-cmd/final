@@ -8,8 +8,6 @@ import Sparkline from '@/components/charts/Sparkline';
 import MiniBar from '@/components/charts/MiniBar';
 import Donut from '@/components/charts/Donut';
 import OnboardingTips from "@/components/app/OnboardingTips";
-// ...
-<OnboardingTips />
 
 export default function PortalDashboard() {
   const rows: Row[] = loadWaterfallRows();
@@ -24,7 +22,9 @@ export default function PortalDashboard() {
             Geen dataset gevonden
           </span>
         </header>
-
+// ...
+<OnboardingTips />
+        
         <section className="rounded-2xl border bg-white p-6">
           <h2 className="text-lg font-semibold">Start met je data</h2>
           <p className="text-gray-600 mt-1">
