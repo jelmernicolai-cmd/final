@@ -75,7 +75,7 @@ export default function Nav() {
         {/* Logo links */}
         <Link href="/" className="flex items-center gap-2">
           <Image
-            src="/logo/logo-full.png"
+            src="/logo/logo-full.jpg"
             alt="PharmGtN"
             width={140}
             height={40}
