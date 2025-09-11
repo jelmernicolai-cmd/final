@@ -11,7 +11,7 @@ export const metadata = {
   title: "PharmGtN",
   description: "Gross-to-Net portal voor farma",
   icons: {
-    icon: "/favicon.ico",
+    icon: "/favicon.png",
   },
 };
 
