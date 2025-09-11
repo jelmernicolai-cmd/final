@@ -15,14 +15,6 @@ export const metadata: Metadata = {
   viewport: { width: "device-width", initialScale: 1 },
 };
 
-export const metadata = {
-  title: "PharmGtN",
-  description: "Gross-to-Net portal voor farma",
-  icons: {
-    icon: "/favicon.png",
-  },
-};
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="nl">
