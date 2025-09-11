@@ -41,7 +41,7 @@ export default function PricingNL() {
       <section className="bg-gradient-to-b from-white to-sky-50 border-b">
         <div className="mx-auto max-w-6xl px-4 py-12 md:py-16 text-center">
           <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-1 text-xs font-medium text-white">
-            <Dot /> Eerlijke licentie — geen verborgen kosten
+            <Dot /> Eén licentie — geen verborgen kosten
           </span>
           <h1 className="mt-4 text-3xl md:text-5xl font-bold">Prijzen</h1>
           <p className="mt-4 text-gray-700">
@@ -90,7 +90,7 @@ export default function PricingNL() {
                 <p className="mt-1 text-sm text-gray-600">Per juridische entiteit. Inclusief updates & support.</p>
               </div>
               <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-800">
-                <Spark /> Direct beschikbaar
+                Direct beschikbaar
               </span>
             </div>
 
