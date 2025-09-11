@@ -80,31 +80,39 @@ const highlights = [
 
   return (
     <main>
-      {/* HERO */}
-      <section className="border-b bg-gradient-to-b from-white to-sky-50">
-      <div className="mx-auto max-w-6xl px-4 py-12 md:py-16 text-center">
-          <div className="max-w-3xl">
-            <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-1 text-xs font-medium text-white">
-              <Dot /> Gemaakt voor farma-teams
-            </span>
-            <h1 className="mt-4 text-3xl md:text-5xl font-bold leading-tight">
-              Alles wat je nodig hebt voor <span className="underline decoration-sky-300/60">betrouwbare GtN-analyses</span>
-            </h1>
-            <p className="mt-4 text-slate-700">
-              Bouw scenario’s, zie de waterfall, check consistentie en exporteer resultaten — zonder zware IT-trajecten.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/pricing" className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2 text-white hover:opacity-95">
-                Bekijk pricing
-              </Link>
-              <Link href="/contact" className="rounded-xl border px-4 py-2 hover:bg-white">
-                Plan een demo
-              </Link>
-            </div>
-            <p className="mt-3 text-xs text-slate-500">EU-hosting • Dataminimalisatie • Exports naar Excel/PDF</p>
-          </div>
-        </div>
-      </section>
+ {/* HERO */}
+<section className="border-b bg-gradient-to-b from-white to-sky-50">
+  <div className="mx-auto max-w-6xl px-4 py-12 md:py-16 text-center">
+    <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-1 text-xs font-medium text-white">
+      <Dot /> Gemaakt voor farma-teams
+    </span>
+    <h1 className="mt-4 text-3xl md:text-5xl font-bold leading-tight">
+      Alles wat je nodig hebt voor{" "}
+      <span className="underline decoration-sky-300/60">betrouwbare GtN-analyses</span>
+    </h1>
+    <p className="mt-4 text-slate-700">
+      Bouw scenario’s, zie de waterfall, check consistentie en exporteer resultaten — zonder zware IT-trajecten.
+    </p>
+    <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+      <Link
+        href="/pricing"
+        className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-5 py-3 text-white hover:opacity-95"
+      >
+        Bekijk pricing
+      </Link>
+      <Link
+        href="/contact"
+        className="rounded-xl border px-5 py-3 hover:bg-white"
+      >
+        Plan een demo
+      </Link>
+    </div>
+    <p className="mt-3 text-xs text-slate-500">
+      EU-hosting • Dataminimalisatie • Exports naar Excel/PDF
+    </p>
+  </div>
+</section>
+
 
       {/* HIGHLIGHTS STRIP */}
       <section className="border-b bg-white">
