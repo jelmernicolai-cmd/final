@@ -80,19 +80,21 @@ const highlights = [
 
   return (
     <main>
- {/* HERO */}
+{/* HERO */}
 <section className="border-b bg-gradient-to-b from-white to-sky-50">
   <div className="mx-auto max-w-6xl px-4 py-12 md:py-16 text-center">
     <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-1 text-xs font-medium text-white">
-      <Dot /> Ontwikkeld voor farma-teams
+      <Dot /> Gemaakt voor farma-teams
     </span>
-    <h1 className="mt-4 text-3xl md:text-5xl font-bold leading-tight">
-      Alles wat je nodig hebt voor{" "}
-      <span className="underline decoration-sky-300/60">betrouwbare GtN-analyses</span>
-    </h1>
-    <p className="mt-4 text-slate-700">
-      Bouw scenario’s, zie de waterfall, check consistentie en exporteer resultaten — zonder zware IT-trajecten.
-    </p>
+    <div className="max-w-4xl mx-auto">
+      <h1 className="mt-4 text-3xl md:text-5xl font-bold leading-tight">
+        Alles wat je nodig hebt voor{" "}
+        <span className="underline decoration-sky-300/60">betrouwbare GtN-analyses</span>
+      </h1>
+      <p className="mt-4 text-slate-700">
+        Bouw scenario’s, zie de waterfall, check consistentie en exporteer resultaten — zonder zware IT-trajecten.
+      </p>
+    </div>
     <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
       <Link
         href="/pricing"
@@ -112,6 +114,7 @@ const highlights = [
     </p>
   </div>
 </section>
+
 
 
       {/* HIGHLIGHTS STRIP */}
