@@ -10,7 +10,7 @@ export const metadata = {
 export default function FeaturesPage() {
   const cards = [
     {
-      icon: "sparkles",
+      icon: "scenario",
       title: "Scenario-analyse",
       bullets: [
         "Vergelijk meerdere scenario’s naast elkaar",
