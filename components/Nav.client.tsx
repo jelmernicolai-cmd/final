@@ -3,6 +3,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSession, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 
@@ -26,7 +27,6 @@ export default function Nav() {
   const panelRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
-  // Nav-items (zelfde als je huidige)
   const items = useMemo(
     () => [
       { href: "/features", label: "Features" },
@@ -38,15 +38,12 @@ export default function Nav() {
     []
   );
 
-  // 1) Sluit bij routewissel
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
+  // Sluit bij routewissel
+  useEffect(() => { setOpen(false); }, [pathname]);
 
-  // 2) Klik-buiten + Escape om te sluiten (alleen wanneer open)
+  // Klik-buiten + Escape
   useEffect(() => {
     if (!open) return;
-
     function onDocClick(e: MouseEvent) {
       const t = e.target as Node;
       const insidePanel = panelRef.current?.contains(t);
@@ -56,7 +53,6 @@ export default function Nav() {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
-
     document.addEventListener("click", onDocClick);
     document.addEventListener("keydown", onKey);
     return () => {
@@ -65,24 +61,29 @@ export default function Nav() {
     };
   }, [open]);
 
-  // 3) Body scroll lock op mobiel paneel
+  // Scroll lock op mobiel
   useEffect(() => {
     const b = document.body;
     const prev = b.style.overflow;
     if (open) b.style.overflow = "hidden";
-    return () => {
-      b.style.overflow = prev;
-    };
+    return () => { b.style.overflow = prev; };
   }, [open]);
 
   return (
     <header className="border-b bg-white/70 backdrop-blur sticky top-0 z-40">
       <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-4">
-        <Link href="/" className="text-lg font-semibold">
-          PharmaGtN
+        {/* Logo links */}
+        <Link href="/" className="flex items-center gap-2">
+          <Image
+            src="/logo/logo-full.png"
+            alt="PharmGtN"
+            width={140}
+            height={40}
+            priority
+          />
         </Link>
 
-        {/* Desktop links */}
+        {/* Desktop menu */}
         <nav className="hidden md:flex items-center gap-1">
           {items.map((it) => (
             <LeftItem key={it.href} href={it.href} label={it.label} />
@@ -146,7 +147,7 @@ export default function Nav() {
               key={it.href}
               href={it.href}
               label={it.label}
-              onClick={() => setOpen(false)} // 4) sluit direct na keuze
+              onClick={() => setOpen(false)}
             />
           ))}
 
