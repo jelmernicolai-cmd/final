@@ -9,10 +9,15 @@ import Footer from "@/components/ui/Footer";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.pharmgtn.com"),
-  title: { default: "PharmaGtN", template: "%s | PharmaGtN" },
+  title: { default: "PharmGtN", template: "%s | PharmGtN" },
   description:
     "PharmaGtN helpt farma-fabrikanten hun gross-to-net en kortingsbeleid te optimaliseren.",
   viewport: { width: "device-width", initialScale: 1 },
+  icons: {
+    icon: "/favicon.png",           // standaard favicon
+    shortcut: "/favicon.png",       // fallback voor sommige browsers
+    apple: "/apple-touch-icon.png", // voor iOS “op beginscherm”
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
