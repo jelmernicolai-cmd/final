@@ -1,4 +1,5 @@
-import ContractDashboard from "@/components/contracts/ContractDashboard";
+// app/app/contracts/page.tsx
+import UploadAndDashboard from "../../../components/contracts/UploadAndDashboard";
 
 export const metadata = {
   title: "Contract Performance",
@@ -10,10 +11,10 @@ export default function Page() {
     <div className="mx-auto max-w-7xl px-4 py-6">
       <h1 className="text-2xl font-semibold tracking-tight">Contract Performance</h1>
       <p className="mt-1 text-sm text-gray-500">
-        Bekijk hoe individuele contracten (klant of klant+SKU) presteren en bijdragen aan de totale groei.
+        Upload je CSV en bekijk groei per contract vs. totaal, inclusief outperformance en bijdrage.
       </p>
       <div className="mt-6">
-        <ContractDashboard />
+        <UploadAndDashboard />
       </div>
     </div>
   );
