@@ -1,4 +1,3 @@
-// components/contracts/UploadAndDashboard.tsx
 "use client";
 
 import { useState } from "react";
