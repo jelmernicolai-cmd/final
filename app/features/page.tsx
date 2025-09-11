@@ -77,6 +77,14 @@ export default function FeaturesPage() {
     { icon: "clock", k: "Besparing", v: "uren", sub: "per analysecyclus" },
   ];
 
+  const uspCards = [
+  { icon: "trending-up", k: "Marge", v: "↑", sub: "inzicht in kortingen & verbeteropties" },
+  { icon: "sliders", k: "Scenario’s", v: "vergelijk", sub: "impact in € en % naast elkaar" },
+  { icon: "lock", k: "Veilig", v: "EU-hosting", sub: "geen zware IT, minimale data" },
+  { icon: "shield-check", k: "Validatie", v: "100%", sub: "tekens, totalen & consistentie geborgd" },
+];
+
+
   return (
     <main>
       {/* HERO */}
