@@ -73,9 +73,8 @@ export default function FeaturesPage() {
 
   const highlights = [
     { icon: "template", k: "Snelle start", v: "in dagen", sub: "met templates" },
-    { icon: "money", k: "ROI", v: "↑", sub: "minder fouten & tijdverlies" },
-    { icon: "time", k: "Besparing", v: "uren", sub: "per analysecyclus" },
-    { icon: "success", k: "Adoptie", v: "hoog", sub: "heldere workflow" },
+    { icon: "euro", k: "ROI", v: "↑", sub: "minder fouten & tijdverlies" },
+    { icon: "clock", k: "Besparing", v: "uren", sub: "per analysecyclus" },
   ];
 
   return (
