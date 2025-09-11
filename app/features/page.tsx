@@ -82,7 +82,7 @@ const highlights = [
     <main>
       {/* HERO */}
       <section className="border-b bg-gradient-to-b from-white to-sky-50">
-        <div className="mx-auto max-w-6xl px-4 py-12 md:py-16">
+      <div className="mx-auto max-w-6xl px-4 py-12 md:py-16 text-center">
           <div className="max-w-3xl">
             <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-1 text-xs font-medium text-white">
               <Dot /> Gemaakt voor farma-teams
