@@ -248,6 +248,7 @@ export default function Sidebar() {
     { href: "/app/parallel", label: "Parallel", icon: "arrows" },
     { href: "/app/supply", label: "Stock Management", icon: "boxes" },
     { href: "/app/loe", label: "LoE Scenario's", icon: "loe" },
+    { href: "/app/contracts", label: "Contract Performance", icon: "waterfall" }, // 👈 nieuw item
   ];
 
   const DATA_UPLOAD: Item[] = [
