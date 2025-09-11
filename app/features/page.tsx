@@ -71,19 +71,12 @@ export default function FeaturesPage() {
     },
   ];
 
-  const highlights = [
-    { icon: "template", k: "Snelle start", v: "in dagen", sub: "met templates" },
-    { icon: "euro", k: "ROI", v: "↑", sub: "minder fouten & tijdverlies" },
-    { icon: "clock", k: "Besparing", v: "uren", sub: "per analysecyclus" },
-  ];
-
-  const uspCards = [
-  { icon: "trending-up", k: "Marge", v: "↑", sub: "inzicht in kortingen & verbeteropties" },
-  { icon: "sliders", k: "Scenario’s", v: "vergelijk", sub: "impact in € en % naast elkaar" },
-  { icon: "lock", k: "Veilig", v: "EU-hosting", sub: "geen zware IT, minimale data" },
-  { icon: "shield-check", k: "Validatie", v: "100%", sub: "tekens, totalen & consistentie geborgd" },
+const highlights = [
+  { icon: "zap", k: "Snelle start", v: "in dagen", sub: "met kant-en-klare templates" },
+  { icon: "timer", k: "Besparing", v: "uren", sub: "per analysecyclus" },
+  { icon: "layers", k: "Inzicht", v: "per stap", sub: "gross → net volledig verklaard" },
+  { icon: "file-text", k: "Exports", v: "klik & klaar", sub: "voor rapportage en interne review" },
 ];
-
 
   return (
     <main>
