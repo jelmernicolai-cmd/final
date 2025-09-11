@@ -9,74 +9,131 @@ import { useEffect, useMemo, useRef, useState } from "react";
 function cx(...cls: (string | false | null | undefined)[]) {
   return cls.filter(Boolean).join(" ");
 }
+// --- vervang alleen je Icons-const (en helper cx/iconBase mag je laten staan) ---
+
 const iconBase = "h-4 w-4 shrink-0";
 
+const common = {
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  vectorEffect: "non-scaling-stroke" as const,
+};
+
 const Icons = {
-  dashboard: (p: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" className={cx(iconBase, p.className)}>
-      <path d="M3 12h8V3H3v9Zm10 9h8v-9h-8v9Zm0-11h8V3h-8v7ZM3 21h8v-7H3v7Z" stroke="currentColor" strokeWidth="1.5" />
+  dashboard: ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`${iconBase} ${className || ""}`}>
+      {/* 2x2 tiles met ronde hoeken */}
+      <rect x="3.5" y="3.5" width="8" height="8" rx="2.5" {...common} />
+      <rect x="12.5" y="3.5" width="8" height="5" rx="2.5" {...common} />
+      <rect x="3.5" y="12.5" width="5" height="8" rx="2.5" {...common} />
+      <rect x="10.5" y="12.5" width="10" height="8" rx="2.5" {...common} />
     </svg>
   ),
-  waterfall: (p: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" className={cx(iconBase, p.className)}>
-      <path d="M4 6h4v12M12 10h4v8M20 4v14" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M3 20h18" stroke="currentColor" strokeWidth="1.5" />
+
+  waterfall: ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`${iconBase} ${className || ""}`}>
+      {/* basislijn */}
+      <path d="M3 20.5H21" {...common} />
+      {/* bars met zachte top/onderkant */}
+      <path d="M6.5 8.5v8" {...common} />
+      <path d="M12 11v5.5" {...common} />
+      <path d="M17.5 5.5v11" {...common} />
+      {/* kleine capjes */}
+      <path d="M5 8.5h3" {...common} />
+      <path d="M10.5 11h3" {...common} />
+      <path d="M16 5.5h3" {...common} />
     </svg>
   ),
-  scatter: (p: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" className={cx(iconBase, p.className)}>
-      <circle cx="7" cy="15" r="2" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="12" cy="10" r="2" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="17" cy="7" r="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M3 21 21 3" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3" />
+
+  scatter: ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`${iconBase} ${className || ""}`}>
+      {/* assen */}
+      <path d="M3.5 20.5H20.5M3.5 20.5V3.5" {...common} />
+      {/* zachte punten */}
+      <circle cx="8" cy="15" r="2.3" {...common} />
+      <circle cx="12.5" cy="10" r="2.3" {...common} />
+      <circle cx="17" cy="7" r="2.3" {...common} />
+      {/* hint: regressiestreepje */}
+      <path d="M5 18.5L19 6.5" strokeDasharray="4 4" {...common} />
     </svg>
   ),
-  arrows: (p: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" className={cx(iconBase, p.className)}>
-      <path d="M7 7h10M7 17h10M17 7l-3-3m3 3-3 3M7 17l3-3m-3 3 3 3" stroke="currentColor" strokeWidth="1.5" />
+
+  arrows: ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`${iconBase} ${className || ""}`}>
+      {/* bidirectionele zachte pijlen (parallel) */}
+      <path d="M7 8h8.5" {...common} />
+      <path d="M15.5 8l-2.5-2.5" {...common} />
+      <path d="M15.5 8l-2.5 2.5" {...common} />
+      <path d="M17 16H8.5" {...common} />
+      <path d="M9.5 16l2.5-2.5" {...common} />
+      <path d="M9.5 16l2.5 2.5" {...common} />
     </svg>
   ),
-  boxes: (p: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" className={cx(iconBase, p.className)}>
-      <path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4Zm0 9h7v7h-7v-7ZM4 13h7v7H4v-7Z" stroke="currentColor" strokeWidth="1.5" />
+
+  boxes: ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`${iconBase} ${className || ""}`}>
+      {/* 2x2 voorraadblokjes met rx */}
+      <rect x="3.5" y="3.5" width="8" height="8" rx="2.2" {...common} />
+      <rect x="12.5" y="3.5" width="8" height="8" rx="2.2" {...common} />
+      <rect x="3.5" y="12.5" width="8" height="8" rx="2.2" {...common} />
+      <rect x="12.5" y="12.5" width="8" height="8" rx="2.2" {...common} />
     </svg>
   ),
-  loe: (p: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" className={cx(iconBase, p.className)}>
-      <path d="M4 6h10M4 12h16M4 18h12" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M18 5v4M16 7h4" stroke="currentColor" strokeWidth="1.5" />
+
+  loe: ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`${iconBase} ${className || ""}`}>
+      {/* “policy lines” + marker (vriendelijk plusje) */}
+      <path d="M4 7.5h10M4 12h16M4 16.5h12" {...common} />
+      <path d="M18 6v3M16.5 7.5H19.5" {...common} />
     </svg>
   ),
-  upload: (p: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" className={cx(iconBase, p.className)}>
-      <path d="M12 16V6m0 0-4 4m4-4 4 4M4 18h16" stroke="currentColor" strokeWidth="1.5" />
+
+  upload: ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`${iconBase} ${className || ""}`}>
+      <path d="M12 16V6" {...common} />
+      <path d="M8.5 9.5L12 6l3.5 3.5" {...common} />
+      <path d="M4 18.5h16" {...common} />
     </svg>
   ),
-  template: (p: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" className={cx(iconBase, p.className)}>
-      <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" strokeWidth="1.5" />
+
+  template: ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`${iconBase} ${className || ""}`}>
+      <rect x="4" y="4" width="16" height="16" rx="3" {...common} />
+      <path d="M8 9h8M8 12h8M8 15h6" {...common} />
     </svg>
   ),
-  settings: (p: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" className={cx(iconBase, p.className)}>
-      <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M19.4 15a1 1 0 0 1 .2 1.1l-.7 1.2a1 1 0 0 1-1.1.5l-1.3-.4a6.6 6.6 0 0 1-1 .6l-.2 1.3a1 1 0 0 1-1 .8h-1.4a1 1 0 0 1-1-.8l-.2-1.3a6.6 6.6 0 0 1-1-.6l-1.3.4a1 1 0 0 1-1.1-.5l-.7-1.2a1 1 0 0 1 .2-1.1l1-1a6.6 6.6 0 0 1-.2-1.1l-1-.8a1 1 0 0 1-.3-1.1l.5-1.2c.2-.4.6-.6 1-.5l1.3.3c.3-.2.6-.4 1-.6l.2-1.3c.1-.5.5-.8 1-.8h1.4c.5 0 .9.3 1 .8l.2 1.3c.3.2.6.4 1 .6l1.3-.3c.4-.1.8.1 1 .5l.5 1.2c.2.4 0 .9-.3 1.1l-1 .8c0 .4-.1.7-.2 1.1l1 .9Z" stroke="currentColor" strokeWidth="1.5" />
+
+  settings: ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`${iconBase} ${className || ""}`}>
+      {/* gear met afgeronde “tanden” */}
+      <circle cx="12" cy="12" r="3.2" {...common} />
+      <path
+        d="M19 13.5a7.5 7.5 0 0 0 0-3l1.5-1a1 1 0 0 0 .3-1.3l-1.1-1.9a1 1 0 0 0-1.2-.4l-1.7.6a7.5 7.5 0 0 0-2.6-1.5l-.3-1.7a1 1 0 0 0-1-.8h-2.2a1 1 0 0 0-1 .8l-.3 1.7a7.5 7.5 0 0 0-2.6 1.5l-1.7-.6a1 1 0 0 0-1.2.4L3.2 8.2a1 1 0 0 0 .3 1.3L5 10.5a7.5 7.5 0 0 0 0 3l-1.5 1a1 1 0 0 0-.3 1.3l1.1 1.9a1 1 0 0 0 1.2.4l1.7-.6a7.5 7.5 0 0 0 2.6 1.5l.3 1.7a1 1 0 0 0 1 .8h2.2a1 1 0 0 0 1-.8l.3-1.7a7.5 7.5 0 0 0 2.6-1.5l1.7.6a1 1 0 0 0 1.2-.4l1.1-1.9a1 1 0 0 0-.3-1.3L19 13.5Z"
+        {...common}
+      />
     </svg>
   ),
-  support: (p: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" className={cx(iconBase, p.className)}>
-      <path d="M6 8a6 6 0 1 1 12 0v8a4 4 0 0 1-4 4h-1" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M6 14v-4M18 14v-4M9 19h3" stroke="currentColor" strokeWidth="1.5" />
+
+  support: ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`${iconBase} ${className || ""}`}>
+      {/* headset maar zacht */}
+      <path d="M6 10a6 6 0 1 1 12 0v5a4 4 0 0 1-4 4" {...common} />
+      <path d="M6 12v3M18 12v3" {...common} />
+      <path d="M11 20h2" {...common} />
     </svg>
   ),
-  external: (p: { className?: string }) => (
-    <svg viewBox="0 0 24 24" fill="none" className={cx("h-3.5 w-3.5", p.className)}>
-      <path d="M14 4h6m0 0v6m0-6L10 14" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M20 14v4a2 2 0 0 1-2 2h-12a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="1.5" />
+
+  external: ({ className }: { className?: string }) => (
+    <svg viewBox="0 0 24 24" className={`h-3.5 w-3.5 ${className || ""}`}>
+      <path d="M14 4h6M20 4v6M20 4l-9 9" {...common} />
+      <path d="M20 14v4a2 2 0 0 1-2 2h-12a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2h4" {...common} />
     </svg>
   ),
 } as const;
+
 
 /** ---------- Types ---------- */
 type IconKey = keyof typeof Icons;
