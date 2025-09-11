@@ -7,36 +7,36 @@ function parseCSV(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [], cur = "", inQ = false;
   const delim = text.includes(";") && !text.includes(",") ? ";" : ",";
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i], n = text[i + 1];
-    if (inQ) {
-      if (c === '"' && n === '"') { cur += '"'; i++; }
-      else if (c === '"') { inQ = false; }
-      else { cur += c; }
+  for (let i=0;i<text.length;i++){
+    const c = text[i], n = text[i+1];
+    if (inQ){
+      if (c === '"' && n === '"'){ cur += '"'; i++; }
+      else if (c === '"'){ inQ = false; }
+      else cur += c;
     } else {
-      if (c === '"') { inQ = true; }
-      else if (c === "\n" || c === "\r") {
-        if (cur.length || row.length) { row.push(cur); rows.push(row); row = []; cur = ""; }
-        if (c === "\r" && n === "\n") i++;
-      } else if (c === delim) { row.push(cur); cur = ""; }
-      else { cur += c; }
+      if (c === '"'){ inQ = true; }
+      else if (c === '\n' || c === '\r'){
+        if (cur.length || row.length){ row.push(cur); rows.push(row); row = []; cur = ""; }
+        if (c === '\r' && n === '\n') i++;
+      } else if (c === delim){ row.push(cur); cur = ""; }
+      else cur += c;
     }
   }
-  if (cur.length || row.length) { row.push(cur); rows.push(row); }
-  if (rows.length && rows[0].length) rows[0][0] = rows[0][0].replace(/^\uFEFF/, "");
-  return rows.filter(r => r.some(c => c.trim() !== ""));
+  if (cur.length || row.length){ row.push(cur); rows.push(row); }
+  if (rows.length && rows[0].length) rows[0][0] = rows[0][0].replace(/^\uFEFF/,"");
+  return rows.filter(r=> r.some(c=> c.trim() !== ""));
 }
 
 function mapToRows(table: string[][]): Row[] {
   if (!table.length) return [];
-  const header = table[0].map(h => h.trim().toLowerCase());
-  const idx = (name: string) => header.indexOf(name);
+  const header = table[0].map(h=>h.trim().toLowerCase());
+  const idx = (name:string)=> header.indexOf(name);
   const need = ["klant","sku","aantal_units","claimbedrag","omzet","periode"];
-  const miss = need.filter(n => idx(n) < 0);
+  const miss = need.filter(n=> idx(n) < 0);
   if (miss.length) throw new Error(`Ontbrekende kolommen: ${miss.join(", ")}`);
 
   const out: Row[] = [];
-  for (let r = 1; r < table.length; r++) {
+  for (let r=1;r<table.length;r++){
     const row = table[r];
     if (!row.length) continue;
     out.push({
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     const rows = mapToRows(table);
     const result = analyze(rows, level);
     return NextResponse.json({ ok: true, result });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Onbekende fout" }, { status: 400 });
+  } catch (e:any) {
+    return NextResponse.json({ ok:false, error: e?.message || "Onbekende fout" }, { status: 400 });
   }
 }
