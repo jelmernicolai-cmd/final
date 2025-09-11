@@ -7,20 +7,20 @@ import Nav from "@/components/Nav.client";
 // ⚠️ Gebruik de nieuwe footer uit /components/ui/Footer.tsx
 import Footer from "@/components/ui/Footer";
 
-export const metadata = {
-  title: "PharmGtN",
-  description: "Gross-to-Net portal voor farma",
-  icons: {
-    icon: "/favicon.png",
-  },
-};
-
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.pharmgtn.com"),
   title: { default: "PharmaGtN", template: "%s | PharmaGtN" },
   description:
     "PharmaGtN helpt farma-fabrikanten hun gross-to-net en kortingsbeleid te optimaliseren.",
   viewport: { width: "device-width", initialScale: 1 },
+};
+
+export const metadata = {
+  title: "PharmGtN",
+  description: "Gross-to-Net portal voor farma",
+  icons: {
+    icon: "/favicon.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
