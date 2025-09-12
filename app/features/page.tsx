@@ -10,12 +10,12 @@ export const metadata = {
 export default function FeaturesPage() {
   const cards = [
     {
-      icon: "analysis",
+      icon: "rocket",
       title: "Scenario-analyse",
       bullets: [
-        "Vergelijk meerdere scenario’s naast elkaar",
-        "Impact in € en % direct zichtbaar",
-        "Sla versies op en deel als PDF/CSV",
+        "Vergelijk meerdere scenario’s met elkaar",
+        "Impact in direct zichtbaar",
+        "Export voor rapportage in PDF/Excel/CSV",
       ],
       cta: { href: "/pricing", label: "Bekijk licentie" },
     },
@@ -23,8 +23,8 @@ export default function FeaturesPage() {
       icon: "chart",
       title: "Gross-to-Net waterfall",
       bullets: [
-        "Transparant per stap (kortingen/claims)",
-        "Validatie op teken & optellingen",
+        "Maak je kortingsmix inzichtelijk (kortingen/bonus)",
+        "Directe data validatie bij upload",
         "Export voor rapportage en audit",
       ],
       cta: { href: "/app", label: "Bekijk in Portal" },
@@ -33,9 +33,9 @@ export default function FeaturesPage() {
       icon: "template",
       title: "Templates & validatie",
       bullets: [
-        "Excel-templates voor sales/discounts",
+        "Excel-templates voor discounts",
         "Automatische checks bij upload",
-        "Snelle onboarding met dummy-data",
+        "Snelle onboarding met uitgebreide instructies",
       ],
       cta: { href: "/templates", label: "Download templates" },
     },
@@ -44,18 +44,18 @@ export default function FeaturesPage() {
       title: "KPI’s & dashboards",
       bullets: [
         "KPI’s per product/kanaal/segment",
-        "Trendgrafieken & toewijzingen",
+        "Trendgrafieken & directe marge verbeteringsopties",
         "Exports naar Excel/PDF",
       ],
       cta: { href: "/contact", label: "Plan een demo" },
     },
     {
       icon: "shield",
-      title: "Rechten & logging",
+      title: "Privacy & veilig",
       bullets: [
         "Role-based access (RBAC)",
-        "Wijzigingslogging (audit-ready)",
-        "Team-brede consistentie",
+        "Klantdata wordt nergens opgeslagen (SessionStorage)",
+        "Veilige data verwerking zonder server opslag",
       ],
       cta: { href: "/about#security", label: "Lees security" },
     },
@@ -65,7 +65,7 @@ export default function FeaturesPage() {
       bullets: [
         "EU-hosting, versleuteld in transit/at rest",
         "Dataminimalisatie (geen PII/health data)",
-        "Werkbaar voor compliance & IT",
+        "In lijn met  compliance/SOP richtlijnen",
       ],
       cta: { href: "/about#security", label: "Meer over privacy" },
     },
