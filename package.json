@@ -29,4 +29,9 @@
     "typescript": "^5.4.5",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
-    "@type
+    "@types/node": "^20.14.11"
+  },
+  "engines": {
+    "node": ">=18.18"
+  }
+}
