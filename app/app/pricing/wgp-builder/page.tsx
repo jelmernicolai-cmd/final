@@ -79,7 +79,7 @@ function parsePackUnits(s: string): number | null {
 
 /** normaliseer RVG (verwijder spaties/punten; uppercase) */
 function normRVG(v: string) {
-  return str(v).replace(/[\s.]/g, "").toUpperCase();
+  return String(v ?? "").trim().replace(/[\s.]/g, "").toUpperCase();
 }
 
 /** CSV/XLSX parser (Staatscourant of AIP) */
@@ -113,12 +113,26 @@ async function parseXlsxOrCsv(file: File): Promise<ImportRow[]> {
 }
 
 function toAipRow(o: Record<string, any>): AIPRow {
-  // probeer brede header mapping
   const m = new Map(Object.entries(o).map(([k, v]) => [k.toLowerCase().trim(), v]));
-  const pick = (...keys: string[]) => {
-    for (const k of keys) if (m.has(k)) return m.get(k);
-    return "";
+  const pick = (...keys: string[]) => { for (const k of keys) if (m.has(k)) return m.get(k); return ""; };
+
+  return {
+    sku: String(pick("sku", "productcode")).trim(),
+    name: String(pick("product", "productnaam", "product naam", "naam")).trim(),
+    pack: String(pick("pack", "verpakking", "standaard verpakk. grootte", "standaard verpakking")).trim(),
+    // 🔁 regnr toegevoegd als alias
+    reg: String(pick("reg", "registratienummer", "rvg", "rvg nr", "rvg_nr", "regnr", "regnr.")).trim(),
+    zi: String(pick("zi", "zi-nummer", "zinummer")).trim(),
+    aip: (() => {
+      const v = pick("aip", "lijstprijs", "apotheekinkoopprijs");
+      const s = String(v ?? "").replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
+      const n = parseFloat(s); return Number.isFinite(n) ? n : NaN;
+    })(),
+    moq: Math.max(0, Math.round(Number(pick("moq", "minimale bestelgrootte")) || 0)),
+    caseQty: Math.max(0, Math.round(Number(pick("caseqty", "doosverpakking")) || 0)),
   };
+}
+
   return {
     sku: str(pick("sku", "productcode")),
     name: str(pick("product", "productnaam", "product naam", "naam")),
