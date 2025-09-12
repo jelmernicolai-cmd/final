@@ -1,97 +1,143 @@
 // components/contracts/ContractDashboard.tsx
 "use client";
 
-import { useMemo, useState } from "react";
-import KpiCard from "./KpiCard";
-import ContractTable from "./ContractTable";
-import ContractCharts from "./ContractCharts";
-import type { ContractLevel, AggRow, TotalRow } from "../../lib/contract-analysis";
+import { useMemo } from "react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, LabelList,
+} from "recharts";
+import type { AnalyzeResult, LatestPerf } from "@/lib/contract-analysis";
 
-export default function ContractDashboard({ dataOverride }: { dataOverride: { agg: AggRow[]; totals: TotalRow[]; latest: AggRow[] } }) {
-  const [level, setLevel] = useState<ContractLevel>("klant_sku");
-  const [filterKlant, setFilterKlant] = useState<string>("*");
-  const [periode, setPeriode] = useState<string>("auto");
+function eur0(n: number) {
+  return new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n || 0);
+}
+function pct(n: number) {
+  const v = Number.isFinite(n) ? n : 0;
+  return `${(v * 100).toFixed(1)}%`;
+}
 
-  const { agg, totals } = dataOverride;
+export default function ContractDashboard({ dataOverride }: { dataOverride: AnalyzeResult }) {
+  const data = dataOverride;
 
-  const alleKlanten = useMemo(() => {
-    const s = new Set(agg.map((r) => r.contract.split(" | ")[0]));
-    return ["*", ...Array.from(s).sort()];
-  }, [agg]);
+  const top = useMemo(() => {
+    const arr = [...data.latest].sort((a, b) => b.deltaVsTotal - a.deltaVsTotal);
+    return arr.slice(0, 5);
+  }, [data.latest]);
 
-  const periodes = useMemo(() => Array.from(new Set(agg.map(r=>r.periode))).sort(), [agg]);
-  const lastPeriode = periodes[periodes.length - 1];
-  const activePeriode = periode === "auto" ? lastPeriode : periode;
+  const bottom = useMemo(() => {
+    const arr = [...data.latest].sort((a, b) => a.deltaVsTotal - b.deltaVsTotal);
+    return arr.slice(0, 5);
+  }, [data.latest]);
 
-  const filteredLatest = useMemo(() => {
-    const rows = agg.filter(r=>r.periode===activePeriode);
-    return filterKlant === "*" ? rows : rows.filter(r=> r.contract.startsWith(filterKlant));
-  }, [agg, activePeriode, filterKlant]);
+  const bars = useMemo(() => {
+    // toon 12 grootste afwijkingen (positief/negatief)
+    const top6 = [...data.latest].sort((a, b) => b.deltaVsTotal - a.deltaVsTotal).slice(0, 6);
+    const bot6 = [...data.latest].sort((a, b) => a.deltaVsTotal - b.deltaVsTotal).slice(0, 6);
+    const pick = [...top6, ...bot6];
+    return pick.map((r) => ({
+      name: r.sku ? `${r.klant} • ${r.sku}` : r.klant,
+      growth: Math.round((r.growthPct || 0) * 1000) / 1000,
+      delta: Math.round((r.deltaVsTotal || 0) * 1000) / 1000,
+      revenue: r.revenue,
+    }));
+  }, [data.latest]);
 
-  const kpis = useMemo(() => {
-    const i = totals.findIndex(t=>t.periode===activePeriode);
-    const last = totals[i];
-    return {
-      totalNetto: last?.totaal_netto ?? 0,
-      growthPct: last?.pct_groei_totaal_netto ?? null,
-      outperformCount: filteredLatest.filter(r=>r.outperform_netto===true).length,
-      period: activePeriode,
-    };
-  }, [totals, activePeriode, filteredLatest]);
-
-  const topContracts = useMemo(() => {
-    const lastRows = agg.filter(r=>r.periode===activePeriode);
-    return [...lastRows].sort((a,b)=>(b.pct_groei_netto??-999)-(a.pct_groei_netto??-999)).slice(0,3).map(r=>r.contract);
-  }, [agg, activePeriode]);
-
-  const seriesByContract = useMemo(()=>{
-    const out: Record<string,{x:string[]; y:number[]}> = {};
-    for (const c of topContracts) {
-      const rows = agg.filter(r=>r.contract===c).sort((a,b)=>a.periode.localeCompare(b.periode));
-      out[c] = { x: rows.map(r=>r.periode), y: rows.map(r=>r.netto_omzet) };
-    }
-    return out;
-  }, [agg, topContracts]);
+  const k = data.kpis;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end">
-        <div>
-          <label className="block text-sm text-gray-600">Niveau</label>
-          <select className="mt-1 w-48 rounded-md border px-3 py-2" value={level} onChange={(e)=>setLevel(e.target.value as ContractLevel)}>
-            <option value="klant_sku">Klant + SKU</option>
-            <option value="klant">Klant</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm text-gray-600">Klant</label>
-          <select className="mt-1 w-56 rounded-md border px-3 py-2" value={filterKlant} onChange={(e)=>setFilterKlant(e.target.value)}>
-            {alleKlanten.map(k => <option key={k} value={k}>{k==="*"?"Alle klanten":k}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm text-gray-600">Periode</label>
-          <select className="mt-1 w-40 rounded-md border px-3 py-2" value={periode} onChange={(e)=>setPeriode(e.target.value)}>
-            <option value="auto">Laatste maand</option>
-            {periodes.map(p=> <option key={p} value={p}>{p}</option>)}
-          </select>
-        </div>
-      </div>
+      {/* KPI’s */}
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Kpi title={`Omzet ${k.latestPeriod}`} value={eur0(k.totalRevenue)} help="Totaal in laatste periode" />
+        <Kpi title="Totale groei" value={pct(k.totalGrowthPct)} help="t.o.v. vorige periode (zelfde frequentie)" />
+        <Kpi title="Aandeel top-5" value={pct(k.topSharePct)} help="Top-5 contracts in omzet (laatste periode)" />
+        <Kpi title="Aantal vergeleken" value={String(data.latest.length)} help="Contracts met vergelijking last vs. prev" />
+      </section>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <KpiCard title="Totaal netto-omzet" value={(kpis.totalNetto).toLocaleString("nl-NL",{style:"currency",currency:"EUR"})} subtitle={`Periode: ${kpis.period}`} />
-        <KpiCard title="Totale groei m/m" value={kpis.growthPct==null?"—":`${(kpis.growthPct*100).toFixed(1)}%`} subtitle="vs. vorige maand" />
-        <KpiCard title="Aantal outperformers" value={String(kpis.outperformCount)} subtitle="(netto t.o.v. totaal)" />
-      </div>
-
-      <ContractCharts totals={totals} topContracts={topContracts} seriesByContract={seriesByContract} />
-
-      <div className="mt-6">
-        <div className="mb-2 text-sm font-medium text-gray-700">
-          Laatste snapshot — {activePeriode} ({filterKlant === "*" ? "alle klanten" : filterKlant})
+      {/* Bar-chart: delta vs totaal-groei */}
+      <section className="rounded-2xl border bg-white p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold">Top & underperformers — groei vs. totaal</h3>
+          <div className="text-xs text-gray-600">
+            Referentielijn = totale groei ({pct(k.totalGrowthPct)})
+          </div>
         </div>
-        <ContractTable rows={filteredLatest} />
-      </div>
+        <div className="mt-3" style={{ width: "100%", height: 360 }}>
+          <ResponsiveContainer>
+            <BarChart data={bars} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" hide />
+              <YAxis tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} />
+              <Tooltip formatter={(v: any, n: any) => (n === "growth" || n === "delta" ? pct(v as number) : eur0(v as number))} />
+              <ReferenceLine y={k.totalGrowthPct} stroke="#0ea5e9" strokeDasharray="4 4" />
+              <Bar dataKey="growth" fill="#0ea5e9">
+                <LabelList dataKey="name" position="insideTop" className="text-[10px] fill-white" />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          <p className="mt-2 text-xs text-gray-600">Balk = groeipercentage van contract; blauwe streep = totale groei.</p>
+        </div>
+      </section>
+
+      {/* Lijsten top/bottom met acties */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <CardList title="Top 5 — boven benchmark" items={top.map(toActionRow("top"))} />
+        <CardList title="Bottom 5 — onder benchmark" items={bottom.map(toActionRow("bottom"))} />
+      </section>
+    </div>
+  );
+}
+
+/* ===== helpers ===== */
+function Kpi({ title, value, help }: { title: string; value: string; help?: string }) {
+  return (
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="text-xs text-gray-500">{title}</div>
+      <div className="text-lg font-semibold mt-1">{value}</div>
+      {help ? <div className="text-[11px] text-gray-500 mt-1">{help}</div> : null}
+    </div>
+  );
+}
+
+function toActionRow(kind: "top" | "bottom") {
+  return (r: LatestPerf) => {
+    const name = r.sku ? `${r.klant} • ${r.sku}` : r.klant;
+    const action =
+      kind === "top"
+        ? "Bestendigen: bonuscondities koppelen aan realisatie; uitbreiden naar vergelijkbare accounts."
+        : "Interventie: heronderhandel (front-end → bonus), prijs/pack herijking of kanaalcondities aligneren.";
+    return {
+      title: name,
+      right: eur0(r.revenue),
+      lines: [`Groei: ${pct(r.growthPct)} • Δ vs totaal: ${pct(r.deltaVsTotal)}`],
+      action,
+    };
+  };
+}
+
+function CardList({
+  title,
+  items,
+}: {
+  title: string;
+  items: { title: string; right: string; lines: string[]; action: string }[];
+}) {
+  return (
+    <div className="rounded-2xl border bg-white p-4">
+      <h3 className="text-base font-semibold mb-2">{title}</h3>
+      <ul className="space-y-2 text-sm">
+        {items.map((it) => (
+          <li key={it.title} className="border rounded-xl p-3 hover:shadow-sm transition">
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-medium truncate">{it.title}</div>
+              <div className="text-gray-700 shrink-0">{it.right}</div>
+            </div>
+            <div className="mt-1 text-gray-600">{it.lines.join(" • ")}</div>
+            <div className="mt-2 text-gray-700">
+              <span className="font-medium">Actie:</span> {it.action}
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
