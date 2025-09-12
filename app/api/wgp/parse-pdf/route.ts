@@ -135,7 +135,7 @@ export async function POST(req: Request) {
         info: data.info || null,
       },
       rows,
-      text: safeText, // haal dit weg als je ruwe tekst niet terug wil sturen
+      text: safeText,
     });
   } catch (err: any) {
     return NextResponse.json(
