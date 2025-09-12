@@ -60,7 +60,7 @@ export default function Home() {
         <div className="mx-auto max-w-6xl px-4 py-6 grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { v: "€100k+", l: "Gemiddelde ROI per jaar" },
-            { v: "3–6 mnd", l: "Typische implementatietijd" },
+            { v: "2–4 wkn", l: "Typische implementatietijd" },
             { v: "Self-service", l: "Upload & analyseer direct" },
             { v: "ISO-ready", l: "Privacy & security-first" },
           ].map((m) => (
@@ -214,7 +214,7 @@ export default function Home() {
             <div className="rounded-xl border bg-white p-5">
               <h3 className="font-semibold">Hoe snel zijn we live?</h3>
               <p className="mt-2 text-sm text-gray-700">
-                Vaak binnen 3–6 maanden inclusief datastandaardisatie en validatie.
+                Je krijgt direct toegang. Datastandaardisatie en validatie duurt gemiddeld 2-4 weken.
               </p>
             </div>
           </div>
