@@ -73,7 +73,7 @@ export default function PricingNL() {
       {/* HIGHLIGHTS */}
       <section className="border-b bg-white">
         <div className="mx-auto max-w-6xl px-4 py-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Highlight icon="check" title="Één prijs" sub="€2.500 / jaar / entiteit" />
+          <Highlight icon="check" title="Één prijs" sub="€3.900 / jaar / entiteit" />
           <Highlight icon="support" title="Support inbegrepen" sub="onboarding & updates" />
           <Highlight icon="shield" title="EU-hosting" sub="encryptie in transit/at rest" />
           <Highlight icon="nohidden" title="Geen verborgen kosten" sub="duidelijk & transparant" />
