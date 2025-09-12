@@ -11,9 +11,7 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 /** ============ Types ============ */
 type RawRow = { sku: string; period: string; inmarket_units: number }; // period: MM-YYYY of YYYY-MM
 type SeriesPoint = { t: string; y: number; bd: number; x: Date }; // bd=werkdagen in maand
-
 type ForecastPoint = { t: string; x: Date; p50: number; p10: number; p90: number };
-
 type SKUForecast = {
   sku: string;
   hist: SeriesPoint[];
@@ -21,9 +19,7 @@ type SKUForecast = {
   metrics: { MAPE: number; MAE: number; Bias: number; WAPE: number };
   modelName: "Holt-Winters additief" | "Seizoensnaïef (12m)" | "Naïef";
 };
-
 type AllocationRow = { customer: string; share: number; allocUnits: number };
-
 type UploadResult = { rows: RawRow[]; issues: string[]; skus: string[] };
 
 /** ============ CSV/XLSX parsing (client-side) ============ */
@@ -93,19 +89,14 @@ function detectDelim(header: string) {
 }
 function splitCSVLine(line: string, delim: string) {
   const out: string[] = [];
-  let cur = "",
-    inQ = false;
+  let cur = "", inQ = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') {
-      if (inQ && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else inQ = !inQ;
-    } else if (ch === delim && !inQ) {
-      out.push(cur);
-      cur = "";
-    } else cur += ch;
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (ch === delim && !inQ) { out.push(cur); cur = ""; }
+    else cur += ch;
   }
   out.push(cur);
   return out;
@@ -128,7 +119,6 @@ function normalizePeriod(s: string): { ok: boolean; value: string } {
 
 /** ============ Kalender/werkdagen ============ */
 function workingDaysInMonth(year: number, month0: number, extraClosedDays: number) {
-  // month0: 0..11. Excl. weekends; extraClosedDays per maand.
   const daysInMonth = new Date(year, month0 + 1, 0).getDate();
   let wd = 0;
   for (let d = 1; d <= daysInMonth; d++) {
@@ -154,12 +144,8 @@ function holtWintersAdditive(y: number[], seasonLen = 12, alpha = 0.4, beta = 0.
   // init
   const seasonAvg: number[] = [];
   for (let i = 0; i < seasonLen; i++) {
-    let s = 0,
-      count = 0;
-    for (let k = i; k < n; k += seasonLen) {
-      s += y[k];
-      count++;
-    }
+    let s = 0, count = 0;
+    for (let k = i; k < n; k += seasonLen) { s += y[k]; count++; }
     seasonAvg[i] = count ? s / count : 0;
   }
   const L0 = y.slice(0, seasonLen).reduce((a, b) => a + b, 0) / seasonLen;
@@ -167,9 +153,7 @@ function holtWintersAdditive(y: number[], seasonLen = 12, alpha = 0.4, beta = 0.
 
   const L: number[] = [];
   const T: number[] = [];
-  const S: number[] = Array(seasonLen)
-    .fill(0)
-    .map((_, i) => seasonAvg[i] - L0);
+  const S: number[] = Array(seasonLen).fill(0).map((_, i) => seasonAvg[i] - L0);
 
   L[seasonLen - 1] = L0;
   T[seasonLen - 1] = T0;
@@ -185,9 +169,7 @@ function holtWintersAdditive(y: number[], seasonLen = 12, alpha = 0.4, beta = 0.
     const Tt = beta * (Lt - prevL) + (1 - beta) * prevT;
     const St = gamma * (y[t] - Lt) + (1 - gamma) * prevS;
 
-    L[t] = Lt;
-    T[t] = Tt;
-    S[i] = St;
+    L[t] = Lt; T[t] = Tt; S[i] = St;
     fitted[t] = Lt + Tt + S[i];
   }
 
@@ -203,8 +185,7 @@ function holtWintersAdditive(y: number[], seasonLen = 12, alpha = 0.4, beta = 0.
 function buildSeries(raw: RawRow[], extraClosedDays: Record<string, number>): SeriesPoint[] {
   if (raw.length === 0) return [];
   const byPeriod = new Map<string, number>();
-  let minD = parseMMYYYY(raw[0].period),
-    maxD = parseMMYYYY(raw[0].period);
+  let minD = parseMMYYYY(raw[0].period), maxD = parseMMYYYY(raw[0].period);
   raw.forEach((r) => {
     const d = parseMMYYYY(r.period);
     if (d < minD) minD = d;
@@ -226,15 +207,10 @@ function daysAdjusted(series: SeriesPoint[]) {
   const wdAvg = series.reduce((a, r) => a + r.bd, 0) / (series.length || 1);
   return series.map((r) => ({ ...r, yAdj: r.bd > 0 ? (r.y / r.bd) * wdAvg : r.y, wdAvg }));
 }
-
 function backtestOneStep(seriesAdj: { yAdj: number; t: string }[], horizon = 12) {
   const n = seriesAdj.length;
   const start = Math.max(12, n - horizon);
-  let absErr = 0,
-    absAct = 0,
-    signedPctSum = 0,
-    cnt = 0,
-    absErrSum = 0;
+  let absErr = 0, absAct = 0, signedPctSum = 0, cnt = 0, absErrSum = 0;
 
   for (let i = start; i < n; i++) {
     const hist = seriesAdj.slice(0, i).map((s) => s.yAdj);
@@ -247,7 +223,6 @@ function backtestOneStep(seriesAdj: { yAdj: number; t: string }[], horizon = 12)
     } else {
       fc1 = hist[hist.length - 1];
     }
-
     const act = seriesAdj[i].yAdj;
     const err = act - fc1;
     absErr += Math.abs(err);
@@ -264,7 +239,6 @@ function backtestOneStep(seriesAdj: { yAdj: number; t: string }[], horizon = 12)
 
   return { MAE, MAPE, Bias, WAPE };
 }
-
 function forecastSKU(
   hist: SeriesPoint[],
   monthsFwd: number,
@@ -358,7 +332,7 @@ function FieldPct({ label, value, onChange }: { label: string; value: number; on
   return (
     <label className="text-sm w-full">
       <div className="font-medium">{label}</div>
-      <div className="mt-1 flex items-center gap-2">
+      <div className="mt-1 flex flex-wrap items-center gap-2">
         <input
           type="range"
           min={-0.5}
@@ -366,7 +340,7 @@ function FieldPct({ label, value, onChange }: { label: string; value: number; on
           step={0.01}
           value={value}
           onChange={(e) => onChange(parseFloat(e.target.value))}
-          className="w-36 sm:w-44"
+          className="w-full sm:w-44"
         />
         <input
           type="number"
@@ -392,27 +366,21 @@ function Kpi({ title, value, help }: { title: string; value: string; help?: stri
   );
 }
 
-/** ============ Export helpers ============ */
-function downloadCSV(name: string, rows: (string | number)[][]) {
-  const csv = rows
-    .map((r) =>
-      r
-        .map((c) => {
-          const s = String(c ?? "");
-          return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-        })
-        .join(",")
-    )
-    .join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${name}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+/** ============ Excel export helpers (SheetJS) ============ */
+async function exportXLSX(filename: string, sheets: Record<string, (string | number)[][]>) {
+  const XLSX: any = await import("xlsx");
+  const wb = XLSX.utils.book_new();
+  for (const [name, aoa] of Object.entries(sheets)) {
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    // simpele col-breedtes
+    const colWidths = (aoa[0] || []).map((h) => ({ wch: String(h).length + 2 }));
+    (ws as any)["!cols"] = colWidths;
+    XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+  }
+  XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
-/** ============ Simple responsive line with hover ============ */
+/** ============ Responsive line with hover ============ */
 function LineWithHover({
   name,
   color,
@@ -426,20 +394,38 @@ function LineWithHover({
   ys: number[];
   onHover?: (index: number | null) => void;
 }) {
-  const w = 960,
-    h = 240,
-    padX = 48,
-    padY = 26;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 640, h: 240 });
+  const [hi, setHi] = useState<number | null>(null);
+
+  React.useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      const cr = entries[0]?.contentRect;
+      if (!cr) return;
+      const w = Math.max(320, cr.width);
+      const h = w < 480 ? 220 : 260;
+      setSize({ w, h });
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const w = size.w;
+  const h = size.h;
+  const padX = Math.max(36, Math.min(56, Math.round(w * 0.06)));
+  const padY = Math.max(20, Math.min(36, Math.round(h * 0.12)));
+
   const n = ys.length || 1;
-  const maxY = Math.max(1, ...ys);
+  const validYs = ys.map((v) => (Number.isFinite(v) ? v : 0));
+  const maxY = Math.max(1, ...validYs);
   const minY = 0;
+
   const x = (i: number) => padX + (i / Math.max(1, n - 1)) * (w - 2 * padX);
   const y = (v: number) => h - padY - ((v - minY) / (maxY - minY)) * (h - 2 * padY);
   const ticks = Array.from({ length: 5 }, (_, i) => (maxY / 4) * i);
-  const d = ys.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
-
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const [hi, setHi] = useState<number | null>(null);
+  const d = validYs.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
 
   function handleMove(e: React.MouseEvent<SVGSVGElement>) {
     if (!svgRef.current) return;
@@ -455,47 +441,75 @@ function LineWithHover({
     onHover?.(null);
   }
 
+  // Labels beperken op smalle schermen
+  const labelStep = Math.max(1, Math.ceil(xs.length / (w < 420 ? 4 : 8)));
+
   return (
-    <svg
-      ref={svgRef}
-      className="w-full h-auto"
-      viewBox={`0 0 ${w} ${h}`}
-      role="img"
-      aria-label={name}
-      preserveAspectRatio="xMidYMid meet"
-      onMouseMove={handleMove}
-      onMouseLeave={handleLeave}
-    >
-      <rect x={12} y={12} width={w - 24} height={h - 24} rx={16} fill="#fff" stroke="#e5e7eb" />
-      {ticks.map((tv, i) => (
-        <g key={i}>
-          <line x1={padX} y1={y(tv)} x2={w - padX} y2={y(tv)} stroke="#f3f4f6" />
-          <text x={padX - 8} y={y(tv) + 4} fontSize="10" textAnchor="end" fill="#6b7280">
-            {fmt(tv)}
-          </text>
-        </g>
-      ))}
-      <path d={d} fill="none" stroke={color} strokeWidth={2} />
-      {ys.map((v, i) => (
-        <circle key={i} cx={x(i)} cy={y(v)} r={2} fill={color} />
-      ))}
-      {hi !== null && (
-        <>
-          <line x1={x(hi)} y1={padY} x2={x(hi)} y2={h - padY} stroke="#e5e7eb" />
-          <circle cx={x(hi)} cy={y(ys[hi])} r={4} fill={color} />
-        </>
+    <div ref={containerRef} className="w-full">
+      <svg
+        ref={svgRef}
+        width={w}
+        height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        role="img"
+        aria-label={name}
+        onMouseMove={handleMove}
+        onMouseLeave={handleLeave}
+      >
+        <rect x={12} y={12} width={w - 24} height={h - 24} rx={12} fill="#fff" stroke="#e5e7eb" />
+        {ticks.map((tv, i) => (
+          <g key={i}>
+            <line x1={padX} y1={y(tv)} x2={w - padX} y2={y(tv)} stroke="#f3f4f6" />
+            <text x={padX - 8} y={y(tv) + 4} fontSize="10" textAnchor="end" fill="#6b7280">
+              {fmt(tv)}
+            </text>
+          </g>
+        ))}
+        <path d={d} fill="none" stroke={color} strokeWidth={2} />
+        {validYs.map((v, i) => (
+          <circle key={i} cx={x(i)} cy={y(v)} r={2} fill={color} />
+        ))}
+        {hi !== null && (
+          <>
+            <line x1={x(hi)} y1={padY} x2={x(hi)} y2={h - padY} stroke="#e5e7eb" />
+            <circle cx={x(hi)} cy={y(validYs[hi])} r={4} fill={color} />
+          </>
+        )}
+        <text x={w - padX} y={y(validYs.at(-1) || 0) - 6} fontSize="10" textAnchor="end" fill={color}>
+          {name}
+        </text>
+        {xs.map((t, i) =>
+          i % labelStep === 0 ? (
+            <text key={i} x={x(i)} y={h - 6} fontSize="10" textAnchor="middle" fill="#6b7280">
+              {t}
+            </text>
+          ) : null
+        )}
+      </svg>
+    </div>
+  );
+}
+
+/** ============ Info badge ============ */
+function InfoBadge({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px] leading-none text-gray-600 hover:bg-gray-50"
+        title="Meer info"
+      >
+        i
+      </button>
+      {open && (
+        <div className="absolute z-10 mt-2 w-72 rounded-lg border bg-white p-3 text-xs text-gray-700 shadow">
+          {children}
+        </div>
       )}
-      <text x={w - padX} y={y(ys.at(-1) || 0) - 6} fontSize="10" textAnchor="end" fill={color}>
-        {name}
-      </text>
-      {xs.map((t, i) =>
-        i % Math.ceil(xs.length / 8) === 0 ? (
-          <text key={i} x={x(i)} y={h - 6} fontSize="10" textAnchor="middle" fill="#6b7280">
-            {t}
-          </text>
-        ) : null
-      )}
-    </svg>
+    </span>
   );
 }
 
@@ -516,9 +530,10 @@ export default function SupplyChainOptimizationPage() {
   // Klanten + shares (globaal én per SKU)
   const defaultCustomers = Array.from({ length: 10 }, (_, i) => `Klant ${String.fromCharCode(65 + i)}`);
   const [customers, setCustomers] = useState<string[]>(defaultCustomers);
-  const [globalShares, setGlobalShares] = useState<number[]>([20, 15, 12, 10, 9, 8, 8, 7, 6, 5]); // som 100
+  const [globalShares, setGlobalShares] = useState<number[]>([20, 15, 12, 10, 9, 8, 8, 7, 6, 5]); // start-som ≈100
   const [sharesBySKU, setSharesBySKU] = useState<Record<string, number[]>>({});
   const [useSkuSpecificShares, setUseSkuSpecificShares] = useState(true);
+  const [autoNormalizeShares, setAutoNormalizeShares] = useState(true); // ⬅️ nieuwe toggle
 
   // Hover state (tooltip)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -578,12 +593,7 @@ export default function SupplyChainOptimizationPage() {
   // Portfolio accuracy
   const portfolioAcc = useMemo(() => {
     if (!forecasts.size) return { WAPE: 0, MAPE: 0, MAE: 0, Bias: 0 };
-    let num = 0,
-      den = 0,
-      mapeSum = 0,
-      maeSum = 0,
-      biasSum = 0,
-      n = 0;
+    let num = 0, den = 0, mapeSum = 0, maeSum = 0, biasSum = 0, n = 0;
     for (const sk of forecasts.values()) {
       const tot = sk.hist.reduce((a, r) => a + Math.abs(r.y), 0);
       num += sk.metrics.WAPE * tot;
@@ -601,13 +611,12 @@ export default function SupplyChainOptimizationPage() {
   }
   function normalizeShares(arr: number[]) {
     const s = totalShare(arr);
-    return s === 100 ? arr : arr.map((v) => (s ? (v / s) * 100 : 0));
+    return s === 0 ? arr : arr.map((v) => (s ? (v / s) * 100 : 0));
   }
   function getSharesForSKU(sku: string): number[] {
-    if (useSkuSpecificShares && sharesBySKU[sku]) return normalizeShares(sharesBySKU[sku]);
-    return normalizeShares(globalShares);
-    }
-
+    if (useSkuSpecificShares && sharesBySKU[sku]) return sharesBySKU[sku];
+    return globalShares;
+  }
   function setSharesForSKU(sku: string, next: number[]) {
     setSharesBySKU((prev) => ({ ...prev, [sku]: next }));
   }
@@ -618,23 +627,28 @@ export default function SupplyChainOptimizationPage() {
     const period = f.fc[monthOffset].t;
     const next = f.fc[monthOffset].p50;
     const shares = getSharesForSKU(sku);
+    const denom = Math.max(0, totalShare(shares)); // ⬅️ NIET verplicht 100
     const rows: AllocationRow[] = shares.map((sh, idx) => {
-      const units = Math.max(0, Math.round((next * sh) / 100));
+      const weight = denom > 0 ? sh / denom : 0; // proportioneel
+      const units = Math.max(0, Math.round(next * weight));
       return { customer: customers[idx], share: sh, allocUnits: units };
     });
     const total = rows.reduce((a, r) => a + r.allocUnits, 0);
     return { rows, total, period };
   }
 
-  function exportForecastCSV() {
-    const rows: (string | number)[][] = [["sku", "period", "p10", "p50", "p90", "model"]];
+  // Excel exports
+  async function exportForecastXLSX() {
+    const header = ["sku", "period", "p10", "p50", "p90", "model"] as const;
+    const rows: (string | number)[][] = [header as unknown as (string | number)[]];
     for (const [sku, f] of forecasts.entries()) {
       for (const p of f.fc) rows.push([sku, p.t, p.p10, p.p50, p.p90, f.modelName]);
     }
-    downloadCSV("forecast", rows);
+    await exportXLSX("forecast", { Forecast: rows });
   }
-  function exportAllocationsCSV() {
-    const rows: (string | number)[][] = [["sku", "period", "customer", "share_pct", "alloc_units"]];
+  async function exportAllocationsXLSX() {
+    const header = ["sku", "period", "customer", "share_input", "alloc_units"] as const;
+    const rows: (string | number)[][] = [header as unknown as (string | number)[]];
     for (const [sku, f] of forecasts.entries()) {
       const a0 = allocForMonth(sku, 0);
       const a1 = allocForMonth(sku, 1);
@@ -643,7 +657,7 @@ export default function SupplyChainOptimizationPage() {
         for (const r of a.rows) rows.push([sku, a.period, r.customer, r.share, r.allocUnits]);
       });
     }
-    downloadCSV("allocations_next2months", rows);
+    await exportXLSX("allocations_next2months", { Allocations: rows });
   }
 
   // Hover payload updater
@@ -688,9 +702,6 @@ export default function SupplyChainOptimizationPage() {
           <div className="mt-3 text-left inline-block rounded-lg border p-3 text-sm">
             <div className="font-medium">Meldingen ({upload.issues.length})</div>
             <ul className="list-disc pl-5 mt-1">{upload.issues.slice(0, 10).map((m, i) => <li key={i}>{m}</li>)}</ul>
-            <button className="mt-2 text-xs rounded border px-2 py-1 hover:bg-gray-50" onClick={() => downloadCSV("issues", [["issue"], ...upload.issues.map(i => [i])])}>
-              Exporteer alle issues (CSV)
-            </button>
           </div>
         ) : null}
       </section>
@@ -700,17 +711,34 @@ export default function SupplyChainOptimizationPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <FieldNumber label="Horizon (maanden)" value={monthsFwd} min={1} max={18} step={1} onChange={(v) => setMonthsFwd(clamp(Math.round(v), 1, 18))} />
           <div className="text-sm">
-            <div className="font-medium">Totale forecast-accuracy (portfolio)</div>
+            <div className="font-medium">
+              Totale forecast-accuracy (portfolio)
+              <InfoBadge>
+                <b>WAPE</b> = Σ|Actual − Forecast| / Σ|Actual|. <br />
+                <b>MAPE</b> = gemiddelde |(Actual − Forecast)/Actual|. <br />
+                <b>Bias</b> = gemiddelde signed fout (negatief = onderschat, positief = overschat). <br />
+                <hr className="my-2" />
+                <b>Rolling one-step backtest</b>: voor iedere maand t in het recente venster trainen we op data ≤ t−1 en
+                voorspellen we t (horizon 1). Dat schuift “rollend” mee, zodat accuracy niet slechts één momentopname is.
+              </InfoBadge>
+            </div>
             <div className="mt-1 text-gray-700">
               1 − WAPE: <b>{pctS(1 - portfolioAcc.WAPE, 1)}</b> &nbsp;|&nbsp; MAPE: <b>{pctS(portfolioAcc.MAPE, 1)}</b> &nbsp;|&nbsp; Bias:{" "}
               <b>{pctS(portfolioAcc.Bias, 1)}</b>
             </div>
-            <div className="text-xs text-gray-500 mt-1">Rolling one-step backtest per SKU, gewogen naar historisch volume.</div>
+            <div className="text-xs text-gray-500 mt-1">Gewogen naar historisch volume per SKU (portfolio-niveau).</div>
           </div>
-          <label className="text-sm inline-flex items-center gap-2">
-            <input type="checkbox" checked={useSkuSpecificShares} onChange={(e) => setUseSkuSpecificShares(e.target.checked)} />
-            <span>SKU-specifieke marktaandelen gebruiken</span>
-          </label>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-sm inline-flex items-center gap-2">
+              <input type="checkbox" checked={useSkuSpecificShares} onChange={(e) => setUseSkuSpecificShares(e.target.checked)} />
+              <span>SKU-specifieke marktaandelen gebruiken</span>
+            </label>
+            <label className="text-sm inline-flex items-center gap-2">
+              <input type="checkbox" checked={autoNormalizeShares} onChange={(e) => setAutoNormalizeShares(e.target.checked)} />
+              <span>Auto-normaliseer shares naar 100%</span>
+            </label>
+          </div>
         </div>
       </section>
 
@@ -762,10 +790,11 @@ export default function SupplyChainOptimizationPage() {
               </div>
             );
 
-            // Grafiekdata + hover
-            const xs = [...sk.hist.map((h) => h.t), ...sk.fc.map((f) => f.t)];
-            const ysActual = sk.hist.map((h) => h.y);
-            const ysForecast = sk.fc.map((f) => f.p50);
+            // Historie & Forecast lijnen (afkappen historie)
+            const xsHist = sk.hist.map((h) => h.t);
+            const ysHist = sk.hist.map((h) => h.y);
+            const xsFc = sk.fc.map((f) => f.t);
+            const ysFc = sk.fc.map((f) => f.p50);
             const histLen = sk.hist.length;
 
             // Allocaties 2 maanden
@@ -773,13 +802,19 @@ export default function SupplyChainOptimizationPage() {
             const a1 = allocForMonth(selectedSKU, 1);
 
             // Shares UI (globaal of SKU-specifiek)
-            const currentShares = getSharesForSKU(selectedSKU);
+            const currentSharesRaw = getSharesForSKU(selectedSKU);
+            const currentShares = autoNormalizeShares ? normalizeShares(currentSharesRaw) : currentSharesRaw;
             const onShareChange = (idx: number, val: number) => {
-              const next = [...currentShares];
-              next[idx] = clamp(val || 0, 0, 100);
-              const norm = normalizeShares(next);
-              if (useSkuSpecificShares) setSharesForSKU(selectedSKU, norm);
-              else setGlobalShares(norm);
+              const next = [...currentSharesRaw];
+              next[idx] = clamp(val || 0, 0, 1000); // laat over 100% gaan, we schalen proportioneel in allocatie
+              if (autoNormalizeShares) {
+                const norm = normalizeShares(next);
+                if (useSkuSpecificShares) setSharesForSKU(selectedSKU, norm);
+                else setGlobalShares(norm);
+              } else {
+                if (useSkuSpecificShares) setSharesForSKU(selectedSKU, next);
+                else setGlobalShares(next);
+              }
             };
 
             return (
@@ -790,22 +825,25 @@ export default function SupplyChainOptimizationPage() {
                 <div className="rounded-2xl border bg-white p-4 relative">
                   <h4 className="text-sm font-semibold mb-1">Historie & Forecast — {selectedSKU}</h4>
                   <p className="text-xs text-gray-600 mb-2">Model: {sk.modelName}. Hover over de lijn voor waarden per maand.</p>
+
+                  {/* Alleen historie (afgekapt) */}
                   <LineWithHover
                     name="Historie"
                     color="#0ea5e9"
-                    xs={xs}
-                    ys={[...ysActual, ...(ysForecast.length ? Array(ysForecast.length).fill(NaN) : [])].map((v) => (Number.isFinite(v) ? v : 0))}
+                    xs={xsHist}
+                    ys={ysHist}
                     onHover={(idx) => {
                       setHoverIndex(idx);
                       updateHoverPayload(selectedSKU, idx ?? null);
                     }}
                   />
                   <div className="mt-2" />
+                  {/* Alleen forecast */}
                   <LineWithHover
                     name="Forecast (P50)"
                     color="#22c55e"
-                    xs={xs.slice(histLen)}
-                    ys={ysForecast}
+                    xs={xsFc}
+                    ys={ysFc}
                     onHover={(idx) => {
                       const globalIdx = idx === null ? null : histLen + idx;
                       setHoverIndex(globalIdx);
@@ -829,9 +867,10 @@ export default function SupplyChainOptimizationPage() {
                     {/* Shares editor */}
                     <div className="rounded-xl border p-3">
                       <div className="text-sm font-medium mb-2">
-                        Klanten & marktaandelen {useSkuSpecificShares ? `(SKU-specifiek: ${selectedSKU})` : "(globaal)"} (som = {fmt(totalShare(currentShares), 1)}%)
+                        Klanten & marktaandelen {useSkuSpecificShares ? `(SKU-specifiek: ${selectedSKU})` : "(globaal)"} — Som:{" "}
+                        <b>{fmt(totalShare(currentShares), 1)}%</b> {autoNormalizeShares ? "(genormaliseerd)" : "(vrij)"} 
                       </div>
-                      <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 120px" }}>
+                      <div className="grid gap-2 grid-cols-1 sm:grid-cols-[1fr,120px]">
                         {customers.map((c, i) => (
                           <React.Fragment key={i}>
                             <input
@@ -848,7 +887,7 @@ export default function SupplyChainOptimizationPage() {
                                 type="number"
                                 step={0.1}
                                 min={0}
-                                max={100}
+                                max={1000}
                                 value={currentShares[i] ?? 0}
                                 onChange={(e) => onShareChange(i, parseFloat(e.target.value))}
                                 className="w-24 rounded-lg border px-3 py-2 text-sm"
@@ -858,16 +897,26 @@ export default function SupplyChainOptimizationPage() {
                           </React.Fragment>
                         ))}
                       </div>
-                      <div className="mt-2 flex gap-2">
+                      <div className="mt-2 flex flex-wrap gap-2">
                         <button
                           className="text-xs rounded border px-2 py-1 hover:bg-gray-50"
                           onClick={() => {
-                            const norm = normalizeShares(currentShares);
+                            const base = getSharesForSKU(selectedSKU);
+                            const norm = normalizeShares(base);
                             if (useSkuSpecificShares) setSharesForSKU(selectedSKU, norm);
                             else setGlobalShares(norm);
                           }}
                         >
                           Normaliseer → 100%
+                        </button>
+                        <button
+                          className="text-xs rounded border px-2 py-1 hover:bg-gray-50"
+                          onClick={() => {
+                            if (useSkuSpecificShares) setSharesForSKU(selectedSKU, Array.from({ length: customers.length }, () => 0));
+                            else setGlobalShares(Array.from({ length: customers.length }, () => 0));
+                          }}
+                        >
+                          Reset naar 0%
                         </button>
                       </div>
                       <label className="text-sm inline-flex items-center gap-2 mt-3">
@@ -882,24 +931,26 @@ export default function SupplyChainOptimizationPage() {
                         alloc ? (
                           <div key={idx} className={idx === 0 ? "" : "mt-4 pt-3 border-t"}>
                             <div className="text-sm font-medium">Maand {idx === 0 ? "volgend" : "+2"} — {alloc.period} (P50)</div>
-                            <table className="w-full text-sm mt-2 border-collapse">
-                              <thead>
-                                <tr className="border-b bg-gray-50">
-                                  <th className="text-left px-2 py-1">Klant</th>
-                                  <th className="text-right px-2 py-1">Share</th>
-                                  <th className="text-right px-2 py-1">Units</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {alloc.rows.map((r, i) => (
-                                  <tr key={i} className="border-b last:border-0">
-                                    <td className="px-2 py-1">{r.customer}</td>
-                                    <td className="px-2 py-1 text-right">{fmt(r.share, 1)}%</td>
-                                    <td className="px-2 py-1 text-right">{fmt(r.allocUnits)}</td>
+                            <div className="mt-2 overflow-x-auto">
+                              <table className="w-full min-w-[420px] text-sm border-collapse">
+                                <thead>
+                                  <tr className="border-b bg-gray-50">
+                                    <th className="text-left px-2 py-1">Klant</th>
+                                    <th className="text-right px-2 py-1">Share (input)</th>
+                                    <th className="text-right px-2 py-1">Units (alloc)</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <tbody>
+                                  {alloc.rows.map((r, i) => (
+                                    <tr key={i} className="border-b last:border-0">
+                                      <td className="px-2 py-1">{r.customer}</td>
+                                      <td className="px-2 py-1 text-right">{fmt(r.share, 1)}%</td>
+                                      <td className="px-2 py-1 text-right">{fmt(r.allocUnits)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                             <div className="text-xs text-gray-600 mt-2">
                               Som allocaties: <b>{fmt(alloc.rows.reduce((a, r) => a + r.allocUnits, 0))}</b> &nbsp;|&nbsp; Forecast P50:{" "}
                               <b>{fmt(forecasts.get(selectedSKU)?.fc[idx]?.p50 ?? 0)}</b>
@@ -912,11 +963,11 @@ export default function SupplyChainOptimizationPage() {
                         )
                       )}
                       <div className="flex flex-wrap gap-2 mt-3">
-                        <button className="text-sm rounded border px-3 py-1.5 hover:bg-gray-50" onClick={exportForecastCSV}>
-                          Exporteer Forecast (CSV)
+                        <button className="text-sm rounded border px-3 py-1.5 hover:bg-gray-50" onClick={exportForecastXLSX}>
+                          Exporteer Forecast (Excel)
                         </button>
-                        <button className="text-sm rounded border px-3 py-1.5 hover:bg-gray-50" onClick={exportAllocationsCSV}>
-                          Exporteer Allocaties (2 mnd, CSV)
+                        <button className="text-sm rounded border px-3 py-1.5 hover:bg-gray-50" onClick={exportAllocationsXLSX}>
+                          Exporteer Allocaties (2 mnd, Excel)
                         </button>
                       </div>
                     </div>
@@ -932,8 +983,8 @@ export default function SupplyChainOptimizationPage() {
       <section className="rounded-2xl border bg-white p-4">
         <div className="text-xs text-gray-600">
           <b>Definities</b>: in-market = door groothandel aan apotheken geleverde stuks (NL). SKU = interne productcode/naam. Forecast selecteert
-          automatisch het eenvoudigste model dat past: Holt-Winters additief (≥24 mnd), seizoensnaïef (12–23 mnd) of naïef (&lt;12 mnd). Werkdagen- en
-          exogene correcties zijn optioneel.
+          automatisch het eenvoudigste model dat past: Holt-Winters additief (≥24 mnd), seizoensnaïef (12–23 mnd) of naïef (&lt;12 mnd).
+          Werkdagen- en exogene correcties zijn optioneel.
         </div>
       </section>
     </div>
@@ -946,12 +997,12 @@ function MonthEditor({ values, onChange }: { values: Record<string, number>; onC
   const [val, setVal] = useState<number>(0);
   return (
     <div className="text-sm">
-      <div className="flex items-end gap-2">
-        <label className="w-40">
+      <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+        <label className="w-full sm:w-40">
           <div className="font-medium">Maand (MM-YYYY)</div>
           <input value={key} onChange={(e) => setKey(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="03-2025" />
         </label>
-        <label className="w-36">
+        <label className="w-full sm:w-36">
           <div className="font-medium">Extra gesloten dagen</div>
           <input
             type="number"
@@ -1000,12 +1051,12 @@ function MonthPctEditor({ values, onChange }: { values: Record<string, number>; 
   const [val, setVal] = useState<number>(0);
   return (
     <div className="text-sm">
-      <div className="flex items-end gap-2">
-        <label className="w-40">
+      <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+        <label className="w-full sm:w-40">
           <div className="font-medium">Maand (MM-YYYY)</div>
           <input value={key} onChange={(e) => setKey(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="03-2025" />
         </label>
-        <label className="w-36">
+        <label className="w-full sm:w-36">
           <div className="font-medium">Impact (±%)</div>
           <input
             type="number"
