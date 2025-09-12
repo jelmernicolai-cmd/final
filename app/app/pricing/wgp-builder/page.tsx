@@ -7,11 +7,11 @@ import * as XLSX from "xlsx";
 type AipRow = {
   sku: string;
   name: string;
-  pack: number;   // stuks per standaardverpakking
-  reg: string;    // REGNR / RVG (genormaliseerd)
+  pack: number;     // stuks per standaardverpakking
+  reg: string;      // REGNR / RVG (genormaliseerd)
   zi: string;
-  aip?: number;   // bestaande AIP (optioneel)
-  moq?: number;   // minimale bestelgrootte
+  aip?: number;     // bestaande AIP (optioneel)
+  moq?: number;     // minimale bestelgrootte
   caseQty?: number; // doosverpakking
 };
 
@@ -36,10 +36,7 @@ type Joined = {
 
 /** ================= Helpers ================= */
 function normReg(v: any) {
-  return String(v ?? "")
-    .toUpperCase()
-    .replace(/[.\s]/g, "")
-    .trim();
+  return String(v ?? "").toUpperCase().replace(/[.\s]/g, "").trim();
 }
 function toNumEU(v: any, fallback = NaN) {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -71,7 +68,6 @@ function toAipRow(o: Record<string, any>): AipRow {
   const pick = (...keys: string[]) => {
     for (const k of keys) {
       if (o[k] !== undefined && o[k] !== null && String(o[k]).trim() !== "") return o[k];
-      // probeer case/spacing varianten
       const kk = Object.keys(o).find(
         (x) => x.toLowerCase().replace(/\s|\./g, "") === k.toLowerCase().replace(/\s|\./g, "")
       );
@@ -85,7 +81,12 @@ function toAipRow(o: Record<string, any>): AipRow {
   return {
     sku: str(pick("sku", "productcode")),
     name: str(pick("product", "productnaam", "product naam", "naam")),
-    pack: Math.max(0, Math.round(num(pick("pack", "verpakking", "standaard verpakk. grootte", "standaard verpakking"), 0))),
+    pack: Math.max(
+      0,
+      Math.round(
+        num(pick("pack", "verpakking", "standaard verpakk. grootte", "standaard verpakking"), 0)
+      )
+    ),
     reg: normReg(pick("reg", "registratienummer", "rvg", "rvg nr", "rvg_nr", "regnr", "reg.nr")),
     zi: str(pick("zi", "zi-nummer", "zinummer")),
     aip: num(pick("aip", "lijstprijs", "apotheekinkoopprijs"), NaN),
@@ -96,7 +97,6 @@ function toAipRow(o: Record<string, any>): AipRow {
 
 /** Flexibele mapper voor Staatscourant eenheidsprijzen */
 function toScUnitRow(o: Record<string, any>): ScUnitRow {
-  // verwacht headers (flexibel): rvg/reg/regnr, unit_price_eur/eenheidsprijs, valid_from
   const lower: Record<string, any> = {};
   for (const [k, v] of Object.entries(o)) lower[k.toLowerCase()] = v;
 
@@ -136,7 +136,7 @@ export default function WgpBuilderPage() {
   const [onlyUnmatched, setOnlyUnmatched] = useState(false);
 
   async function parseSheetToJson(file: File): Promise<any[]> {
-    const ext = file.name.toLowerCase().split(".").pop() || "";
+    const ext = (file.name.toLowerCase().split(".").pop() || "").trim();
     if (ext === "xlsx" || ext === "xls") {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
@@ -169,32 +169,31 @@ export default function WgpBuilderPage() {
   }
 
   async function onUploadSc(e: React.ChangeEvent<HTMLInputElement>) {
-  const f = e.target.files?.[0];
-  e.currentTarget.value = "";
-  if (!f) return;
-  setErr(null);
-  setBusy(true);
-  try {
-    const ext = f.name.toLowerCase().split(".").pop() || "";
-
-    if (ext === "pdf") {
-      const fd = new FormData();
-      fd.append("file", f);
-      const res = await fetch("/api/wgp/parse-pdf", { method: "POST", body: fd });
-      const js = await res.json();
-      if (!res.ok) throw new Error(js?.error || "PDF niet verwerkt.");
-      // rows: { reg, unit_price_eur, valid_from? }[]
-      setScUnits(js.rows);
-    } else {
-      // bestaand pad (xlsx/csv)
-      const json = await parseSheetToJson(f);
-      const rows = json.map(toScUnitRow).filter((r) => r.reg && Number.isFinite(r.unit_price_eur));
-      setScUnits(rows);
+    const f = e.target.files?.[0];
+    e.currentTarget.value = "";
+    if (!f) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      const ext = (f.name.toLowerCase().split(".").pop() || "").trim();
+      if (ext === "pdf") {
+        // Server-side parsing (Node runtime) -> verwacht JSON: { rows: ScUnitRow[] }
+        const fd = new FormData();
+        fd.append("file", f);
+        const res = await fetch("/api/wgp/parse-pdf", { method: "POST", body: fd });
+        const js = await res.json();
+        if (!res.ok) throw new Error(js?.error || "PDF niet verwerkt.");
+        setScUnits((js?.rows || []).map(toScUnitRow));
+      } else {
+        const json = await parseSheetToJson(f);
+        const rows = json.map(toScUnitRow).filter((r) => r.reg && Number.isFinite(r.unit_price_eur));
+        setScUnits(rows);
+      }
+    } catch (e: any) {
+      setErr(e?.message || "Staatscourant-eenheidsprijzen konden niet worden gelezen.");
+    } finally {
+      setBusy(false);
     }
-  } catch (e: any) {
-    setErr(e?.message || "Staatscourant-eenheidsprijzen konden niet worden gelezen.");
-  } finally {
-    setBusy(false);
   }
 
   const joined: Joined[] = useMemo(() => {
@@ -204,10 +203,8 @@ export default function WgpBuilderPage() {
       const m = byReg.get(s.reg);
       const pack = m?.pack ?? null;
       const unit = Number.isFinite(s.unit_price_eur) ? s.unit_price_eur : null;
-      const aip_calc =
-        unit !== null && pack !== null && pack > 0 ? +(unit * pack).toFixed(2) : null;
+      const aip_calc = unit !== null && pack !== null && pack > 0 ? +(unit * pack).toFixed(2) : null;
       const ok = unit !== null && pack !== null && pack > 0;
-
       return {
         reg: s.reg,
         sku: m?.sku ?? "",
@@ -239,40 +236,42 @@ export default function WgpBuilderPage() {
       {/* Header */}
       <header className="rounded-2xl border bg-white p-4 sm:p-5">
         <h1 className="text-xl sm:text-2xl font-semibold">Wgp Builder — AIP uit eenheidsprijzen</h1>
-        <p className="text-sm text-gray-700 mt-1">
-          Upload je <b>AIP-master</b> (REGNR + pack) en een <b>Staatscourant-sheet</b> met
-          eenheidsprijzen. We berekenen <b>AIP = eenheidsprijs × pack</b> en tonen matches/hiaten.
+        <p className="mt-1 text-sm text-gray-700">
+          Upload je <b>AIP-master</b> (REGNR + pack) en een <b>Staatscourant-lijst</b> met eenheidsprijzen.
+          We berekenen <b>AIP = eenheidsprijs × pack</b> en tonen matches/hiaten.
         </p>
       </header>
 
       {/* Uploads */}
       <section className="rounded-2xl border bg-white p-4">
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm block">
-            <div className="font-medium">1) AIP-master (.xlsx/.csv)</div>
+          <label className="block text-sm">
+            <div className="font-medium">1) AIP-master (.xlsx/.xls/.csv)</div>
             <input
               type="file"
-              accept=".xlsx,.xls,.csv,.pdf"
+              accept=".xlsx,.xls,.csv"
               onChange={onUploadAip}
               className="mt-1 block w-full rounded-md border px-3 py-2"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Verwacht kolommen: <code>reg / regnr / rvg</code> en <code>pack</code>. Optioneel: SKU, naam, zi, AIP, MOQ, caseQty.
+              Vereist: <code>reg / regnr / rvg</code> en <code>pack</code>. Optioneel: SKU, naam, zi, AIP, MOQ, caseQty.
             </p>
           </label>
-          <label className="text-sm block">
-            <div className="font-medium">2) Staatscourant eenheidsprijzen (.xlsx/.csv)</div>
+
+          <label className="block text-sm">
+            <div className="font-medium">2) Staatscourant eenheidsprijzen (.xlsx/.xls/.csv/.pdf)</div>
             <input
               type="file"
-              accept=".xlsx,.xls,.csv"
+              accept=".xlsx,.xls,.csv,.pdf"
               onChange={onUploadSc}
               className="mt-1 block w-full rounded-md border px-3 py-2"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Verwacht kolommen: <code>reg / rvg / regnr</code>, <code>unit_price_eur</code>, optioneel <code>valid_from</code>.
+              Vereist: <code>reg / rvg / regnr</code> en <code>unit_price_eur</code>. Optioneel <code>valid_from</code>. Bij PDF wordt server-side tekstextractie gebruikt.
             </p>
           </label>
         </div>
+
         {busy && <div className="mt-3 text-sm text-gray-600">Bezig…</div>}
         {err && (
           <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -328,9 +327,7 @@ export default function WgpBuilderPage() {
                   <td className="px-2 py-1">{r.sku}</td>
                   <td className="px-2 py-1">{r.name}</td>
                   <td className="px-2 py-1">{r.zi}</td>
-                  <td className="px-2 py-1 text-right">
-                    {r.pack !== null ? r.pack : "-"}
-                  </td>
+                  <td className="px-2 py-1 text-right">{r.pack !== null ? r.pack : "-"}</td>
                   <td className="px-2 py-1 text-right">
                     {r.unit_price_eur !== null ? r.unit_price_eur.toFixed(4) : "-"}
                   </td>
