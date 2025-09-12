@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata = {
   title: "Prijzen | PharmaGtN",
   description:
-    "Eén heldere licentie: €2.500 per jaar per entiteit. Inclusief GtN Portal, templates, validatie en dashboards.",
+    "Eén heldere licentie: €3.900 per jaar per entiteit. Inclusief GtN Portal, templates, validatie en dashboards.",
   alternates: { canonical: "/pricing" },
   openGraph: {
     title: "Prijzen | PharmaGtN",
