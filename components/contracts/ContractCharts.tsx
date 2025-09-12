@@ -1,77 +1,175 @@
-// components/contracts/ContractTable.tsx
+// components/contracts/ContractCharts.tsx
 "use client";
-import type { AggRow } from "../../lib/contract-analysis";
 
-function pct(n?: number | null, d = 1) {
-  const v = Number.isFinite(n as number) ? (n as number) : 0;
-  return `${v.toFixed(d)}%`;
-}
-function eur(n?: number | null) {
-  const v = Number.isFinite(n as number) ? (n as number) : 0;
-  return new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v);
+import * as React from "react";
+import type { TotalRow } from "../../lib/contract-analysis";
+
+/* ========= Helpers ========= */
+function parsePeriodKey(pk: string) {
+  // Ondersteunt "YYYY-MM" en "YYYY-Qn"
+  const q = /^(\d{4})-Q([1-4])$/i.exec(pk);
+  if (q) {
+    const y = Number(q[1]);
+    const qi = Number(q[2]);
+    // map kwartaal naar eerste maand-index (0,3,6,9)
+    const m0 = (qi - 1) * 3;
+    return { y, m0, isQuarter: true };
+  }
+  const m = /^(\d{4})-(\d{2})$/.exec(pk);
+  if (m) {
+    const y = Number(m[1]);
+    const m0 = Number(m[2]) - 1;
+    return { y, m0, isQuarter: false };
+  }
+  // fallback: plaats ver weg zodat het einde in sort valt
+  return { y: Number.MIN_SAFE_INTEGER, m0: -1, isQuarter: false };
 }
 
-export default function ContractTable({ rows }: { rows: AggRow[] }) {
+function sortByPeriodKey<T extends { periodKey: string }>(rows: T[]) {
+  return [...rows].sort((a, b) => {
+    const A = parsePeriodKey(a.periodKey);
+    const B = parsePeriodKey(b.periodKey);
+    return A.y === B.y ? A.m0 - B.m0 : A.y - B.y;
+  });
+}
+
+function uniq<T>(arr: T[]) {
+  return Array.from(new Set(arr));
+}
+
+/* ========= Kleine, responsive line chart ========= */
+function LineChart({
+  x,
+  y,
+  height = 160,
+  color = "#0f172a", // slate-900
+  yFmt = (n: number) => new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 0 }).format(n),
+}: {
+  x: string[];
+  y: number[];
+  height?: number;
+  color?: string;
+  yFmt?: (n: number) => string;
+}) {
+  const width = 720;
+  const padX = 28;
+  const padY = 22;
+
+  const n = Math.max(1, y.length);
+  const xs = x.map((_, i) => padX + (i * (width - 2 * padX)) / Math.max(1, n - 1));
+
+  const minY = Math.min(...y, 0);
+  const maxY = Math.max(...y, 1);
+  const same = maxY === minY;
+
+  const sy = (v: number) =>
+    same ? height / 2 : height - padY - ((v - minY) * (height - 2 * padY)) / (maxY - minY);
+
+  const pathD = y.map((v, i) => `${i ? "L" : "M"} ${xs[i]} ${sy(v)}`).join(" ");
+
+  // y-grid (4 tussenstappen)
+  const ticks = Array.from({ length: 5 }, (_, i) => minY + ((maxY - minY) * i) / 4);
+
   return (
-    <div className="rounded-2xl border bg-white">
-      <div className="overflow-x-auto">
-        <table className="min-w-[720px] w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 text-gray-600">
-              <th className="px-3 py-2 text-left">Contract</th>
-              <th className="px-3 py-2 text-right">Netto omzet</th>
-              <th className="px-3 py-2 text-right">Groei (contract)</th>
-              <th className="px-3 py-2 text-right">Groei (totaal)</th>
-              <th className="px-3 py-2 text-right">Δ vs totaal (pp)</th>
-              <th className="px-3 py-2 text-right">Bijdrage</th>
-              <th className="px-3 py-2 text-right">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {rows.map((r, i) => {
-              // Afleiden “beter/slechter”: positieve delta_pp = outperform
-              const delta = Number.isFinite(r.delta_pp as number) ? (r.delta_pp as number) : 0;
-              const chip =
-                !Number.isFinite(r.delta_pp as number) ? (
-                  <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs text-gray-500">n.v.t.</span>
-                ) : delta > 0 ? (
-                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 ring-1 ring-emerald-200">
-                    Beter
-                  </span>
-                ) : delta < 0 ? (
-                  <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-700 ring-1 ring-rose-200">
-                    Lager
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 ring-1 ring-amber-200">
-                    Neutraal
-                  </span>
-                );
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="w-full rounded-lg border bg-white"
+      role="img"
+      aria-label="Lijngrafiek"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      {/* Achtergrondpanel */}
+      <rect x={10} y={10} width={width - 20} height={height - 20} rx={12} fill="#fff" stroke="#e5e7eb" />
 
-              return (
-                <tr key={i} className="hover:bg-gray-50/60">
-                  <td className="px-3 py-2">
-                    <div className="font-medium text-gray-900">{r.contract}</div>
-                    {r.subLabel ? <div className="text-xs text-gray-500">{r.subLabel}</div> : null}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{eur(r.totaal_netto)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{pct(r.groei_contract_pct)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{pct(r.groei_totaal_pct)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {Number.isFinite(r.delta_pp as number) ? (r.delta_pp! >= 0 ? "+" : "") + (r.delta_pp as number).toFixed(1) + " pp" : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{pct(r.bijdrage_pp, 1)}</td>
-                  <td className="px-3 py-2 text-right">{chip}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/* Grid + y-ticks */}
+      {ticks.map((tv, i) => {
+        const yPix = sy(tv);
+        return (
+          <g key={i}>
+            <line x1={padX} y1={yPix} x2={width - padX} y2={yPix} stroke="#f3f4f6" />
+            <text x={padX - 6} y={yPix + 3} fontSize="10" textAnchor="end" fill="#6b7280">
+              {yFmt(tv)}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Lijn */}
+      <path d={pathD} fill="none" stroke={color} strokeWidth={2} />
+
+      {/* Punten */}
+      {y.map((v, i) => (
+        <circle key={i} cx={xs[i]} cy={sy(v)} r={2} fill={color} />
+      ))}
+
+      {/* x-labels (max ±6 zichtbaar) */}
+      {x.map((lbl, i) =>
+        i % Math.max(1, Math.ceil(x.length / 6)) === 0 ? (
+          <text key={i} x={xs[i]} y={height - 6} fontSize="10" textAnchor="middle" fill="#6b7280">
+            {lbl}
+          </text>
+        ) : null
+      )}
+    </svg>
+  );
+}
+
+/* ========= Hoofdcomponent ========= */
+export default function ContractCharts({
+  totals,
+  topContracts,
+  seriesByContract,
+}: {
+  totals: TotalRow[];
+  topContracts: string[];
+  seriesByContract: Record<string, { x: string[]; y: number[] }>;
+}) {
+  // Sorteer periodes robuust (maand & kwartaal)
+  const sortedTotals = sortByPeriodKey(totals);
+  const x = sortedTotals.map((t) => t.periodKey);
+  const y = sortedTotals.map((t) => t.totaal_netto);
+
+  // Fix: toon alleen bestaande series & align op gezamenlijke x-as waar mogelijk
+  const safeTop = topContracts.filter((c) => seriesByContract[c]?.x?.length);
+
+  // Maak een verenigde x-as voor topcontracten indien doelen overlappen
+  const unionX = uniq(
+    safeTop.flatMap((c) => seriesByContract[c].x)
+  ).sort((a, b) => {
+    const A = parsePeriodKey(a);
+    const B = parsePeriodKey(b);
+    return A.y === B.y ? A.m0 - B.m0 : A.y - B.y;
+  });
+
+  return (
+    <div className="grid gap-6 md:grid-cols-2">
+      <div>
+        <div className="mb-2 text-sm font-medium text-gray-700">Totaal netto-omzet per periode</div>
+        <LineChart x={x} y={y} />
       </div>
 
-      {/* Mobiele hint */}
-      <div className="md:hidden p-3 border-t text-[11px] text-gray-500">
-        Tip: veeg horizontaal om alle kolommen te zien.
+      <div>
+        <div className="mb-2 text-sm font-medium text-gray-700">Top contracten — netto-omzet (tijdreeks)</div>
+        <div className="space-y-4">
+          {safeTop.length === 0 ? (
+            <div className="text-sm text-gray-500 border rounded-lg p-3 bg-white">Geen reeksen beschikbaar.</div>
+          ) : (
+            safeTop.map((c) => {
+              const serie = seriesByContract[c];
+              // Re-map naar unionX (missende punten = 0) voor betere vergelijkbaarheid
+              const yAligned = unionX.map((lbl) => {
+                const idx = serie.x.indexOf(lbl);
+                return idx >= 0 ? serie.y[idx] : 0;
+              });
+              return (
+                <div key={c}>
+                  <div className="mb-1 text-xs text-gray-500">{c}</div>
+                  <LineChart x={unionX} y={yAligned} height={120} color="#0ea5e9" />
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
   );
