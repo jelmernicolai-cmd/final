@@ -1,564 +1,480 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
+import Link from "next/link";
 
-/* ========== Types ========== */
-type ProductRow = {
+/** ---------------- Types ---------------- */
+type Row = {
   sku: string;
-  product: string;
-  size: string;
-  regnr: string;
-  zi: string;
-  aip: number;
-  minOrder: number;
-  casePack: number;
+  name: string;
+  pack: string;
+  reg: string;        // Registratienummer (RVG/G),
+  zi: string;         // ZI-nummer
+  aip: number;        // lijstprijs (EUR)
+  moq: number;        // Minimale bestelgrootte
+  caseQty: number;    // Doosverpakking
+  // custom fields: generiek object
   custom?: Record<string, string | number>;
 };
 
-/* ========== XLSX Loader ========== */
-async function loadXLSX() {
-  const XLSX = await import("xlsx");
-  return XLSX;
-}
+type ImportRow = Partial<Row> & Record<string, any>;
 
-/* ========== LocalStorage helpers ========== */
-const STORAGE_KEY = "pricing_aip_rows";
-
-function saveLocal(rows: ProductRow[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
-  } catch {}
-}
-
-function loadLocal(): ProductRow[] {
-  try {
-    const txt = localStorage.getItem(STORAGE_KEY);
-    return txt ? (JSON.parse(txt) as ProductRow[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-/* ========== API helpers (defensief) ========== */
-async function tryFetch<T>(input: RequestInfo, init?: RequestInit): Promise<T | null> {
-  try {
-    const res = await fetch(input, { ...init, cache: "no-store" });
-    if (!res.ok) return null;
-    const ct = res.headers.get("content-type") || "";
-    if (!ct.includes("application/json")) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
-async function loadProducts(): Promise<ProductRow[]> {
-  const data = await tryFetch<ProductRow[]>("/api/pricing/products");
-  return data ?? loadLocal();
-}
-
-async function saveProducts(rows: ProductRow[]) {
-  try {
-    await fetch("/api/pricing/products", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(rows),
-    });
-  } catch {
-    saveLocal(rows); // fallback
-  }
-}
-
-/* ========== Import / Export ========== */
-async function importFile(file: File): Promise<ProductRow[]> {
-  if (/\.(csv)$/i.test(file.name)) {
-    const text = await file.text();
-    const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
-    if (!lines.length) return [];
-    const headers = lines[0].split(/[;,]/).map((h) => h.trim().toLowerCase());
-    const idx = (k: string) => headers.indexOf(k);
-    const out: ProductRow[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const c = lines[i].split(/[;,]/);
-      out.push({
-        sku: c[idx("sku")] || "",
-        product: c[idx("product")] || "",
-        size: c[idx("standaard verpakk. grootte")] || c[idx("standaard verpakk. grootte".toLowerCase())] || "",
-        regnr: c[idx("registratienummer")] || "",
-        zi: c[idx("zi-nummer")] || "",
-        aip: Number((c[idx("aip")] || "0").replace(",", ".")) || 0,
-        minOrder: Number((c[idx("minimale bestelgrootte")] || "0").replace(",", ".")) || 0,
-        casePack: Number((c[idx("doosverpakking")] || "0").replace(",", ".")) || 0,
-        custom: {},
-      });
-    }
-    return out;
-  } else if (/\.(xlsx|xls)$/i.test(file.name)) {
-    const XLSX = await loadXLSX();
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array" });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const json = XLSX.utils.sheet_to_json<any>(sheet, { defval: "" });
-    return json.map((r: any) => ({
-      sku: r["SKU nummer"] ?? r["sku"] ?? "",
-      product: r["Product naam"] ?? r["product"] ?? "",
-      size: r["Standaard Verpakk. Grootte"] ?? r["size"] ?? "",
-      regnr: r["Registratienummer"] ?? r["regnr"] ?? "",
-      zi: r["ZI-nummer"] ?? r["zi"] ?? "",
-      aip: Number(String(r["AIP"] ?? r["aip"] ?? 0).replace(",", ".")) || 0,
-      minOrder: Number(String(r["Minimale bestelgrootte"] ?? r["minOrder"] ?? 0).replace(",", ".")) || 0,
-      casePack: Number(String(r["Doosverpakking"] ?? r["casePack"] ?? 0).replace(",", ".")) || 0,
-      custom: Object.fromEntries(
-        Object.entries(r)
-          .filter(([k]) =>
-            !["SKU nummer","sku","Product naam","product","Standaard Verpakk. Grootte","size","Registratienummer","regnr","ZI-nummer","zi","AIP","aip","Minimale bestelgrootte","minOrder","Doosverpakking","casePack"].includes(k)
-          )
-          .map(([k, v]) => [k, v as any])
-      ),
-    }));
-  }
-  throw new Error("Bestandsformaat niet ondersteund (.csv, .xlsx, .xls)");
-}
-
-async function exportExcel(rows: ProductRow[], customCols: string[]) {
-  if (!rows.length) {
-    alert("Geen rijen om te exporteren.");
-    return;
-  }
-  const XLSX = await loadXLSX();
-  const header = [
-    "SKU nummer",
-    "Product naam",
-    "Standaard Verpakk. Grootte",
-    "Registratienummer",
-    "ZI-nummer",
-    "AIP",
-    "Minimale bestelgrootte",
-    "Doosverpakking",
-    ...customCols,
-  ];
-  const data = [
-    header,
-    ...rows.map((r) => [
-      r.sku,
-      r.product,
-      r.size,
-      r.regnr,
-      r.zi,
-      r.aip,
-      r.minOrder,
-      r.casePack,
-      ...customCols.map((c) => r.custom?.[c] ?? ""),
-    ]),
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "AIP");
-  const blob = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-  const url = URL.createObjectURL(new Blob([blob]));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "AIP_prijslijst.xlsx";
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-/* ========== Small helpers ========== */
+/** ---------------- Helpers ---------------- */
 const eur = (n: number) =>
-  new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(Number.isFinite(n) ? n : 0);
+  new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(isFinite(n) ? n : 0);
 
-function isNumberLike(v: any) {
-  if (typeof v === "number") return Number.isFinite(v);
-  if (typeof v === "string") return !isNaN(Number(v.replace(",", ".")));
-  return false;
+function coerceNum(v: any, def = 0) {
+  if (typeof v === "number") return v;
+  const s = String(v ?? "").replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
+  const n = parseFloat(s);
+  return isFinite(n) ? n : def;
+}
+function trimStr(v: any) {
+  return String(v ?? "").trim();
 }
 
-/* ========== Component ========== */
-export default function AipPage() {
-  const [rows, setRows] = useState<ProductRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [uiError, setUiError] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const [search, setSearch] = useState("");
-
-  // dynamische custom kolommen (union van alle r.custom keys)
-  const customCols = useMemo(() => {
-    const set = new Set<string>();
-    rows.forEach((r) => Object.keys(r.custom || {}).forEach((k) => set.add(k)));
-    return Array.from(set);
-  }, [rows]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        const data = await loadProducts();
-        setRows(Array.isArray(data) ? data : []);
-      } catch (e: any) {
-        setUiError(e?.message || "Fout bij laden.");
-        setRows([]);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  function updateRow(i: number, patch: Partial<ProductRow>) {
-    setRows((prev) => {
-      const next = [...prev];
-      next[i] = { ...next[i], ...patch };
-      return next;
-    });
-    setDirty(true);
-  }
-
-  function updateCustom(i: number, key: string, val: string | number) {
-    setRows((prev) => {
-      const next = [...prev];
-      const c = { ...(next[i].custom || {}) };
-      c[key] = val;
-      next[i] = { ...next[i], custom: c };
-      return next;
-    });
-    setDirty(true);
-  }
-
-  function addRow() {
-    setRows((prev) => [
-      {
-        sku: "",
-        product: "",
-        size: "",
-        regnr: "",
-        zi: "",
-        aip: 0,
-        minOrder: 0,
-        casePack: 0,
-        custom: {},
-      },
-      ...prev,
-    ]);
-    setDirty(true);
-  }
-
-  function removeRow(i: number) {
-    setRows((prev) => prev.filter((_, idx) => idx !== i));
-    setDirty(true);
-  }
-
-  function addCustomColumn() {
-    const key = prompt("Naam van extra kolom (custom):");
-    if (!key) return;
-    setRows((prev) =>
-      prev.map((r) => ({ ...r, custom: { ...(r.custom || {}), [key]: r.custom?.[key] ?? "" } }))
-    );
-    setDirty(true);
-  }
-
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
+function parseXlsxOrCsv(file: File): Promise<ImportRow[]> {
+  return new Promise(async (resolve, reject) => {
     try {
-      const imported = await importFile(f);
-      setRows(imported);
-      setDirty(true);
-      setUiError(null);
+      const buf = await file.arrayBuffer();
+      let rows: any[] = [];
+      if (/\.(xlsx|xls)$/i.test(file.name)) {
+        const wb = XLSX.read(buf);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      } else if (/\.(csv)$/i.test(file.name)) {
+        const text = new TextDecoder().decode(buf);
+        const delim = text.split("\n")[0].includes(";") ? ";" : ",";
+        rows = XLSX.utils.sheet_to_json(XLSX.read(text, { type: "string" }).Sheets.Sheet1, { defval: "" });
+        if (!rows.length) {
+          // fallback mini CSV parser
+          const lines = text.replace(/\r/g, "").split("\n").filter(Boolean);
+          const headers = lines.shift()!.split(delim).map((s) => s.trim());
+          rows = lines.map((l) => {
+            const cols = l.split(delim);
+            const o: any = {};
+            headers.forEach((h, i) => (o[h] = cols[i] ?? ""));
+            return o;
+          });
+        }
+      } else {
+        return reject(new Error("Ondersteund: .xlsx, .xls of .csv"));
+      }
+      resolve(rows);
+    } catch (e: any) {
+      reject(e);
+    }
+  });
+}
+
+function normalizeHeaders(o: Record<string, any>) {
+  const map = new Map<string, any>();
+  Object.entries(o).forEach(([k, v]) => map.set(k.toLowerCase().trim(), v));
+  const pick = (keys: string[]) => {
+    for (const k of keys) if (map.has(k)) return map.get(k);
+    return undefined;
+  };
+  return {
+    sku: pick(["sku", "sku nummer", "sku_nummer", "productcode"]),
+    name: pick(["product naam", "productnaam", "naam"]),
+    pack: pick(["standaard verpakk. grootte", "verpakking", "pack", "standaard verpakking", "standaard verpakkingsgrootte"]),
+    reg: pick(["registratienummer", "rvg", "rvgnr", "registratie"]),
+    zi: pick(["zi-nummer", "zi", "zinummer"]),
+    aip: pick(["aip", "apotheekinkoopprijs", "lijstprijs"]),
+    moq: pick(["minimale bestelgrootte", "min order", "moq"]),
+    caseQty: pick(["doosverpakking", "case", "doos"]),
+    rest: Object.fromEntries(
+      [...map.entries()].filter(([k]) => ![
+        "sku","sku nummer","sku_nummer","productcode",
+        "product naam","productnaam","naam",
+        "standaard verpakk. grootte","verpakking","pack","standaard verpakking","standaard verpakkingsgrootte",
+        "registratienummer","rvg","rvgnr","registratie",
+        "zi-nummer","zi","zinummer",
+        "aip","apotheekinkoopprijs","lijstprijs",
+        "minimale bestelgrootte","min order","moq",
+        "doosverpakking","case","doos"
+      ].includes(k))
+    )
+  };
+}
+
+function toRow(r: any): Row {
+  const n = normalizeHeaders(r);
+  const aip = coerceNum(n.aip, NaN);
+  return {
+    sku: trimStr(n.sku),
+    name: trimStr(n.name),
+    pack: trimStr(n.pack),
+    reg: trimStr(n.reg),
+    zi: trimStr(n.zi),
+    aip: isFinite(aip) ? parseFloat(aip.toFixed(4)) : NaN,
+    moq: Math.max(0, Math.round(coerceNum(n.moq, 0))),
+    caseQty: Math.max(0, Math.round(coerceNum(n.caseQty ?? n["caseqty"] ?? n["case_qty"] ?? n["case"], 0))),
+    custom: Object.fromEntries(Object.entries(n.rest).map(([k, v]) => [k, typeof v === "number" ? v : trimStr(v)])),
+  };
+}
+
+function validate(r: Row) {
+  const errs: string[] = [];
+  if (!r.sku) errs.push("SKU vereist");
+  if (!r.name) errs.push("Productnaam vereist");
+  if (!isFinite(r.aip) || r.aip < 0) errs.push("AIP ongeldig (≥ 0)");
+  if (r.zi && !/^\d{6,8}$/.test(r.zi)) errs.push("ZI-nummer verwacht 6–8 cijfers");
+  return errs;
+}
+
+/** Undo/Redo helper */
+function useHistoryState<T>(initial: T) {
+  const [present, setPresent] = useState<T>(initial);
+  const pastRef = useRef<T[]>([]);
+  const futureRef = useRef<T[]>([]);
+  const set = useCallback((updater: (cur: T) => T) => {
+    setPresent((cur) => {
+      const next = updater(cur);
+      pastRef.current.push(cur);
+      futureRef.current = [];
+      return next;
+    });
+  }, []);
+  const undo = useCallback(() => {
+    const last = pastRef.current.pop();
+    if (last !== undefined) {
+      futureRef.current.push(present);
+      setPresent(last);
+    }
+  }, [present]);
+  const redo = useCallback(() => {
+    const nxt = futureRef.current.pop();
+    if (nxt !== undefined) {
+      pastRef.current.push(present);
+      setPresent(nxt);
+    }
+  }, [present]);
+  return { value: present, set, undo, redo, canUndo: pastRef.current.length > 0, canRedo: futureRef.current.length > 0 };
+}
+
+/** ---------------- Page ---------------- */
+export default function AIPPage() {
+  const hist = useHistoryState<Row[]>([]);
+  const rows = hist.value;
+
+  const [errors, setErrors] = useState<Record<number, string[]>>({});
+  const [filter, setFilter] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  // Hotkeys: Ctrl+Z / Ctrl+Shift+Z
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const isMac = navigator.platform.toLowerCase().includes("mac");
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) hist.redo();
+        else hist.undo();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [hist]);
+
+  const visible = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => [r.sku, r.name, r.reg, r.zi].some((s) => (s || "").toLowerCase().includes(q)));
+  }, [rows, filter]);
+
+  const invalidCount = useMemo(() => rows.reduce((n, r, i) => n + (validate(r).length ? 1 : 0), 0), [rows]);
+
+  function applyValidation(nextRows: Row[]) {
+    const e: Record<number, string[]> = {};
+    nextRows.forEach((r, i) => {
+      const errs = validate(r);
+      if (errs.length) e[i] = errs;
+    });
+    setErrors(e);
+  }
+
+  const mutate = useCallback(
+    (idx: number, key: keyof Row, val: any) => {
+      hist.set((cur) => {
+        const next = cur.map((r, i) =>
+          i === idx
+            ? ({
+                ...r,
+                [key]:
+                  key === "aip" ? coerceNum(val, NaN)
+                  : key === "moq" || key === "caseQty" ? Math.max(0, Math.round(coerceNum(val, 0)))
+                  : trimStr(val),
+              } as Row)
+            : r
+        );
+        return next;
+      });
+    },
+    [hist]
+  );
+
+  useEffect(() => { applyValidation(rows); }, [rows]);
+
+  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const raw = await parseXlsxOrCsv(file);
+      const parsed = raw.map(toRow);
+      hist.set(() => parsed);
     } catch (err: any) {
-      setUiError(err?.message || "Import mislukt.");
+      alert(err?.message || "Upload mislukt");
     } finally {
+      setBusy(false);
       e.currentTarget.value = "";
     }
   }
 
-  async function handleExport() {
-    try {
-      await exportExcel(rows, customCols);
-    } catch (e: any) {
-      setUiError(e?.message || "Export mislukt.");
-    }
+  function addBlank() {
+    hist.set((cur) => [
+      ...cur,
+      { sku: "", name: "", pack: "", reg: "", zi: "", aip: NaN, moq: 0, caseQty: 0, custom: {} },
+    ]);
+  }
+  function removeRow(i: number) {
+    hist.set((cur) => cur.filter((_, idx) => idx !== i));
   }
 
-  async function persist() {
-    setBusy(true);
-    setUiError(null);
-    try {
-      await saveProducts(rows);
-      saveLocal(rows); // altijd ook lokaal
-      setDirty(false);
-    } catch (e: any) {
-      setUiError(e?.message || "Opslaan mislukt.");
-    } finally {
-      setBusy(false);
-    }
+  function exportXLSX() {
+    const data = rows.map((r) => ({
+      "SKU nummer": r.sku,
+      "Product naam": r.name,
+      "Standaard Verpakk. Grootte": r.pack,
+      "Registratienummer": r.reg,
+      "ZI-nummer": r.zi,
+      "AIP": r.aip,
+      "Minimale bestelgrootte": r.moq,
+      "Doosverpakking": r.caseQty,
+      ...r.custom,
+    }));
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, "AIP");
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "AIP_prijslijst.xlsx";
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.sku.toLowerCase().includes(q) ||
-        r.product.toLowerCase().includes(q) ||
-        r.zi.toLowerCase().includes(q) ||
-        r.regnr.toLowerCase().includes(q)
-    );
-  }, [rows, search]);
+  const kpis = useMemo(() => {
+    const n = rows.length;
+    const withAip = rows.filter((r) => isFinite(r.aip) && r.aip >= 0);
+    const avg = withAip.length ? withAip.reduce((s, r) => s + r.aip, 0) / withAip.length : 0;
+    const med = withAip.length
+      ? [...withAip.map((r) => r.aip)].sort((a, b) => a - b)[Math.floor((withAip.length - 1) / 2)]
+      : 0;
+    return { n, withAip: withAip.length, avg, med };
+  }, [rows]);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">AIP Prijsbeheer</h1>
-          <p className="text-sm text-gray-600">
-            Bewerk je lijstprijzen inline. Upload CSV/XLSX, exporteer naar Excel. Gegevens worden veilig opgeslagen (API of lokaal).
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <label className="rounded-md border px-3 py-2 text-sm cursor-pointer bg-white hover:bg-gray-50">
-            Upload CSV/XLSX
-            <input type="file" className="hidden" accept=".csv,.xlsx,.xls" onChange={handleUpload} />
+    <div className="mx-auto max-w-6xl px-3 sm:px-4 py-6 space-y-6">
+      {/* Hero */}
+      <header className="rounded-2xl border bg-white p-4 sm:p-5">
+        <h1 className="text-xl sm:text-2xl font-semibold">AIP prijslijst – beheer</h1>
+        <p className="text-sm text-gray-700 mt-1">
+          Beheer de <b>lijstprijs (AIP)</b> per SKU. Data blijft in je sessie (client-side). Exporteer naar Excel of importeer een bestaande lijst.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <label className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:opacity-95 cursor-pointer">
+            Upload (.xlsx/.csv)
+            <input type="file" accept=".xlsx,.xls,.csv" onChange={onUpload} className="hidden" />
           </label>
-          <button onClick={handleExport} className="rounded-md border px-3 py-2 text-sm bg-white hover:bg-gray-50">
+          <button onClick={addBlank} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
+            + Nieuwe rij
+          </button>
+          <button onClick={exportXLSX} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
             Exporteer Excel
           </button>
-          <button
-            onClick={persist}
-            disabled={busy || !dirty}
-            className="rounded-md border px-3 py-2 text-sm bg-white hover:bg-gray-50 disabled:opacity-50"
-          >
-            {busy ? "Opslaan…" : dirty ? "Opslaan" : "Opgeslagen"}
+          <button onClick={hist.undo} disabled={!hist.canUndo} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-40">
+            Undo
           </button>
+          <button onClick={hist.redo} disabled={!hist.canRedo} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-40">
+            Redo
+          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <input
+              placeholder="Zoek sku/naam/ZI/RVG…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="rounded-lg border px-3 py-2 text-sm w-48 sm:w-64"
+            />
+          </div>
         </div>
+        {busy && <div className="mt-2 text-sm text-gray-600">Bestand verwerken…</div>}
       </header>
 
-      {uiError && (
-        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{uiError}</div>
-      )}
+      {/* KPIs */}
+      <section className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+        <Kpi title="Totaal SKUs" value={kpis.n.toString()} />
+        <Kpi title="Met geldige AIP" value={kpis.withAip.toString()} help={`${((kpis.withAip/(kpis.n||1))*100).toFixed(0)}%`} />
+        <Kpi title="Gem. AIP" value={eur(kpis.avg)} />
+        <Kpi title="Mediaan AIP" value={eur(kpis.med)} />
+        <Kpi title="Openstaande validaties" value={invalidCount.toString()} help={invalidCount ? "Los de rode velden op" : "OK"} />
+      </section>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Zoek op SKU / product / ZI / regnr…"
-          className="w-full sm:w-80 rounded-md border px-3 py-2 text-sm"
-        />
-        <div className="ml-auto flex gap-2">
-          <button className="rounded-md border px-3 py-2 text-sm bg-white hover:bg-gray-50" onClick={addRow}>
-            + Rij
-          </button>
-          <button className="rounded-md border px-3 py-2 text-sm bg-white hover:bg-gray-50" onClick={addCustomColumn}>
-            + Kolom
-          </button>
-        </div>
-      </div>
+      {/* Tabel */}
+      <section className="rounded-2xl border bg-white p-3 sm:p-4">
+        <div className="overflow-auto">
+          <table className="min-w-[880px] w-full text-sm border-collapse">
+            <thead className="bg-slate-50 border-b">
+              <tr>
+                <Th>SKU</Th>
+                <Th>Productnaam</Th>
+                <Th>Verpakking</Th>
+                <Th>Registratie</Th>
+                <Th>ZI-nummer</Th>
+                <Th className="text-right">AIP (EUR)</Th>
+                <Th className="text-right">MOQ</Th>
+                <Th className="text-right">Doos</Th>
+                <Th></Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {visible.map((r, i) => {
+                const idx = rows.indexOf(r);
+                const err = errors[idx] || [];
+                const has = (k: keyof Row) =>
+                  err.some((e) =>
+                    (k === "sku" && e.includes("SKU")) ||
+                    (k === "name" && e.includes("Productnaam")) ||
+                    (k === "aip" && e.includes("AIP")) ||
+                    (k === "zi" && e.includes("ZI"))
+                  );
 
-      {loading ? (
-        <div className="text-sm text-gray-500">Laden…</div>
-      ) : (
-        <>
-          {/* Desktop table */}
-          <div className="hidden md:block overflow-x-auto rounded-lg border">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-gray-700">
-                <tr>
-                  <Th>SKU</Th>
-                  <Th>Product</Th>
-                  <Th>Grootte</Th>
-                  <Th>Reg.nr</Th>
-                  <Th>ZI-nummer</Th>
-                  <Th className="text-right">AIP (€)</Th>
-                  <Th className="text-right">Min. order</Th>
-                  <Th className="text-right">Doos</Th>
-                  {customCols.map((c) => (
-                    <Th key={c}>{c}</Th>
-                  ))}
-                  <Th></Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {filtered.map((r, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
+                return (
+                  <tr key={idx} className="align-top">
                     <Td>
-                      <input
-                        value={r.sku}
-                        onChange={(e) => updateRow(i, { sku: e.target.value })}
-                        className="w-full rounded border px-2 py-1"
-                      />
+                      <Input value={r.sku} onChange={(v) => mutate(idx, "sku", v)} invalid={has("sku")} placeholder="SKU…" />
                     </Td>
                     <Td>
-                      <input
-                        value={r.product}
-                        onChange={(e) => updateRow(i, { product: e.target.value })}
-                        className="w-full rounded border px-2 py-1"
-                      />
+                      <Input value={r.name} onChange={(v) => mutate(idx, "name", v)} invalid={has("name")} placeholder="Productnaam…" />
                     </Td>
                     <Td>
-                      <input
-                        value={r.size}
-                        onChange={(e) => updateRow(i, { size: e.target.value })}
-                        className="w-full rounded border px-2 py-1"
-                      />
+                      <Input value={r.pack} onChange={(v) => mutate(idx, "pack", v)} placeholder="Bijv. 30 stuks blister" />
                     </Td>
                     <Td>
-                      <input
-                        value={r.regnr}
-                        onChange={(e) => updateRow(i, { regnr: e.target.value })}
-                        className="w-full rounded border px-2 py-1"
-                      />
+                      <Input value={r.reg} onChange={(v) => mutate(idx, "reg", v)} placeholder="RVG 12345" />
                     </Td>
                     <Td>
-                      <input
-                        value={r.zi}
-                        onChange={(e) => updateRow(i, { zi: e.target.value })}
-                        className="w-full rounded border px-2 py-1"
-                      />
+                      <Input value={r.zi} onChange={(v) => mutate(idx, "zi", v)} invalid={has("zi")} placeholder="12345678" />
                     </Td>
                     <Td className="text-right">
-                      <input
-                        inputMode="decimal"
-                        value={String(r.aip)}
-                        onChange={(e) =>
-                          updateRow(i, { aip: isNumberLike(e.target.value) ? Number(e.target.value.replace(",", ".")) : r.aip })
-                        }
-                        className="w-28 rounded border px-2 py-1 text-right"
-                      />
-                      <div className="text-[10px] text-gray-500">{eur(r.aip)}</div>
+                      <Num value={r.aip} onChange={(v) => mutate(idx, "aip", v)} invalid={has("aip")} />
                     </Td>
                     <Td className="text-right">
-                      <input
-                        inputMode="numeric"
-                        value={String(r.minOrder)}
-                        onChange={(e) =>
-                          updateRow(i, { minOrder: isNumberLike(e.target.value) ? Number(e.target.value.replace(",", ".")) : r.minOrder })
-                        }
-                        className="w-20 rounded border px-2 py-1 text-right"
-                      />
+                      <Num value={r.moq} onChange={(v) => mutate(idx, "moq", v)} integer />
                     </Td>
                     <Td className="text-right">
-                      <input
-                        inputMode="numeric"
-                        value={String(r.casePack)}
-                        onChange={(e) =>
-                          updateRow(i, { casePack: isNumberLike(e.target.value) ? Number(e.target.value.replace(",", ".")) : r.casePack })
-                        }
-                        className="w-20 rounded border px-2 py-1 text-right"
-                      />
+                      <Num value={r.caseQty} onChange={(v) => mutate(idx, "caseQty", v)} integer />
                     </Td>
-                    {customCols.map((c) => (
-                      <Td key={c}>
-                        <input
-                          value={String(r.custom?.[c] ?? "")}
-                          onChange={(e) => updateCustom(i, c, e.target.value)}
-                          className="w-full rounded border px-2 py-1"
-                        />
-                      </Td>
-                    ))}
-                    <Td className="text-right">
-                      <button className="text-xs rounded border px-2 py-1 hover:bg-white/50" onClick={() => removeRow(i)}>
+                    <Td>
+                      <button onClick={() => removeRow(idx)} className="rounded border px-2 py-1 hover:bg-gray-50">
                         Verwijder
                       </button>
+                      {!!err.length && (
+                        <div className="mt-1 text-[11px] text-rose-600">{err.join(" • ")}</div>
+                      )}
                     </Td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+              {visible.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="text-center text-sm text-gray-500 py-6">
+                    Geen rijen. Upload of voeg een rij toe.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-          {/* Mobile cards */}
-          <div className="md:hidden space-y-3">
-            {filtered.map((r, i) => (
-              <div key={i} className="rounded-lg border p-3 bg-white space-y-2">
-                <div className="flex items-center justify-between">
-                  <b>{r.product || "(naamloos)"}</b>
-                  <button className="text-xs rounded border px-2 py-1 hover:bg-gray-50" onClick={() => removeRow(i)}>
-                    Verwijder
-                  </button>
-                </div>
-                <Grid2>
-                  <Field label="SKU">
-                    <input value={r.sku} onChange={(e) => updateRow(i, { sku: e.target.value })} className="w-full rounded border px-2 py-1" />
-                  </Field>
-                  <Field label="ZI-nummer">
-                    <input value={r.zi} onChange={(e) => updateRow(i, { zi: e.target.value })} className="w-full rounded border px-2 py-1" />
-                  </Field>
-                  <Field label="Reg.nr">
-                    <input value={r.regnr} onChange={(e) => updateRow(i, { regnr: e.target.value })} className="w-full rounded border px-2 py-1" />
-                  </Field>
-                  <Field label="Grootte">
-                    <input value={r.size} onChange={(e) => updateRow(i, { size: e.target.value })} className="w-full rounded border px-2 py-1" />
-                  </Field>
-                  <Field label="AIP (€)">
-                    <input
-                      inputMode="decimal"
-                      value={String(r.aip)}
-                      onChange={(e) =>
-                        updateRow(i, { aip: isNumberLike(e.target.value) ? Number(e.target.value.replace(",", ".")) : r.aip })
-                      }
-                      className="w-full rounded border px-2 py-1 text-right"
-                    />
-                  </Field>
-                  <Field label="Min. order">
-                    <input
-                      inputMode="numeric"
-                      value={String(r.minOrder)}
-                      onChange={(e) =>
-                        updateRow(i, { minOrder: isNumberLike(e.target.value) ? Number(e.target.value.replace(",", ".")) : r.minOrder })
-                      }
-                      className="w-full rounded border px-2 py-1 text-right"
-                    />
-                  </Field>
-                  <Field label="Doos">
-                    <input
-                      inputMode="numeric"
-                      value={String(r.casePack)}
-                      onChange={(e) =>
-                        updateRow(i, { casePack: isNumberLike(e.target.value) ? Number(e.target.value.replace(",", ".")) : r.casePack })
-                      }
-                      className="w-full rounded border px-2 py-1 text-right"
-                    />
-                  </Field>
-                </Grid2>
-                {customCols.length > 0 && (
-                  <div className="pt-2 border-t">
-                    <div className="text-xs font-medium mb-1">Extra kolommen</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {customCols.map((c) => (
-                        <Field key={c} label={c}>
-                          <input
-                            value={String(r.custom?.[c] ?? "")}
-                            onChange={(e) => updateCustom(i, c, e.target.value)}
-                            className="w-full rounded border px-2 py-1"
-                          />
-                        </Field>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+        {/* Footer: uitleg + links */}
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-600">
+          <span>
+            Tip: Undo/Redo met <kbd className="border rounded px-1">Ctrl/⌘</kbd>+<kbd className="border rounded px-1">Z</kbd> en <kbd className="border rounded px-1">Shift</kbd>.
+          </span>
+          <span className="opacity-60">Lijstprijzen worden lokaal verwerkt; je export is een .xlsx.</span>
+          <Link href="/templates" className="underline">Templates</Link>
+        </div>
+      </section>
     </div>
   );
 }
 
-/* ========== Small presentational components ========== */
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <th className={`px-3 py-2 text-left text-[12px] font-semibold ${className}`}>{children}</th>;
-}
-function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-3 py-2 align-top ${className}`}>{children}</td>;
-}
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/** ---------------- Small UI bits ---------------- */
+function Kpi({ title, value, help }: { title: string; value: string; help?: string }) {
   return (
-    <label className="text-sm">
-      <div className="text-xs text-gray-600">{label}</div>
-      {children}
-    </label>
+    <div className="rounded-2xl border bg-white p-3 sm:p-4">
+      <div className="text-[12px] text-gray-600">{title}</div>
+      <div className="text-lg sm:text-xl font-semibold mt-1">{value}</div>
+      {help ? <div className="text-[11px] sm:text-xs text-gray-500 mt-1">{help}</div> : null}
+    </div>
   );
 }
-function Grid2({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{children}</div>;
+function Th(props: React.HTMLAttributes<HTMLTableCellElement>) {
+  return <th {...props} className={"text-left px-2 py-2 " + (props.className || "")} />;
+}
+function Td(props: React.HTMLAttributes<HTMLTableCellElement>) {
+  return <td {...props} className={"align-top px-2 py-1 " + (props.className || "")} />;
+}
+function Input({
+  value,
+  onChange,
+  invalid,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  invalid?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <input
+      value={value || ""}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={"w-full rounded-md border px-2 py-1.5 " + (invalid ? "border-rose-300 bg-rose-50" : "")}
+    />
+  );
+}
+function Num({
+  value,
+  onChange,
+  invalid,
+  integer = false,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  invalid?: boolean;
+  integer?: boolean;
+}) {
+  const [raw, setRaw] = useState<string>(Number.isFinite(value) ? String(value) : "");
+  useEffect(() => {
+    setRaw(Number.isFinite(value) ? String(value) : "");
+  }, [value]);
+  return (
+    <input
+      inputMode="decimal"
+      value={raw}
+      onChange={(e) => {
+        setRaw(e.target.value);
+        const n = coerceNum(e.target.value, NaN);
+        onChange(integer ? Math.max(0, Math.round(n)) : n);
+      }}
+      className={"w-full text-right rounded-md border px-2 py-1.5 " + (invalid ? "border-rose-300 bg-rose-50" : "")}
+      placeholder="0"
+    />
+  );
 }
