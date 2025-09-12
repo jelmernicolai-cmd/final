@@ -318,10 +318,11 @@ export default function UploadAndDashboard() {
             onChange={onUpload}
             className="mt-1 block w-72 rounded-md border px-3 py-2"
           />
-          <p className="mt-1 text-xs text-gray-500">
-            Ondersteund: CSV (`,`/`;`/tab`) &amp; Excel. Headers in NL of EN toegestaan.
-            Periode: <code>MM-YYYY</code> of <code>YYYY-MM</code>.
-          </p>
+            <p className="mt-1 text-xs text-gray-500">
+              Ondersteund: CSV (`,`/`;`/tab`) &amp; Excel. Headers in NL of EN toegestaan.
+              Periode: <code>MM-YYYY</code>, <code>YYYY-MM</code>, <code>Qn-YYYY</code> of <code>YYYY-Qn</code>.
+              Mix van maanden/kwartalen wordt automatisch geconsolideerd naar kwartalen.
+            </p>
         </div>
 
         <div className="grow" />
