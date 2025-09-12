@@ -1,22 +1,23 @@
 // app/api/pricing/customers/route.ts
 import { NextResponse } from "next/server";
-import { db } from "@/lib/pricing/db";
+import { getCustomers, setCustomers, type Customer } from "@/lib/pricing/db";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const customers = await db.listCustomers();
-  return NextResponse.json(customers);
+  const rows = await getCustomers();
+  return NextResponse.json({ ok: true, rows });
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json()) as { customers: { name: string; code?: string }[] };
-  if (!Array.isArray(body.customers)) return NextResponse.json({ error: "customers[] verplicht" }, { status: 400 });
-  const items = await db.upsertCustomers(body.customers.map((c) => ({ name: c.name.trim(), code: c.code?.trim() })));
-  return NextResponse.json(items, { status: 201 });
-}
-
-export async function PUT(req: Request) {
-  const body = (await req.json()) as { customerId: string; discount_pct: number };
-  if (!body.customerId || body.discount_pct == null) return NextResponse.json({ error: "customerId & discount_pct verplicht" }, { status: 400 });
-  const set = await db.setCustomerDiscount(body.customerId, Number(body.discount_pct));
-  return NextResponse.json(set);
+  try {
+    const body = (await req.json()) as { rows: Customer[] };
+    if (!Array.isArray(body?.rows)) {
+      return NextResponse.json({ ok: false, error: "Body must be { rows: Customer[] }" }, { status: 400 });
+    }
+    await setCustomers(body.rows);
+    return NextResponse.json({ ok: true, count: body.rows.length });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message || "Invalid JSON" }, { status: 400 });
+  }
 }
