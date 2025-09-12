@@ -218,7 +218,7 @@ export default function FeaturesPage() {
           {/* Visual rechts */}
           <div className="order-1 md:order-2">
             <Image
-              src="/public/analytics-dashboard.png"
+              src="/images/analytics-dashboard.png"
               alt="Voorbeeld van het analytics dashboard"
               width={800}
               height={450}
