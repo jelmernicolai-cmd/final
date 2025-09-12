@@ -252,7 +252,7 @@ export default function WgpBuilderPage() {
             <div className="font-medium">1) AIP-master (.xlsx/.csv)</div>
             <input
               type="file"
-              accept=".xlsx,.xls,.csv"
+              accept=".xlsx,.xls,.csv,.pdf"
               onChange={onUploadAip}
               className="mt-1 block w-full rounded-md border px-3 py-2"
             />
