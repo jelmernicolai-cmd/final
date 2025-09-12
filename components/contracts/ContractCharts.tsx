@@ -25,7 +25,7 @@ export default function ContractCharts({
   topContracts: string[];
   seriesByContract: Record<string,{x:string[]; y:number[];}>;
 }) {
-  const x = totals.map(t=>t.periode);
+  const x = totals.map(t => t.periodKey);
   const y = totals.map(t=>t.totaal_netto);
   return (
     <div className="grid gap-6 md:grid-cols-2">
