@@ -1,5 +1,6 @@
 // app/features/page.tsx
 import Link from "next/link";
+import Image from "next/image";
 
 export const metadata = {
   title: "Features",
@@ -7,14 +8,40 @@ export const metadata = {
     "Scenario’s, Gross-to-Net waterfall, KPI’s en exports. Veilig, snel en gemaakt voor farma-teams.",
 };
 
+/* ========== Types ========== */
+type IconName =
+  | "sparkles"
+  | "chart"
+  | "template"
+  | "kpi"
+  | "shield"
+  | "cloud"
+  | "rocket"
+  | "euro"
+  | "clock"
+  | "check"
+  | "zap"
+  | "timer"
+  | "layers"
+  | "file-text";
+
+type FeatureCard = {
+  icon: IconName;
+  title: string;
+  bullets: string[];
+  cta: { href: string; label: string };
+};
+
+type Highlight = { icon: IconName; k: string; v: string; sub: string };
+
 export default function FeaturesPage() {
-  const cards = [
+  const cards: FeatureCard[] = [
     {
       icon: "rocket",
       title: "Scenario-analyse",
       bullets: [
         "Vergelijk meerdere scenario’s met elkaar",
-        "Impact in direct zichtbaar",
+        "Impact direct zichtbaar",
         "Export voor rapportage in PDF/Excel/CSV",
       ],
       cta: { href: "/pricing", label: "Bekijk licentie" },
@@ -55,7 +82,7 @@ export default function FeaturesPage() {
       bullets: [
         "Role-based access (RBAC)",
         "Data wordt niet op server opgeslagen (SessionStorage only)",
-        "Client-side upload + alleen tijdelijk opslag",
+        "Client-side upload + alleen tijdelijke opslag",
       ],
       cta: { href: "/about#security", label: "Lees security" },
     },
@@ -65,57 +92,55 @@ export default function FeaturesPage() {
       bullets: [
         "EU-hosting, versleuteld in transit/at rest",
         "Dataminimalisatie (geen PII/health data)",
-        "In lijn met  compliance/SOP richtlijnen",
+        "In lijn met compliance/SOP richtlijnen",
       ],
       cta: { href: "/about#security", label: "Meer over privacy" },
     },
   ];
 
-const highlights = [
-  { icon: "zap", k: "Snelle start", v: "in dagen", sub: "met kant-en-klare templates" },
-  { icon: "timer", k: "Besparing", v: "uren", sub: "per analysecyclus" },
-  { icon: "layers", k: "Inzicht", v: "per stap", sub: "gross → net volledig verklaard" },
-  { icon: "file-text", k: "Exports", v: "klik & klaar", sub: "voor rapportage en interne review" },
-];
+  const highlights: Highlight[] = [
+    { icon: "zap", k: "Snelle start", v: "in dagen", sub: "met kant-en-klare templates" },
+    { icon: "timer", k: "Besparing", v: "uren", sub: "per analysecyclus" },
+    { icon: "layers", k: "Inzicht", v: "per stap", sub: "gross → net volledig verklaard" },
+    { icon: "file-text", k: "Exports", v: "klik & klaar", sub: "voor rapportage en interne review" },
+  ];
 
   return (
     <main>
-{/* HERO */}
-<section className="border-b bg-gradient-to-b from-white to-sky-50">
-  <div className="mx-auto max-w-6xl px-4 py-12 md:py-16 text-center">
-    <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-1 text-xs font-medium text-white">
-      <Dot /> Gemaakt voor farma-teams
-    </span>
-    <div className="max-w-4xl mx-auto">
-      <h1 className="mt-4 text-3xl md:text-5xl font-bold leading-tight">
-        Alles wat je nodig hebt voor{" "}
-        <span className="underline decoration-sky-300/60">betrouwbare GtN-analyses</span>
-      </h1>
-      <p className="mt-4 text-slate-700">
-        Zie direct waar marge weg lekt, optimaliseer je commerciële beleid, check consistentie en exporteer resultaten.
-      </p>
-    </div>
-    <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-      <Link
-        href="/pricing"
-        className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-5 py-3 text-white hover:opacity-95"
-      >
-        Bekijk pricing
-      </Link>
-      <Link
-        href="/contact"
-        className="rounded-xl border px-5 py-3 hover:bg-white"
-      >
-        Plan een demo
-      </Link>
-    </div>
-    <p className="mt-3 text-xs text-slate-500">
-      EU-hosting • Dataminimalisatie • Exports naar Excel/PDF
-    </p>
-  </div>
-</section>
-
-
+      {/* HERO */}
+      <section className="border-b bg-gradient-to-b from-white to-sky-50">
+        <div className="mx-auto max-w-6xl px-4 py-12 md:py-16 text-center">
+          <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-sky-600 to-indigo-600 px-3 py-1 text-xs font-medium text-white">
+            <Dot /> Gemaakt voor farma-teams
+          </span>
+          <div className="max-w-4xl mx-auto">
+            <h1 className="mt-4 text-3xl md:text-5xl font-bold leading-tight">
+              Alles wat je nodig hebt voor{" "}
+              <span className="underline decoration-sky-300/60">betrouwbare GtN-analyses</span>
+            </h1>
+            <p className="mt-4 text-slate-700">
+              Zie direct waar marge weg lekt, optimaliseer je commerciële beleid, check consistentie en exporteer resultaten.
+            </p>
+          </div>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/pricing"
+              className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-5 py-3 text-white hover:opacity-95"
+            >
+              Bekijk pricing
+            </Link>
+            <Link
+              href="/contact"
+              className="rounded-xl border px-5 py-3 hover:bg-white"
+            >
+              Plan een demo
+            </Link>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            EU-hosting • Dataminimalisatie • Exports naar Excel/PDF
+          </p>
+        </div>
+      </section>
 
       {/* HIGHLIGHTS STRIP */}
       <section className="border-b bg-white">
@@ -125,7 +150,9 @@ const highlights = [
               <Icon name={h.icon} className="h-5 w-5 text-sky-700" />
               <div>
                 <div className="text-sm font-semibold">{h.k}</div>
-                <div className="text-xs text-slate-600">{h.v} <span className="text-slate-500">{h.sub}</span></div>
+                <div className="text-xs text-slate-600">
+                  {h.v} <span className="text-slate-500">{h.sub}</span>
+                </div>
               </div>
             </div>
           ))}
@@ -138,7 +165,7 @@ const highlights = [
           {cards.map((c) => (
             <article key={c.title} className="group rounded-2xl border bg-white p-6 hover:shadow-md transition">
               <div className="inline-flex items-center justify-center rounded-xl bg-gradient-to-br from-sky-50 to-indigo-50 ring-1 ring-sky-100/60 p-3">
-                <Icon name={c.icon as IconName} className="h-6 w-6 text-sky-700" />
+                <Icon name={c.icon} className="h-6 w-6 text-sky-700" />
               </div>
               <h2 className="mt-4 text-lg font-semibold">{c.title}</h2>
               <ul className="mt-3 space-y-2 text-sm text-slate-700">
@@ -162,50 +189,45 @@ const highlights = [
         </div>
       </section>
 
-    import Image from "next/image";
-import Link from "next/link";
-import { Check } from "lucide-react";
+      {/* SPLIT SECTION */}
+      <section className="mx-auto max-w-6xl px-4 pb-14">
+        <div className="grid items-center gap-6 md:grid-cols-2">
+          <div className="order-2 md:order-1">
+            <h3 className="text-xl font-semibold">Van upload tot besluit, in één flow</h3>
+            <p className="mt-2 text-sm text-slate-700">
+              Upload je data met de templates, controleer consistentie en zie direct de impact in de waterfall of scenario-vergelijking.
+            </p>
+            <ul className="mt-4 space-y-2 text-sm text-slate-700">
+              <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Validatie bij upload</li>
+              <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Waterfall & KPI-overzicht</li>
+              <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Exporteer naar PDF/CSV</li>
+            </ul>
+            <div className="mt-5 flex gap-3">
+              <Link href="/templates" className="rounded-xl border px-4 py-2 hover:bg-slate-50">
+                Download templates
+              </Link>
+              <Link
+                href="/contact"
+                className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2 text-white hover:opacity-95"
+              >
+                Vraag demo
+              </Link>
+            </div>
+          </div>
 
-{/* SPLIT SECTION */}
-<section className="mx-auto max-w-6xl px-4 pb-14">
-  <div className="grid items-center gap-6 md:grid-cols-2">
-    <div className="order-2 md:order-1">
-      <h3 className="text-xl font-semibold">Van upload tot besluit, in één flow</h3>
-      <p className="mt-2 text-sm text-slate-700">
-        Upload je data met de templates, controleer consistentie en zie direct de impact in de waterfall of scenario-vergelijking.
-      </p>
-      <ul className="mt-4 space-y-2 text-sm text-slate-700">
-        <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Validatie bij upload</li>
-        <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Waterfall & KPI-overzicht</li>
-        <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Exporteer naar PDF/CSV</li>
-      </ul>
-      <div className="mt-5 flex gap-3">
-        <Link href="/templates" className="rounded-xl border px-4 py-2 hover:bg-slate-50">
-          Download templates
-        </Link>
-        <Link
-          href="/contact"
-          className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2 text-white hover:opacity-95"
-        >
-          Vraag demo
-        </Link>
-      </div>
-    </div>
-
-    {/* Visual rechts */}
-    <div className="order-1 md:order-2">
-      <Image
-        src="/analytics-dashboard.png"
-        alt="Voorbeeld van het analytics dashboard"
-        width={800}
-        height={450}
-        className="rounded-2xl border shadow-md"
-        priority
-      />
-    </div>
-  </div>
-</section>
-
+          {/* Visual rechts */}
+          <div className="order-1 md:order-2">
+            <Image
+              src="/analytics-dashboard.png"
+              alt="Voorbeeld van het analytics dashboard"
+              width={800}
+              height={450}
+              className="rounded-2xl border shadow-md"
+              priority
+            />
+          </div>
+        </div>
+      </section>
 
       {/* FINAL CTA */}
       <section className="border-t bg-gradient-to-r from-sky-600 to-indigo-600">
@@ -227,8 +249,6 @@ import { Check } from "lucide-react";
 }
 
 /* ========== Icons (inline, geen dependency) ========== */
-type IconName = "sparkles" | "chart" | "template" | "kpi" | "shield" | "cloud" | "rocket" | "euro" | "clock" | "check";
-
 function Icon({ name, className }: { name: IconName | string; className?: string }) {
   switch (name) {
     case "sparkles":
@@ -285,6 +305,30 @@ function Icon({ name, className }: { name: IconName | string; className?: string
           <path fill="currentColor" d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2zm1 11h5v-2h-4V6h-2v7z"/>
         </svg>
       );
+    case "zap":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" />
+        </svg>
+      );
+    case "timer":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M9 2h6v2H9V2zm3 4a9 9 0 1 0 0.001 18.001A9 9 0 0 0 12 6zm1 5v5h4v-2h-2v-3h-2z" />
+        </svg>
+      );
+    case "layers":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M12 3l9 5-9 5-9-5 9-5zm0 8l9 5-9 5-9-5 9-5z" />
+        </svg>
+      );
+    case "file-text":
+      return (
+        <svg viewBox="0 0 24 24" className={className} aria-hidden>
+          <path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM8 9h8v2H8V9zm0 4h8v2H8v-2zm6-9.5L19.5 8H14V3.5z"/>
+        </svg>
+      );
     case "check":
       return <Check className={className} />;
     default:
@@ -295,7 +339,11 @@ function Icon({ name, className }: { name: IconName | string; className?: string
 function Check(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 20 20" fill="currentColor" {...props}>
-      <path fillRule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-7.2 7.2a1 1 0 01-1.4 0L3.3 9.1a1 1 0 011.4-1.4l3 3 6.5-6.5a1 1 0 011.4 0z" clipRule="evenodd" />
+      <path
+        fillRule="evenodd"
+        d="M16.7 5.3a1 1 0 010 1.4l-7.2 7.2a1 1 0 01-1.4 0L3.3 9.1a1 1 0 011.4-1.4l3 3 6.5-6.5a1 1 0 011.4 0z"
+        clipRule="evenodd"
+      />
     </svg>
   );
 }
