@@ -92,7 +92,7 @@ const highlights = [
         <span className="underline decoration-sky-300/60">betrouwbare GtN-analyses</span>
       </h1>
       <p className="mt-4 text-slate-700">
-        Bouw scenario’s, zie de waterfall, check consistentie en exporteer resultaten — zonder zware IT-trajecten.
+        Zie direct waar marge weg lekt, optimaliseer je commerciële beleid, check consistentie en exporteer resultaten.
       </p>
     </div>
     <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
