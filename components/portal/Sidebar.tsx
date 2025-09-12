@@ -184,13 +184,19 @@ export default function Sidebar() {
     { href: "/app/parallel", label: "Parallel", icon: "arrows" },
     { href: "/app/supply", label: "Stock Management", icon: "boxes" },
     { href: "/app/loe", label: "LoE Scenario's", icon: "loe" },
-    { href: "/app/contracts", label: "Contract Performance", icon: "waterfall" }, // ✅ nieuw
+    { href: "/app/contracts", label: "Contract Performance", icon: "waterfall" },
   ];
 
   const DATA_UPLOAD: Item[] = [
     { href: "/app/upload", label: "Upload masterfile", icon: "upload" },
     { href: "/templates", label: "Templates", icon: "template" },
   ];
+
+  // ✅ Nieuw: Pricing-sectie
+  const PRICING: Item[] = [
+    { href: "/app/pricing", label: "Prijsbeheer", icon: "template" },
+  ];
+
   const SETTINGS_SUPPORT: Item[] = [
     { href: "/app/settings", label: "Instellingen", icon: "settings" },
     { href: "/contact", label: "Contact & Support", icon: "support" },
@@ -210,6 +216,7 @@ export default function Sidebar() {
       {/* Desktop */}
       <div className="hidden md:block p-3 space-y-4">
         <Section title="Analyses"><NavList pathname={pathname} items={ANALYSES} /></Section>
+        <Section title="Pricing"><NavList pathname={pathname} items={PRICING} /></Section> {/* ✅ nieuw blok */}
         <Section title="Data & Upload"><NavList pathname={pathname} items={DATA_UPLOAD} /></Section>
         <Section title="Instellingen & Support"><NavList pathname={pathname} items={SETTINGS_SUPPORT} /></Section>
       </div>
@@ -218,6 +225,7 @@ export default function Sidebar() {
       <nav id="portal-mobile-menu" ref={panelRef} className={cx("md:hidden border-t overflow-hidden transition-[max-height] duration-300 ease-in-out", open ? "max-h-[80vh]" : "max-h-0")} aria-hidden={!open}>
         <div className="p-3 space-y-4">
           <Section title="Analyses"><NavList pathname={pathname} items={ANALYSES} onItemClick={() => setOpen(false)} /></Section>
+          <Section title="Pricing"><NavList pathname={pathname} items={PRICING} onItemClick={() => setOpen(false)} /></Section> {/* ✅ nieuw blok */}
           <Section title="Data & Upload"><NavList pathname={pathname} items={DATA_UPLOAD} onItemClick={() => setOpen(false)} /></Section>
           <Section title="Instellingen & Support"><NavList pathname={pathname} items={SETTINGS_SUPPORT} onItemClick={() => setOpen(false)} /></Section>
         </div>
