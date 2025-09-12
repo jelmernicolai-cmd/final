@@ -162,33 +162,50 @@ const highlights = [
         </div>
       </section>
 
-      {/* SPLIT SECTION (VISUAL PLACEHOLDERS) */}
-      <section className="mx-auto max-w-6xl px-4 pb-14">
-        <div className="grid items-center gap-6 md:grid-cols-2">
-          <div className="order-2 md:order-1">
-            <h3 className="text-xl font-semibold">Van upload tot besluit, in één flow</h3>
-            <p className="mt-2 text-sm text-slate-700">
-              Upload je data met de templates, controleer consistentie en zie direct de impact in de waterfall of scenario-vergelijking.
-            </p>
-            <ul className="mt-4 space-y-2 text-sm text-slate-700">
-              <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Validatie bij upload</li>
-              <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Waterfall & KPI-overzicht</li>
-              <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Exporteer naar PDF/CSV</li>
-            </ul>
-            <div className="mt-5 flex gap-3">
-              <Link href="/templates" className="rounded-xl border px-4 py-2 hover:bg-slate-50">Download templates</Link>
-              <Link href="/contact" className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2 text-white hover:opacity-95">
-                Vraag demo
-              </Link>
-            </div>
-          </div>
-          <div className="order-1 md:order-2">
-            <div className="h-56 rounded-2xl border bg-gradient-to-br from-white to-slate-50 grid place-items-center text-sm text-slate-500">
-              Visual / Screenshot (waterfall)
-            </div>
-          </div>
-        </div>
-      </section>
+    import Image from "next/image";
+import Link from "next/link";
+import { Check } from "lucide-react";
+
+{/* SPLIT SECTION */}
+<section className="mx-auto max-w-6xl px-4 pb-14">
+  <div className="grid items-center gap-6 md:grid-cols-2">
+    <div className="order-2 md:order-1">
+      <h3 className="text-xl font-semibold">Van upload tot besluit, in één flow</h3>
+      <p className="mt-2 text-sm text-slate-700">
+        Upload je data met de templates, controleer consistentie en zie direct de impact in de waterfall of scenario-vergelijking.
+      </p>
+      <ul className="mt-4 space-y-2 text-sm text-slate-700">
+        <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Validatie bij upload</li>
+        <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Waterfall & KPI-overzicht</li>
+        <li className="flex gap-2"><Check className="h-4 w-4 text-emerald-600" /> Exporteer naar PDF/CSV</li>
+      </ul>
+      <div className="mt-5 flex gap-3">
+        <Link href="/templates" className="rounded-xl border px-4 py-2 hover:bg-slate-50">
+          Download templates
+        </Link>
+        <Link
+          href="/contact"
+          className="rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2 text-white hover:opacity-95"
+        >
+          Vraag demo
+        </Link>
+      </div>
+    </div>
+
+    {/* Visual rechts */}
+    <div className="order-1 md:order-2">
+      <Image
+        src="/analytics-dashboard.png"
+        alt="Voorbeeld van het analytics dashboard"
+        width={800}
+        height={450}
+        className="rounded-2xl border shadow-md"
+        priority
+      />
+    </div>
+  </div>
+</section>
+
 
       {/* FINAL CTA */}
       <section className="border-t bg-gradient-to-r from-sky-600 to-indigo-600">
