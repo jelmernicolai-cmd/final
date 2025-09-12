@@ -1,6 +1,4 @@
 // app/app/contracts/page.tsx
-"use client";
-
 import Link from "next/link";
 import UploadAndDashboard from "../../../components/contracts/UploadAndDashboard";
 
@@ -38,7 +36,7 @@ export default function Page() {
         </div>
       </header>
 
-      {/* BODY: Instructies + Tool */}
+      {/* BODY */}
       <section className="grid gap-4 lg:grid-cols-12">
         {/* Left: Upload + Dashboard */}
         <div className="lg:col-span-8 space-y-4">
@@ -49,7 +47,6 @@ export default function Page() {
               <code>claim_amount</code> (uitbetaalde korting), <code>revenue</code>, <code>period</code>.
             </p>
             <div className="mt-4">
-              {/* Laat alle bestaande functionaliteit hierbinnen intact */}
               <UploadAndDashboard />
             </div>
           </div>
@@ -93,7 +90,7 @@ export default function Page() {
             <ul className="mt-2 list-disc pl-5 text-sm text-gray-700 space-y-1">
               <li>Ontbrekende kolomnaam (bijv. <code>period</code> of <code>claim_amount</code>).</li>
               <li>Onjuiste datumnotatie (zet om naar <code>MM-YYYY</code> of <code>YYYY-MM</code>).</li>
-              <li>Lege rijen/tweede lege tabblad in Excel.</li>
+              <li>Lege rijen/tweede leeg tabblad in Excel.</li>
             </ul>
             <Link href="/templates" className="mt-3 inline-flex items-center gap-2 text-sm text-sky-700 hover:underline">
               Gebruik de voorbeeld-template <ArrowRight className="h-4 w-4" />
