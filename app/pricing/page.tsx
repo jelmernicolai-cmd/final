@@ -194,7 +194,7 @@ export default function PricingNL() {
               brand: { "@type": "Brand", name: "PharmaGtN" },
               offers: {
                 "@type": "Offer",
-                price: "2500",
+                price: "3900",
                 priceCurrency: "EUR",
                 priceValidUntil: "2099-12-31",
                 availability: "https://schema.org/InStock",
