@@ -10,7 +10,7 @@ export default function Footer() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="space-y-1">
               <h3 className="text-xl sm:text-2xl font-semibold leading-snug">
-                Zien hoe PharmaGtN jouw Gross-to-Net versnelt?
+                Zien hoe PharmaGtN jouw kortingsbeleid optimaliseert?
               </h3>
               <p className="text-white/90 text-sm">
                 Korte demo met jouw casus — zonder verplichtingen.
