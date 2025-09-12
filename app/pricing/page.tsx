@@ -95,7 +95,7 @@ export default function PricingNL() {
             </div>
 
             <div className="mt-6 flex items-baseline gap-2">
-              <div className="text-4xl font-bold">€2.500</div>
+              <div className="text-4xl font-bold">€3.900</div>
               <div className="text-gray-500">/ jaar / entiteit</div>
             </div>
 
