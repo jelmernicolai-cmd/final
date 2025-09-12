@@ -115,7 +115,7 @@ export default function Footer() {
 
           <FooterCol title="Bedrijf">
             <FooterLink href="/about">Over ons</FooterLink>
-            <FooterLink href="/app/security">Security</FooterLink>
+            <FooterLink href="/security">Security</FooterLink>
             <FooterLink href="/contact">Contact</FooterLink>
           </FooterCol>
 
