@@ -169,20 +169,32 @@ export default function WgpBuilderPage() {
   }
 
   async function onUploadSc(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    e.currentTarget.value = "";
-    if (!f) return;
-    setErr(null);
-    setBusy(true);
-    try {
+  const f = e.target.files?.[0];
+  e.currentTarget.value = "";
+  if (!f) return;
+  setErr(null);
+  setBusy(true);
+  try {
+    const ext = f.name.toLowerCase().split(".").pop() || "";
+
+    if (ext === "pdf") {
+      const fd = new FormData();
+      fd.append("file", f);
+      const res = await fetch("/api/wgp/parse-pdf", { method: "POST", body: fd });
+      const js = await res.json();
+      if (!res.ok) throw new Error(js?.error || "PDF niet verwerkt.");
+      // rows: { reg, unit_price_eur, valid_from? }[]
+      setScUnits(js.rows);
+    } else {
+      // bestaand pad (xlsx/csv)
       const json = await parseSheetToJson(f);
       const rows = json.map(toScUnitRow).filter((r) => r.reg && Number.isFinite(r.unit_price_eur));
       setScUnits(rows);
-    } catch (e: any) {
-      setErr(e?.message || "Staatscourant-eenheidsprijzen konden niet worden gelezen.");
-    } finally {
-      setBusy(false);
     }
+  } catch (e: any) {
+    setErr(e?.message || "Staatscourant-eenheidsprijzen konden niet worden gelezen.");
+  } finally {
+    setBusy(false);
   }
 
   const joined: Joined[] = useMemo(() => {
