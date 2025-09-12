@@ -1,92 +1,214 @@
 // lib/contract-analysis.ts
-export type Row = { klant:string; sku:string; aantal_units:number; claimbedrag:number; omzet:number; periode:string; };
-export type ContractLevel = "klant" | "klant_sku";
-export type AggRow = {
-  contract:string; periode:string; omzet:number; claimbedrag:number; aantal_units:number; netto_omzet:number;
-  pct_groei_omzet?:number|null; pct_groei_netto?:number|null; pct_groei_units?:number|null;
-  pct_groei_totaal_omzet?:number|null; pct_groei_totaal_netto?:number|null; pct_groei_totaal_units?:number|null;
-  outperform_omzet?:boolean|null; outperform_netto?:boolean|null; outperform_units?:boolean|null;
-  contrib_omzet?:number|null; contrib_netto?:number|null; contrib_units?:number|null;
-};
-export type TotalRow = {
-  periode:string; totaal_omzet:number; totaal_netto:number; totaal_units:number;
-  pct_groei_totaal_omzet?:number|null; pct_groei_totaal_netto?:number|null; pct_groei_totaal_units?:number|null;
-};
-const byPeriodeAsc = (a:string,b:string)=> a.localeCompare(b);
-const safePct = (p:number,c:number)=> !isFinite(p)||Math.abs(p)<1e-9 ? null : (c-p)/p;
-const yyyymm = (p:string)=>{ const [y,m]=p.split("-").map(s=>s.trim()); return `${y}-${m.padStart(2,"0")}`; };
-const id = (r:Row, lvl:ContractLevel)=> lvl==="klant_sku" ? `${r.klant} | ${r.sku}` : r.klant;
+import { monthToQuarter, normalizePeriodFlexible, type NormPeriod } from "./contract-time";
 
-export function groupAndAggregate(input:Row[], lvl:ContractLevel):AggRow[] {
-  const map = new Map<string,AggRow>();
-  for (const r of input){
-    const periode = yyyymm(r.periode), contract = id(r,lvl), key = `${contract}__${periode}`;
-    const prev = map.get(key) ?? { contract, periode, omzet:0, claimbedrag:0, aantal_units:0, netto_omzet:0 };
-    prev.omzet += Number(r.omzet)||0;
-    prev.claimbedrag += Number(r.claimbedrag)||0;
-    prev.aantal_units += Number(r.aantal_units)||0;
-    prev.netto_omzet = prev.omzet - prev.claimbedrag;
-    map.set(key, prev);
-  }
-  return [...map.values()].sort((a,b)=> a.contract===b.contract ? byPeriodeAsc(a.periode,b.periode) : a.contract.localeCompare(b.contract));
+export type ContractLevel = "klant_sku" | "klant";
+export type Row = {
+  klant: string;
+  sku: string;
+  aantal_units: number;
+  claimbedrag: number;
+  omzet: number;
+  periode: string; // mag MM-YYYY / YYYY-MM / Qn-YYYY / YYYY-Qn
+};
+
+export type AggRow = {
+  key: string;         // aggregatiesleutel
+  klant: string;
+  sku?: string;
+  periodKey: string;   // canonical (YYYY-MM of YYYY-Qn)
+  periodLabel: string; // mooi label
+  revenue: number;
+  units: number;
+  claim: number;
+};
+
+export type TotalRow = {
+  periodKey: string;
+  periodLabel: string;
+  revenue: number;
+  units: number;
+  claim: number;
+};
+
+export type LatestPerf = {
+  key: string;
+  klant: string;
+  sku?: string;
+  periodKey: string;
+  revenue: number;
+  growthPct: number;       // vs vorige periode
+  deltaVsTotal: number;    // growthPct - totalGrowthPct
+};
+
+export type AnalyzeResult = {
+  agg: AggRow[];
+  totals: TotalRow[];
+  latest: LatestPerf[];
+  kpis: {
+    latestPeriod: string;
+    totalRevenue: number;
+    totalGrowthPct: number;
+    topSharePct: number; // aandeel top-5 contracts in omzet
+  };
+};
+
+type CanonRow = Row & { norm: NormPeriod };
+
+function compactSum<T>(arr: T[], sel: (t: T) => number) {
+  return arr.reduce((a, t) => a + (Number.isFinite(sel(t)) ? sel(t) : 0), 0);
 }
-export function computeTotals(agg:AggRow[]):TotalRow[] {
-  const per = new Map<string,TotalRow>();
-  for (const r of agg){
-    const t = per.get(r.periode) ?? { periode:r.periode, totaal_omzet:0, totaal_netto:0, totaal_units:0 };
-    t.totaal_omzet += r.omzet; t.totaal_netto += r.netto_omzet; t.totaal_units += r.aantal_units; per.set(r.periode,t);
+
+/** Normaliseer + filter (periode, getallen) */
+function normalizeRows(rows: Row[]): CanonRow[] {
+  const out: CanonRow[] = [];
+  for (const r of rows) {
+    const normP = normalizePeriodFlexible(r.periode);
+    if (!normP) continue;
+    const rev = Number.isFinite(r.omzet) ? r.omzet : 0;
+    const units = Number.isFinite(r.aantal_units) ? r.aantal_units : 0;
+    const claim = Number.isFinite(r.claimbedrag) ? r.claimbedrag : 0;
+    out.push({ ...r, omzet: rev, aantal_units: units, claimbedrag: claim, norm: normP });
   }
-  const rows = [...per.values()].sort((a,b)=>byPeriodeAsc(a.periode,b.periode));
-  for (let i=1;i<rows.length;i++){ const p=rows[i-1], c=rows[i];
-    c.pct_groei_totaal_omzet = safePct(p.totaal_omzet,c.totaal_omzet);
-    c.pct_groei_totaal_netto = safePct(p.totaal_netto,c.totaal_netto);
-    c.pct_groei_totaal_units = safePct(p.totaal_units,c.totaal_units);
-  }
-  return rows;
+  return out;
 }
-export function addContractGrowth(agg:AggRow[]):AggRow[] {
-  let i=0; while(i<agg.length){ const j=i; while(i<agg.length && agg[i].contract===agg[j].contract) i++;
-    for(let k=j+1;k<i;k++){ const p=agg[k-1], c=agg[k];
-      c.pct_groei_omzet = safePct(p.omzet,c.omzet);
-      c.pct_groei_netto = safePct(p.netto_omzet,c.netto_omzet);
-      c.pct_groei_units = safePct(p.aantal_units,c.aantal_units);
+
+/** Indien mix van maanden en kwartalen: aggregeer maanden → kwartalen. */
+function coerceToUniformPeriod(rows: CanonRow[]): { kind: "M" | "Q"; rows: CanonRow[] } {
+  const hasM = rows.some((r) => r.norm.kind === "M");
+  const hasQ = rows.some((r) => r.norm.kind === "Q");
+  if (hasM && hasQ) {
+    // map alle maanden naar kwartalen
+    const map = new Map<string, CanonRow[]>();
+    for (const r of rows) {
+      const k = r.norm.kind === "M" ? monthToQuarter(r.norm.key) : r.norm.key;
+      const key = `${r.klant}||${r.sku}||${k}`;
+      const cur = map.get(key) || [];
+      cur.push(r);
+      map.set(key, cur);
     }
-  } return agg;
-}
-export function joinTotals(agg:AggRow[], totals:TotalRow[]):AggRow[] {
-  const idx = new Map(totals.map(t=>[t.periode,t]));
-  for (const r of agg){ const t=idx.get(r.periode);
-    r.pct_groei_totaal_omzet = t?.pct_groei_totaal_omzet ?? null;
-    r.pct_groei_totaal_netto = t?.pct_groei_totaal_netto ?? null;
-    r.pct_groei_totaal_units = t?.pct_groei_totaal_units ?? null;
-    r.outperform_omzet = r.pct_groei_omzet!=null && t?.pct_groei_totaal_omzet!=null ? r.pct_groei_omzet > (t.pct_groei_totaal_omzet as number) : null;
-    r.outperform_netto = r.pct_groei_netto!=null && t?.pct_groei_totaal_netto!=null ? r.pct_groei_netto > (t.pct_groei_totaal_netto as number) : null;
-    r.outperform_units = r.pct_groei_units!=null && t?.pct_groei_totaal_units!=null ? r.pct_groei_units > (t.pct_groei_totaal_units as number) : null;
-  } return agg;
-}
-export function addContributions(agg:AggRow[]):AggRow[] {
-  type D={contract:string; periode:string; dOmzet:number; dNetto:number; dUnits:number};
-  const deltas:D[]=[]; let i=0; while(i<agg.length){ const j=i; while(i<agg.length && agg[i].contract===agg[j].contract) i++;
-    for (let k=j;k<i;k++){ const p=k>j?agg[k-1]:undefined, c=agg[k];
-      deltas.push({ contract:c.contract, periode:c.periode,
-        dOmzet:p?c.omzet-p.omzet:0, dNetto:p?c.netto_omzet-p.netto_omzet:0, dUnits:p?c.aantal_units-p.aantal_units:0 });
+    const mixed: CanonRow[] = [];
+    for (const list of map.values()) {
+      const first = list[0];
+      const yyyyQ = first.norm.kind === "M" ? monthToQuarter(first.norm.key) : first.norm.key;
+      const [yyyy, qS] = yyyyQ.split("-Q");
+      const norm: NormPeriod = {
+        kind: "Q",
+        key: yyyyQ,
+        label: `Q${qS}-${yyyy}`,
+        sortKey: Number(yyyy) * 10 + Number(qS),
+      };
+      mixed.push({
+        ...first,
+        norm,
+        omzet: compactSum(list, (x) => x.omzet),
+        aantal_units: compactSum(list, (x) => x.aantal_units),
+        claimbedrag: compactSum(list, (x) => x.claimbedrag),
+      });
     }
+    return { kind: "Q", rows: mixed };
   }
-  const sum = new Map<string,{dOmzet:number;dNetto:number;dUnits:number}>();
-  for (const d of deltas){ const t=sum.get(d.periode) ?? {dOmzet:0,dNetto:0,dUnits:0}; t.dOmzet+=d.dOmzet; t.dNetto+=d.dNetto; t.dUnits+=d.dUnits; sum.set(d.periode,t); }
-  const ref = new Map<string,AggRow>(); for (const r of agg) ref.set(`${r.contract}__${r.periode}`, r);
-  for (const d of deltas){ const t=sum.get(d.periode)!; const r=ref.get(`${d.contract}__${d.periode}`)!;
-    r.contrib_omzet = Math.abs(t.dOmzet)>0 ? d.dOmzet/t.dOmzet : null;
-    r.contrib_netto = Math.abs(t.dNetto)>0 ? d.dNetto/t.dNetto : null;
-    r.contrib_units = Math.abs(t.dUnits)>0 ? d.dUnits/t.dUnits : null;
-  } return agg;
+  return { kind: hasQ ? "Q" : "M", rows };
 }
-export function latestSnapshot(agg:AggRow[]):AggRow[] {
-  const ps=[...new Set(agg.map(r=>r.periode))].sort(byPeriodeAsc); const last=ps[ps.length-1];
-  return agg.filter(r=>r.periode===last);
-}
-export function analyze(rows:Row[], level:ContractLevel="klant_sku"){
-  const a0=groupAndAggregate(rows,level), a1=addContractGrowth(a0), totals=computeTotals(a1);
-  const a2=joinTotals(a1,totals), a3=addContributions(a2), last=latestSnapshot(a3);
-  return { agg:a3, totals, latest:last };
+
+export function analyze(rows: Row[], level: ContractLevel): AnalyzeResult {
+  // 1) normaliseer input
+  const canon0 = normalizeRows(rows);
+  const { kind, rows: canon } = coerceToUniformPeriod(canon0);
+
+  // 2) aggregatie per key x period
+  const keyOf = (r: CanonRow) => (level === "klant" ? r.klant : `${r.klant} • ${r.sku}`);
+  type Acc = { revenue: number; units: number; claim: number; klant: string; sku?: string; period: NormPeriod };
+  const aggMap = new Map<string, Acc>();
+  for (const r of canon) {
+    const K = `${keyOf(r)}||${r.norm.key}`;
+    const cur = aggMap.get(K) || { revenue: 0, units: 0, claim: 0, klant: r.klant, sku: level === "klant_sku" ? r.sku : undefined, period: r.norm };
+    cur.revenue += r.omzet;
+    cur.units += r.aantal_units;
+    cur.claim += r.claimbedrag;
+    aggMap.set(K, cur);
+  }
+  const agg: AggRow[] = [...aggMap.values()].map((a) => ({
+    key: a.sku ? `${a.klant} • ${a.sku}` : a.klant,
+    klant: a.klant,
+    sku: a.sku,
+    periodKey: a.period.key,
+    periodLabel: a.period.label,
+    revenue: a.revenue,
+    units: a.units,
+    claim: a.claim,
+  }));
+
+  // 3) totals per period
+  const totalsMap = new Map<string, { revenue: number; units: number; claim: number; period: NormPeriod }>();
+  for (const a of agg) {
+    const per = canon.find((r) => r.norm.key === a.periodKey)?.norm!;
+    const t = totalsMap.get(a.periodKey) || { revenue: 0, units: 0, claim: 0, period: per };
+    t.revenue += a.revenue; t.units += a.units; t.claim += a.claim;
+    totalsMap.set(a.periodKey, t);
+  }
+  const totals: TotalRow[] = [...totalsMap.values()]
+    .sort((a, b) => a.period.sortKey - b.period.sortKey)
+    .map((t) => ({ periodKey: t.period.key, periodLabel: t.period.label, revenue: t.revenue, units: t.units, claim: t.claim }));
+
+  if (totals.length < 2) {
+    // te weinig periodes om groei te tonen
+    return {
+      agg,
+      totals,
+      latest: [],
+      kpis: {
+        latestPeriod: totals[0]?.periodLabel ?? (kind === "Q" ? "Q?-YYYY" : "MM-YYYY"),
+        totalRevenue: totals[0]?.revenue ?? 0,
+        totalGrowthPct: 0,
+        topSharePct: 0,
+      },
+    };
+  }
+
+  // 4) groei huidige vs vorige periode
+  const last = totals[totals.length - 1];
+  const prev = totals[totals.length - 2];
+  const totalGrowthPct = prev.revenue ? (last.revenue - prev.revenue) / prev.revenue : 0;
+
+  // groei per contract (alleen entries die in last/prev bestaan)
+  const byKeyPer = new Map<string, Map<string, AggRow>>();
+  for (const a of agg) {
+    const m = byKeyPer.get(a.key) || new Map<string, AggRow>();
+    m.set(a.periodKey, a);
+    byKeyPer.set(a.key, m);
+  }
+
+  const latest: LatestPerf[] = [];
+  for (const [k, m] of byKeyPer) {
+    const aLast = m.get(last.periodKey);
+    const aPrev = m.get(prev.periodKey);
+    if (!aLast || !aPrev) continue; // geen vergelijk
+    const g = aPrev.revenue ? (aLast.revenue - aPrev.revenue) / aPrev.revenue : 0;
+    latest.push({
+      key: k,
+      klant: aLast.klant,
+      sku: aLast.sku,
+      periodKey: aLast.periodKey,
+      revenue: aLast.revenue,
+      growthPct: g,
+      deltaVsTotal: g - totalGrowthPct,
+    });
+  }
+
+  // KPI’s
+  const sortedByRev = [...latest].sort((a, b) => b.revenue - a.revenue);
+  const top5Rev = sortedByRev.slice(0, 5).reduce((s, r) => s + r.revenue, 0);
+  const topSharePct = last.revenue ? top5Rev / last.revenue : 0;
+
+  return {
+    agg,
+    totals,
+    latest,
+    kpis: {
+      latestPeriod: last.periodLabel,
+      totalRevenue: last.revenue,
+      totalGrowthPct,
+      topSharePct,
+    },
+  };
 }
