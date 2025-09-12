@@ -162,7 +162,7 @@ export default function Home() {
               href="/pricing"
               className="inline-block rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-5 py-3 text-white hover:opacity-95"
             >
-              Bekijk licentie (€2.500/jaar)
+              Bekijk licentie (€3.250/jaar)
             </Link>
           </div>
         </div>
@@ -208,7 +208,7 @@ export default function Home() {
             <div className="rounded-xl border bg-white p-5">
               <h3 className="font-semibold">Wat kost het?</h3>
               <p className="mt-2 text-sm text-gray-700">
-                Licentie €2.500/jaar per entiteit. Enterprise-opties beschikbaar.
+                Licentie €3.250/jaar per entiteit. Enterprise-opties beschikbaar.
               </p>
             </div>
             <div className="rounded-xl border bg-white p-5">
