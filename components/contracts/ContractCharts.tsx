@@ -1,109 +1,77 @@
-// components/contracts/ContractCharts.tsx
+// components/contracts/ContractTable.tsx
 "use client";
-import type { TotalRow } from "@/lib/contract-analysis";
+import type { AggRow } from "../../lib/contract-analysis";
 
-/* Kleine helpers */
-function yyyymm(a: string) {
-  // verwacht "YYYY-MM" of "YYYYQn"; normaliseer voor sorteren
-  const m = /^(\d{4})-(\d{2})$/.exec(a);
-  const q = /^(\d{4})Q([1-4])$/i.exec(a);
-  if (m) return `${m[1]}-${m[2]}`;
-  if (q) return `${q[1]}-${String((Number(q[2]) - 1) * 3 + 1).padStart(2, "0")}`;
-  return a;
+function pct(n?: number | null, d = 1) {
+  const v = Number.isFinite(n as number) ? (n as number) : 0;
+  return `${v.toFixed(d)}%`;
 }
-function sortByPeriodKey<T extends { periodKey: string }>(rows: T[]) {
-  return [...rows].sort((a, b) => (yyyymm(a.periodKey) < yyyymm(b.periodKey) ? -1 : 1));
+function eur(n?: number | null) {
+  const v = Number.isFinite(n as number) ? (n as number) : 0;
+  return new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v);
 }
-/** Tolerant uitlezen van netto totaal uit TotalRow met verschillende sleutel-namen */
-function getNetTotal(t: TotalRow): number {
-  const anyT = t as any;
+
+export default function ContractTable({ rows }: { rows: AggRow[] }) {
   return (
-    Number(anyT.totalNet) ??
-    Number(anyT.total_net) ??
-    Number(anyT.net_total) ??
-    Number(anyT.netto) ??
-    Number(anyT.totaalNetto) ??
-    Number(anyT.totaal_netto) ??
-    0
-  );
-}
+    <div className="rounded-2xl border bg-white">
+      <div className="overflow-x-auto">
+        <table className="min-w-[720px] w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 text-gray-600">
+              <th className="px-3 py-2 text-left">Contract</th>
+              <th className="px-3 py-2 text-right">Netto omzet</th>
+              <th className="px-3 py-2 text-right">Groei (contract)</th>
+              <th className="px-3 py-2 text-right">Groei (totaal)</th>
+              <th className="px-3 py-2 text-right">Δ vs totaal (pp)</th>
+              <th className="px-3 py-2 text-right">Bijdrage</th>
+              <th className="px-3 py-2 text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.map((r, i) => {
+              // Afleiden “beter/slechter”: positieve delta_pp = outperform
+              const delta = Number.isFinite(r.delta_pp as number) ? (r.delta_pp as number) : 0;
+              const chip =
+                !Number.isFinite(r.delta_pp as number) ? (
+                  <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs text-gray-500">n.v.t.</span>
+                ) : delta > 0 ? (
+                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 ring-1 ring-emerald-200">
+                    Beter
+                  </span>
+                ) : delta < 0 ? (
+                  <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-700 ring-1 ring-rose-200">
+                    Lager
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 ring-1 ring-amber-200">
+                    Neutraal
+                  </span>
+                );
 
-/* Eenvoudige lijnchart (responsive via viewBox) */
-function LineChart({
-  x,
-  y,
-  height = 160,
-}: {
-  x: string[];
-  y: number[];
-  height?: number;
-}) {
-  const width = 700;
-  const pad = 24;
-  const xs = x.map((_, i) => pad + (i * (width - 2 * pad)) / Math.max(1, x.length - 1));
-  const minY = Math.min(...y);
-  const maxY = Math.max(...y);
-  const sy = (v: number) =>
-    maxY === minY ? height / 2 : (height - pad) - ((v - minY) * (height - 2 * pad)) / (maxY - minY);
-  const d = y.map((v, i) => `${i ? "L" : "M"} ${xs[i]} ${sy(v)}`).join(" ");
-
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full rounded-lg border bg-white">
-      <path d={d} fill="none" stroke="currentColor" className="text-gray-800" strokeWidth={2} />
-      {x.map((lbl, i) =>
-        i % Math.ceil(x.length / 6 || 1) === 0 ? (
-          <text
-            key={i}
-            x={xs[i]}
-            y={height - 4}
-            fontSize="10"
-            textAnchor="middle"
-            className="fill-gray-500"
-          >
-            {lbl}
-          </text>
-        ) : null
-      )}
-    </svg>
-  );
-}
-
-export default function ContractCharts({
-  totals,
-  topContracts,
-  seriesByContract,
-}: {
-  totals: TotalRow[];
-  topContracts: string[];
-  seriesByContract: Record<string, { x: string[]; y: number[] }>;
-}) {
-  // 1) Totaal chart
-  const sortedTotals = sortByPeriodKey(totals);
-  const x = sortedTotals.map((t) => t.periodKey);
-  const y = sortedTotals.map((t) => getNetTotal(t));
-
-  // 2) Alleen series tonen die bestaan
-  const safeTop = topContracts.filter((c) => seriesByContract[c]?.x?.length);
-
-  return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <div>
-        <div className="mb-2 text-sm font-medium text-gray-700">Totaal netto-omzet per periode</div>
-        <LineChart x={x} y={y} />
+              return (
+                <tr key={i} className="hover:bg-gray-50/60">
+                  <td className="px-3 py-2">
+                    <div className="font-medium text-gray-900">{r.contract}</div>
+                    {r.subLabel ? <div className="text-xs text-gray-500">{r.subLabel}</div> : null}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{eur(r.totaal_netto)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{pct(r.groei_contract_pct)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{pct(r.groei_totaal_pct)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {Number.isFinite(r.delta_pp as number) ? (r.delta_pp! >= 0 ? "+" : "") + (r.delta_pp as number).toFixed(1) + " pp" : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{pct(r.bijdrage_pp, 1)}</td>
+                  <td className="px-3 py-2 text-right">{chip}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-      <div>
-        <div className="mb-2 text-sm font-medium text-gray-700">Top contracten – netto-omzet (tijdreeks)</div>
-        <div className="space-y-4">
-          {safeTop.map((c) => (
-            <div key={c}>
-              <div className="mb-1 text-xs text-gray-500">{c}</div>
-              <LineChart x={seriesByContract[c].x} y={seriesByContract[c].y} height={120} />
-            </div>
-          ))}
-          {safeTop.length === 0 && (
-            <div className="text-xs text-gray-500">Geen contract-series beschikbaar voor weergave.</div>
-          )}
-        </div>
+
+      {/* Mobiele hint */}
+      <div className="md:hidden p-3 border-t text-[11px] text-gray-500">
+        Tip: veeg horizontaal om alle kolommen te zien.
       </div>
     </div>
   );
