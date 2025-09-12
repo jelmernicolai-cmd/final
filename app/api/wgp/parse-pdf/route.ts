@@ -1,12 +1,9 @@
 // app/api/wgp/parse-pdf/route.ts
 import { NextResponse } from "next/server";
 
-// Belangrijk: Node-runtime (pdf-parse werkt niet op Edge)
-export const runtime = "nodejs";
-// Forceer altijd server-side (niet prerenderen/cachen bij build)
-export const dynamic = "force-dynamic";
-// Optioneel: geef meer tijd bij zware PDF’s
-export const maxDuration = 60;
+export const runtime = "nodejs";         // pdf-parse vereist Node
+export const dynamic = "force-dynamic";  // geen prerender / build-evaluatie
+export const maxDuration = 60;           // extra tijd voor zwaardere PDF's
 
 type ScPdfRow = {
   reg: string;             // genormaliseerd REG/RVG-nummer
@@ -14,18 +11,13 @@ type ScPdfRow = {
   valid_from?: string;     // optioneel
 };
 
-// pdf-parse is CJS
-// Zorg dat "esModuleInterop": true staat in tsconfig.json
-// of vervang dit met: const pdfParse = require("pdf-parse");
-import pdfParse from "pdf-parse";
-
-/** -------- Helpers -------- */
+/** ----------------- Helpers ----------------- */
 function normReg(v: unknown) {
   return String(v ?? "")
     .toUpperCase()
     .replace(/[.\s]/g, "")
     .trim()
-    .replace(/^0+/, ""); // strip leading zeros
+    .replace(/^0+/, "");
 }
 
 function toNumEU(v: string) {
@@ -55,23 +47,16 @@ function extractRowsFromText(txt: string): ScPdfRow[] {
     const priceMatch = line.match(priceRegex);
 
     if (regMatch && priceMatch) {
-      const regRaw = regMatch[1];
-      const priceRaw = priceMatch[1];
-      const reg = normReg(regRaw);
-      const unit = toNumEU(priceRaw);
-
+      const reg = normReg(regMatch[1]);
+      const unit = toNumEU(priceMatch[1]);
       if (reg && Number.isFinite(unit)) {
         const vf = line.match(validFromRegex)?.[2];
-        rows.push({
-          reg,
-          unit_price_eur: unit,
-          valid_from: vf,
-        });
+        rows.push({ reg, unit_price_eur: unit, valid_from: vf });
       }
     }
   }
 
-  // Deduplicate op (reg, unit_price_eur)
+  // Dedup op (reg, unit_price_eur)
   const seen = new Set<string>();
   return rows.filter((r) => {
     const k = `${r.reg}::${r.unit_price_eur}`;
@@ -81,7 +66,7 @@ function extractRowsFromText(txt: string): ScPdfRow[] {
   });
 }
 
-/** -------- Handlers -------- */
+/** ----------------- Handlers ----------------- */
 export async function GET() {
   return NextResponse.json({
     ok: true,
@@ -91,6 +76,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    // Dynamische import voorkomt CJS/ESM gedoe en top-level evaluatie
+    const { default: pdfParse } = await import("pdf-parse");
+
     const form = await req.formData();
     const file = form.get("file") as File | null;
 
@@ -101,7 +89,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const name = file.name?.toLowerCase() || "";
+    const name = (file.name || "").toLowerCase();
     const isPdf = name.endsWith(".pdf") || /pdf/i.test(file.type || "");
     if (!isPdf) {
       return NextResponse.json(
@@ -113,8 +101,8 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const data = await pdfParse(buffer);
 
-    const text = data?.text || "";
-    if (!text.trim()) {
+    const text = (data?.text || "").trim();
+    if (!text) {
       return NextResponse.json(
         { error: "Kon geen tekst uit PDF halen." },
         { status: 422 }
@@ -123,19 +111,18 @@ export async function POST(req: Request) {
 
     const rows = extractRowsFromText(text);
 
-    // Tekst limiteren (om payload te beperken)
+    // Payload beperken
     const MAX_TEXT = 150_000;
-    const safeText =
-      text.length > MAX_TEXT ? text.slice(0, MAX_TEXT) + "…" : text;
+    const safeText = text.length > MAX_TEXT ? text.slice(0, MAX_TEXT) + "…" : text;
 
     return NextResponse.json({
       ok: true,
       meta: {
-        pages: data.numpages,
-        info: data.info || null,
+        pages: data?.numpages,
+        info: data?.info || null,
       },
       rows,
-      text: safeText,
+      text: safeText, // verwijder dit veld als je ruwe tekst niet wilt terugsturen
     });
   } catch (err: any) {
     return NextResponse.json(
