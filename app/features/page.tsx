@@ -54,8 +54,8 @@ export default function FeaturesPage() {
       title: "Privacy & veilig",
       bullets: [
         "Role-based access (RBAC)",
-        "Klantdata wordt nergens opgeslagen (SessionStorage)",
-        "Veilige data verwerking zonder server opslag",
+        "Data wordt niet op server opgeslagen (SessionStorage only)",
+        "Client-side upload + alleen tijdelijk opslag",
       ],
       cta: { href: "/about#security", label: "Lees security" },
     },
