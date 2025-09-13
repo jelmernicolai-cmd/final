@@ -1,71 +1,100 @@
+// app/api/wgp/parse/route.ts
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const runtime = "nodejs"; // pdf-parse vereist Node runtime
 
-import pdfParse from "pdf-parse";
-
-type ScUnitRow = {
-  reg: string;
-  unit_price_eur: number;
-  artikelnaam?: string;
-  eenheid?: string;
-  valid_from?: string;
-};
-
-function normReg(v: unknown) {
-  return String(v ?? "").toUpperCase().replace(/[.\s]/g, "").trim();
-}
-function toNumEU(v: string) {
-  const s = v.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : NaN;
+// Optionele demo (geen filesystem!): /api/wgp/parse?sample=1
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  if (searchParams.get("sample") === "1") {
+    return NextResponse.json({
+      rows: [
+        { reg: "RVG12345", unit_price_eur: 1.2345, valid_from: "2025-01-01" },
+        { reg: "RVG67890", unit_price_eur: 0.9876, valid_from: "2025-01-01" },
+      ],
+    });
+  }
+  return NextResponse.json(
+    { error: "Gebruik POST met multipart/form-data (veld 'file') of voeg ?sample=1 toe voor demo." },
+    { status: 405 },
+  );
 }
 
 export async function POST(req: Request) {
   try {
+    const ct = req.headers.get("content-type") || "";
+    if (!ct.includes("multipart/form-data")) {
+      return NextResponse.json({ error: "Upload als multipart/form-data met veld 'file'." }, { status: 400 });
+    }
+
     const form = await req.formData();
-    const file = form.get("file") as File | null;
-    if (!file) return NextResponse.json({ error: "Geen bestand ontvangen (veld: 'file')." }, { status: 400 });
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "Veld 'file' ontbreekt of is ongeldig." }, { status: 400 });
+    }
 
-    const isPdf = file.type === "application/pdf" || (file.name || "").toLowerCase().endsWith(".pdf");
-    if (!isPdf) return NextResponse.json({ error: "Alleen PDF wordt hier ondersteund." }, { status: 400 });
+    // 👉 Lazy import zodat pdf-parse niet eagerly bundled/gerund wordt bij build
+    const pdfParse = (await import("pdf-parse")).default as (data: Buffer) => Promise<{ text: string }>;
+    const buf = Buffer.from(await file.arrayBuffer());
+    const { text } = await pdfParse(buf);
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const data = await pdfParse(buffer);
-
-    const text = data?.text || "";
-    if (!text.trim()) return NextResponse.json({ error: "Kon geen tekst uit PDF halen." }, { status: 422 });
-
+    // Heuristische extractie
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const rows: { reg: string; unit_price_eur: number; valid_from?: string }[] = [];
 
-    const rowRe =
-      /^(?<reg>(?:EU\/\d+(?:\/\d+)+|\d{5,8}))\s{2,}(?<name>.+?)\s(?<price>\d{1,3}(?:\.\d{3})*,\d{2,6}|\d+,\d{2,6})\s(?<unit>[A-Zµ/().%+\-]+)$/;
+    const regRe = /\b(?:RVG|REGNR|REG\.?NR\.?)\s*[:\-]?\s*([A-Z0-9]{3,10}|\d{3,10})\b/i;
+    const priceRe = /(?:€|\bEUR\b)\s*([0-9]{1,3}(?:[\.\s][0-9]{3})*(?:,[0-9]+)?|[0-9]+(?:\.[0-9]+)?)/i;
+    const dateRe = /\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Za-z]{3,}\s+\d{4})\b/;
 
-    const rows: ScUnitRow[] = [];
+    let currentReg: string | null = null;
+
     for (const ln of lines) {
-      if (/^regnr\b/i.test(ln) || /^pereenheid\b/i.test(ln) || /^per eenheid\b/i.test(ln)) continue;
-      const m = ln.match(rowRe);
-      if (!m) continue;
-      const reg = normReg(m.groups!.reg);
-      const artikelnaam = m.groups!.name.trim();
-      const unit_price_eur = toNumEU(m.groups!.price);
-      const eenheid = m.groups!.unit.trim();
-      if (reg && Number.isFinite(unit_price_eur)) {
-        rows.push({ reg, unit_price_eur, artikelnaam, eenheid });
+      const r = regRe.exec(ln);
+      if (r) {
+        currentReg = normalizeReg(r[1]);
+        const p0 = extractPrice(ln, priceRe);
+        if (currentReg && p0 !== null) {
+          rows.push({ reg: currentReg, unit_price_eur: p0, valid_from: extractDate(ln, dateRe) || undefined });
+          currentReg = null;
+        }
+        continue;
+      }
+      if (currentReg) {
+        const price = extractPrice(ln, priceRe);
+        if (price !== null) {
+          rows.push({ reg: currentReg, unit_price_eur: price, valid_from: extractDate(ln, dateRe) || undefined });
+          currentReg = null;
+        }
       }
     }
 
-    const seen = new Set<string>();
-    const dedup = rows.filter(r => {
-      const k = `${r.reg}::${r.unit_price_eur}::${r.artikelnaam ?? ""}::${r.eenheid ?? ""}`;
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
+    const clean = rows.filter(r => r.reg && Number.isFinite(r.unit_price_eur));
 
-    return NextResponse.json({ ok: true, meta: { pages: data.numpages ?? null, count: dedup.length }, rows: dedup });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "PDF kon niet worden verwerkt." }, { status: 500 });
+    if (!clean.length) {
+      return NextResponse.json(
+        { error: "Kon geen REGNR/RVG + €-prijzen vinden in PDF-tekst." },
+        { status: 422 },
+      );
+    }
+
+    return NextResponse.json({ rows: clean }, { status: 200 });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "PDF verwerken mislukt" }, { status: 500 });
   }
+}
+
+// ===== helpers =====
+function normalizeReg(v: string) {
+  return String(v || "").toUpperCase().replace(/[.\s]/g, "").trim();
+}
+function extractPrice(line: string, priceRe: RegExp): number | null {
+  const m = priceRe.exec(line);
+  if (!m) return null;
+  const s = m[1].replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+}
+function extractDate(line: string, dateRe: RegExp): string | null {
+  const m = dateRe.exec(line);
+  return m ? m[1] : null;
 }
