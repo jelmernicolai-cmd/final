@@ -237,14 +237,16 @@ export default function Page() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(
     null
   );
+  const [aipName, setAipName] = useState<string>("");
+  const [pdfName, setPdfName] = useState<string>("");
   const pdfFileRef = useRef<File | null>(null);
 
   async function onUploadAip(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    e.currentTarget.value = "";
     if (!f) return;
     setErr(null);
     setBusy(true);
+    setAipName(f.name);
     try {
       const json = await readSheetToJson(f);
       const rows = json.map(toAipRow).filter((r) => r.reg && r.pack > 0);
@@ -256,8 +258,9 @@ export default function Page() {
     }
   }
   function onPickPdf(e: React.ChangeEvent<HTMLInputElement>) {
-    pdfFileRef.current = e.target.files?.[0] ?? null;
-    e.currentTarget.value = "";
+    const f = e.target.files?.[0] ?? null;
+    pdfFileRef.current = f;
+    setPdfName(f ? f.name : "");
   }
 
   async function runTargetedScan() {
@@ -339,29 +342,6 @@ export default function Page() {
     }
   }
 
-  function exportDiffs() {
-    if (!diffs.length) return;
-    const rows = diffs.map((r) => ({
-      REGNR: r.reg,
-      SKU: r.sku ?? "",
-      Product: r.name ?? "",
-      ZI: r.zi ?? "",
-      Pack: r.pack ?? "",
-      AIP_huidig: r.aip_current ?? "",
-      Eenheidsprijs: r.unit_price_eur ?? "",
-      AIP_voorgesteld: r.aip_suggested ?? "",
-      Verschil_EUR: r.diff_eur ?? "",
-      Verschil_pct:
-        r.diff_pct !== null && r.diff_pct !== undefined
-          ? +(r.diff_pct * 100).toFixed(3)
-          : "",
-      Pagina: r.page ?? "",
-      Bijwerken: r.update ? "JA" : "NEE",
-      Opmerking: r.note ?? "",
-    }));
-    exportXlsx("wgp_aip_diffs_targeted.xlsx", rows, "Diffs");
-  }
-
   const nMatched = useMemo(
     () => diffs.filter((d) => d.unit_price_eur !== null).length,
     [diffs]
@@ -393,29 +373,34 @@ export default function Page() {
 
       <section className="rounded-2xl border bg-white p-4 space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm block">
+          <label className="text-sm block" htmlFor="aipInput">
             <div className="font-medium">AIP-master (.xlsx/.csv)</div>
             <input
+              id="aipInput"
               type="file"
               accept=".xlsx,.xls,.csv"
+              // belangrijk: reset vóór selecteren, zodat dezelfde file opnieuw kan
+              onClick={(e) => ((e.currentTarget as HTMLInputElement).value = "")}
               onChange={onUploadAip}
               className="mt-1 block w-full rounded-md border px-3 py-2"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Kolommen: REGNR (reg/regnr/rvg) + pack, optioneel SKU/naam/ZI/AIP.
+              {aipName ? <>Gekozen: <b>{aipName}</b></> : "Kolommen: REGNR (reg/regnr/rvg) + pack, optioneel SKU/naam/ZI/AIP."}
             </p>
           </label>
 
-          <label className="text-sm block">
+          <label className="text-sm block" htmlFor="pdfInput">
             <div className="font-medium">Staatscourant PDF (groot toegestaan)</div>
             <input
+              id="pdfInput"
               type="file"
               accept=".pdf"
+              onClick={(e) => ((e.currentTarget as HTMLInputElement).value = "")}
               onChange={onPickPdf}
               className="mt-1 block w-full rounded-md border px-3 py-2"
             />
             <p className="mt-1 text-xs text-gray-500">
-              We verwerken pagina’s in de browser met pdfjs.
+              {pdfName ? <>Gekozen: <b>{pdfName}</b></> : "We verwerken pagina’s in de browser met pdfjs."}
             </p>
           </label>
         </div>
@@ -444,7 +429,28 @@ export default function Page() {
           </button>
 
           <button
-            onClick={exportDiffs}
+            onClick={() => {
+              if (!diffs.length) return;
+              const rows = diffs.map((r) => ({
+                REGNR: r.reg,
+                SKU: r.sku ?? "",
+                Product: r.name ?? "",
+                ZI: r.zi ?? "",
+                Pack: r.pack ?? "",
+                AIP_huidig: r.aip_current ?? "",
+                Eenheidsprijs: r.unit_price_eur ?? "",
+                AIP_voorgesteld: r.aip_suggested ?? "",
+                Verschil_EUR: r.diff_eur ?? "",
+                Verschil_pct:
+                  r.diff_pct !== null && r.diff_pct !== undefined
+                    ? +(r.diff_pct * 100).toFixed(3)
+                    : "",
+                Pagina: r.page ?? "",
+                Bijwerken: r.update ? "JA" : "NEE",
+                Opmerking: r.note ?? "",
+              }));
+              exportXlsx("wgp_aip_diffs_targeted.xlsx", rows, "Diffs");
+            }}
             disabled={!diffs.length}
             className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
           >
@@ -454,7 +460,7 @@ export default function Page() {
           {progress && (
             <span className="text-sm text-gray-600">
               Pagina {Math.min(progress.done, progress.total)} /{" "}
-              {progress.total || "…"}
+              {progress.total || "..."}
             </span>
           )}
 
@@ -471,7 +477,12 @@ export default function Page() {
         <div className="text-sm font-medium">
           Resultaat:{" "}
           {diffs.length
-            ? `${nMatched}/${diffs.length} matched • ${nUpdate} bijwerken`
+            ? `${useMemo(
+                () => diffs.filter((d) => d.unit_price_eur !== null).length,
+                [diffs]
+              )}/${diffs.length} matched • ${
+                useMemo(() => diffs.filter((d) => d.update).length, [diffs])
+              } bijwerken`
             : "nog geen vergelijking"}
         </div>
         <div className="mt-3 overflow-x-auto">
