@@ -1,23 +1,23 @@
 // lib/pdf/readText.ts
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 
-// Worker not used on the server, but silence warnings
-GlobalWorkerOptions.workerSrc = "pdfjs-dist/build/pdf.worker.mjs";
+// In Node: worker uitzetten
+(pdfjs as any).GlobalWorkerOptions.workerSrc = undefined;
 
-export async function pdfBufferToText(buffer: ArrayBuffer): Promise<string> {
-  // Load document from buffer
-  const loadingTask = getDocument({ data: new Uint8Array(buffer) });
-  const pdf = await loadingTask.promise;
+export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
+  const uint8 = new Uint8Array(buffer);
+  const doc = await (pdfjs as any).getDocument({
+    data: uint8,
+    disableWorker: true,
+  }).promise;
+
   let all = "";
-
-  for (let p = 1; p <= pdf.numPages; p++) {
-    const page = await pdf.getPage(p);
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
     const content = await page.getTextContent();
-    const text = content.items
-      .map((it: any) => ("str" in it ? it.str : ""))
-      .join(" ");
-    all += "\n" + text; // keep soft separators
+    const text = content.items.map((it: any) => it.str).join(" ");
+    all += (all ? "\n" : "") + text;
   }
-  try { await pdf.destroy(); } catch {}
-  return all.replace(/\s+/g, " ").trim();
+  await doc.destroy?.();
+  return all;
 }
