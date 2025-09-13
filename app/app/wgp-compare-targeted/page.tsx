@@ -106,9 +106,7 @@ async function scanPdfForRegs(
 ) {
   const buf = await file.arrayBuffer();
 
-  // Dynamic import → werkt op Vercel, geen worker nodig
   const pdfjs: any = await import("pdfjs-dist/build/pdf");
-
   const loadingTask = pdfjs.getDocument({
     data: buf,
     disableWorker: true,
@@ -127,7 +125,6 @@ async function scanPdfForRegs(
     const content = await page.getTextContent();
     const text = (content.items as any[]).map((it) => (it as any).str || "").join(" ");
 
-    // prijs zoeken
     let unit: number | null = null;
     const m = PRICE_RE.exec(text);
     if (m) {
@@ -136,7 +133,6 @@ async function scanPdfForRegs(
     }
     PRICE_RE.lastIndex = 0;
 
-    // REGNR’s op pagina
     let hit: RegExpExecArray | null;
     while ((hit = REG_RE.exec(text)) !== null) {
       const reg = normReg(hit[1]);
@@ -155,12 +151,12 @@ async function scanPdfForRegs(
 }
 
 /** ================= Page (default export) ================= */
-export default function Page(): JSX.Element {
+export default function Page() {
   const [aip, setAip] = useState<AipRow[]>([]);
   const [diffs, setDiffs] = useState<DiffRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [thresholdPct, setThresholdPct] = useState<number>(0.001); // 0.1%
+  const [thresholdPct, setThresholdPct] = useState<number>(0.001);
   const [progress, setProgress] = useState<{done:number,total:number}|null>(null);
   const pdfFileRef = useRef<File | null>(null);
 
@@ -407,3 +403,4 @@ export default function Page(): JSX.Element {
     </div>
   );
 }
+
