@@ -3,6 +3,7 @@
 
 import React, { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
+import Link from "next/link";
 
 /** ================= Types ================= */
 type AipRow = {
@@ -11,7 +12,7 @@ type AipRow = {
   pack: number;   // stuks per standaardverpakking
   reg: string;    // REGNR / RVG (genormaliseerd)
   zi: string;
-  aip?: number;   // bestaande AIP (optioneel)
+  aip?: number;   // huidige AIP (EUR)
   moq?: number;   // minimale bestelgrootte
   caseQty?: number; // doosverpakking
 };
@@ -32,6 +33,21 @@ type Joined = {
   aip_calc: number | null; // unit × pack
   valid_from?: string;
   status: "OK" | "ONVOLLEDIG";
+  note?: string;
+};
+
+type DiffRow = {
+  reg: string;
+  sku?: string;
+  name?: string;
+  zi?: string;
+  pack: number | null;
+  aip_current: number | null;
+  unit_price_eur: number | null;
+  aip_suggested: number | null;
+  diff_eur: number | null;
+  diff_pct: number | null;   // (suggested - current)/current
+  update: boolean;
   note?: string;
 };
 
@@ -173,7 +189,6 @@ async function parsePdfFile(fd: FormData) {
   try {
     data = JSON.parse(txt);
   } catch {
-    // Hier landen o.a. 413 "Request Entity Too Large" meldingen
     const hint =
       res.status === 413 || /Request Entity Too Large/i.test(txt)
         ? "PDF te groot (413). Gebruik de URL-parser of upload een kleiner document."
@@ -186,14 +201,35 @@ async function parsePdfFile(fd: FormData) {
   return data as { ok: true; rows: ScUnitRow[] };
 }
 
+async function compareWithStaatscourantByUrl(pdfUrl: string, aipRows: AipRow[], thresholdPct = 0.001) {
+  const res = await fetch("/api/wgp/compare", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      url: pdfUrl.trim(),
+      aip: aipRows.map(r => ({ reg: r.reg, pack: r.pack, aip: r.aip, sku: r.sku, name: r.name, zi: r.zi })),
+      thresholdPct,
+    }),
+    cache: "no-store",
+  });
+  const txt = await res.text();
+  let j: any; try { j = JSON.parse(txt); } catch {
+    throw new Error(`Onverwachte serverrespons (status ${res.status}): ${txt.slice(0,160)}`);
+  }
+  if (!res.ok || j?.ok === false) throw new Error(j?.error || `HTTP ${res.status}`);
+  return j.rows as DiffRow[];
+}
+
 /** ================= Page ================= */
 export default function WgpBuilderPage() {
   const [aipMaster, setAipMaster] = useState<AipRow[]>([]);
   const [scUnits, setScUnits] = useState<ScUnitRow[]>([]);
+  const [diffRows, setDiffRows] = useState<DiffRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [onlyUnmatched, setOnlyUnmatched] = useState(false);
   const [pdfUrl, setPdfUrl] = useState("");
+  const [thresholdPct, setThresholdPct] = useState<number>(0.001); // 0.1%
 
   async function onUploadAip(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -222,13 +258,11 @@ export default function WgpBuilderPage() {
       const ext = (f.name.toLowerCase().split(".").pop() || "").trim();
 
       if (ext === "pdf") {
-        // ✅ Optie 1: bestand uploaden (kan 413 geven bij grote PDF's)
         const fd = new FormData();
         fd.append("file", f);
         const js = await parsePdfFile(fd);
         setScUnits(js.rows);
       } else {
-        // ✅ Excel/CSV client-side
         const json = await parseSheetToJson(f);
         const rows = json.map(toScUnitRow).filter((r) => r.reg && Number.isFinite(r.unit_price_eur));
         setScUnits(rows);
@@ -245,11 +279,27 @@ export default function WgpBuilderPage() {
     setErr(null);
     setBusy(true);
     try {
-      // ✅ Aanrader: laat de server de PDF ophalen via URL (omzeilt 413)
       const js = await parsePdfByUrl(pdfUrl.trim());
       setScUnits(js.rows);
     } catch (e: any) {
       setErr(e?.message || "URL kon niet verwerkt worden.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onCompareByUrl() {
+    if (!pdfUrl.trim() || !aipMaster.length) {
+      setErr("Vul een PDF-URL in en laad eerst de AIP-master.");
+      return;
+    }
+    setErr(null);
+    setBusy(true);
+    try {
+      const rows = await compareWithStaatscourantByUrl(pdfUrl.trim(), aipMaster, thresholdPct);
+      setDiffRows(rows);
+    } catch (e: any) {
+      setErr(e?.message || "Vergelijken mislukt.");
     } finally {
       setBusy(false);
     }
@@ -292,18 +342,48 @@ export default function WgpBuilderPage() {
     downloadXlsx("wgp_aip_berekening.xlsx", joined, "WgpAIP");
   }
 
+  function exportDiffs() {
+    if (!diffRows.length) return;
+    const rows = diffRows.map(r => ({
+      REGNR: r.reg,
+      SKU: r.sku ?? "",
+      Product: r.name ?? "",
+      ZI: r.zi ?? "",
+      Pack: r.pack ?? "",
+      AIP_huidig: r.aip_current ?? "",
+      Eenheidsprijs: r.unit_price_eur ?? "",
+      AIP_voorgesteld: r.aip_suggested ?? "",
+      Verschil_EUR: r.diff_eur ?? "",
+      Verschil_pct: r.diff_pct !== null && r.diff_pct !== undefined ? +(r.diff_pct * 100).toFixed(3) : "",
+      Bijwerken: r.update ? "JA" : "NEE",
+      Opmerking: r.note ?? "",
+    }));
+    downloadXlsx("wgp_aip_diffs.xlsx", rows, "Diffs");
+  }
+
   return (
     <div className="mx-auto max-w-6xl px-3 sm:px-4 lg:px-6 py-6 space-y-6">
       {/* Header */}
       <header className="rounded-2xl border bg-white p-4 sm:p-5">
-        <h1 className="text-xl sm:text-2xl font-semibold">Wgp Builder — AIP uit eenheidsprijzen</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-semibold">Wgp Builder — AIP uit eenheidsprijzen</h1>
+          <span className="ml-auto">
+            <Link
+              href="/app/pricing"
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+            >
+              ← Terug naar Pricing-dashboard
+            </Link>
+          </span>
+        </div>
         <p className="text-sm text-gray-700 mt-1">
           Upload je <b>AIP-master</b> (REGNR + pack) en een <b>Staatscourant-bestand</b> met
-          eenheidsprijzen (PDF of Excel/CSV). We berekenen <b>AIP = eenheidsprijs × pack</b> en tonen matches/hiaten.
+          eenheidsprijzen (PDF of Excel/CSV). We berekenen <b>AIP = eenheidsprijs × pack</b>, en je kunt direct
+          <b> vergelijken</b> met de Staatscourant via een PDF-URL.
         </p>
       </header>
 
-      {/* Uploads + URL-parse */}
+      {/* Uploads + URL-parse + Compare */}
       <section className="rounded-2xl border bg-white p-4 space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm block">
@@ -328,24 +408,43 @@ export default function WgpBuilderPage() {
               className="mt-1 block w-full rounded-md border px-3 py-2"
             />
             <p className="mt-1 text-xs text-gray-500">
-              PDF gaat via serverextractie; Excel/CSV wordt client-side gelezen. Verwacht kolommen: <code>reg</code>, <code>unit_price_eur</code>, optioneel <code>valid_from</code>.
+              PDF gaat via serverextractie; Excel/CSV wordt client-side gelezen.
             </p>
           </label>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+        <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] items-center">
           <input
             placeholder="Of plak hier een directe Staatscourant PDF-URL…"
             value={pdfUrl}
             onChange={(e) => setPdfUrl(e.target.value)}
             className="rounded-md border px-3 py-2 text-sm"
           />
-          <button
-            onClick={onParseUrl}
-            className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
-          >
-            Parseer via URL
-          </button>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">Drempel Δ%:</label>
+            <input
+              type="number"
+              step="0.001"
+              value={+(thresholdPct * 100).toFixed(3)}
+              onChange={(e) => setThresholdPct(Math.max(0, Number(e.target.value) / 100))}
+              className="w-24 rounded-md border px-2 py-1.5 text-sm text-right"
+            />
+            <span className="text-xs text-gray-500">%</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onParseUrl}
+              className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+            >
+              Parseer via URL
+            </button>
+            <button
+              onClick={onCompareByUrl}
+              className="rounded-md bg-emerald-600 text-white px-3 py-2 text-sm hover:opacity-95"
+            >
+              Vergelijk met Staatscourant
+            </button>
+          </div>
         </div>
 
         {busy && <div className="text-sm text-gray-600">Bezig…</div>}
@@ -356,11 +455,11 @@ export default function WgpBuilderPage() {
         )}
       </section>
 
-      {/* Resultaten */}
+      {/* Voorvertoning parsing (optioneel) */}
       <section className="rounded-2xl border bg-white p-3 sm:p-4">
         <div className="flex flex-wrap items-center gap-2 justify-between">
           <div className="text-sm font-medium">
-            Resultaat ({rowsToShow.length}/{joined.length})
+            Gerapseerde eenheidsprijzen ({rowsToShow.length}/{joined.length})
           </div>
           <div className="flex items-center gap-3">
             <label className="text-xs inline-flex items-center gap-2">
@@ -376,7 +475,7 @@ export default function WgpBuilderPage() {
               disabled={!joined.length}
               className="text-sm rounded-lg border px-3 py-1.5 hover:bg-gray-50 disabled:opacity-50"
             >
-              Exporteer naar Excel
+              Exporteer parsing naar Excel
             </button>
           </div>
         </div>
@@ -436,10 +535,78 @@ export default function WgpBuilderPage() {
             </tbody>
           </table>
         </div>
+      </section>
 
-        <p className="mt-3 text-xs text-gray-500">
-          Tip: gebruik bij grote Staatscourant-PDFs de <b>URL</b>-optie hierboven om uploads te vermijden.
-        </p>
+      {/* Diffs */}
+      <section className="rounded-2xl border bg-white p-3 sm:p-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-medium">Verschillen t.o.v. AIP (drempel {+(thresholdPct*100).toFixed(3)}%)</div>
+          <button
+            onClick={exportDiffs}
+            disabled={!diffRows.length}
+            className="text-sm rounded-lg border px-3 py-1.5 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Exporteer diffs naar Excel
+          </button>
+        </div>
+
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b bg-gray-50">
+                <th className="px-2 py-2 text-left">REGNR</th>
+                <th className="px-2 py-2 text-left">SKU</th>
+                <th className="px-2 py-2 text-left">Product</th>
+                <th className="px-2 py-2 text-left">ZI</th>
+                <th className="px-2 py-2 text-right">Pack</th>
+                <th className="px-2 py-2 text-right">AIP huidig (€)</th>
+                <th className="px-2 py-2 text-right">Eenheidsprijs (€)</th>
+                <th className="px-2 py-2 text-right">AIP voorgesteld (€)</th>
+                <th className="px-2 py-2 text-right">Δ €</th>
+                <th className="px-2 py-2 text-right">Δ %</th>
+                <th className="px-2 py-2 text-left">Bijwerken?</th>
+                <th className="px-2 py-2 text-left">Opmerking</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {diffRows.map((r) => (
+                <tr key={r.reg}>
+                  <td className="px-2 py-1">{r.reg}</td>
+                  <td className="px-2 py-1">{r.sku ?? ""}</td>
+                  <td className="px-2 py-1">{r.name ?? ""}</td>
+                  <td className="px-2 py-1">{r.zi ?? ""}</td>
+                  <td className="px-2 py-1 text-right">{r.pack ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">{r.aip_current ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">{r.unit_price_eur ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">{r.aip_suggested ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">{r.diff_eur ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">
+                    {r.diff_pct !== null && r.diff_pct !== undefined ? `${+(r.diff_pct * 100).toFixed(3)}%` : "-"}
+                  </td>
+                  <td className="px-2 py-1">
+                    {r.update ? (
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 ring-1 ring-emerald-200">
+                        JA
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-gray-50 px-2 py-0.5 text-gray-700 ring-1 ring-gray-200">
+                        NEE
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1">{r.note ?? ""}</td>
+                </tr>
+              ))}
+              {!diffRows.length && (
+                <tr>
+                  <td colSpan={12} className="px-2 py-6 text-center text-gray-500">
+                    Nog geen vergelijking uitgevoerd. Vul een PDF-URL in en klik “Vergelijk met Staatscourant”.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
