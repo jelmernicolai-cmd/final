@@ -4,14 +4,9 @@
 import React, { useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import Link from "next/link";
-// pdfjs in browser
-// @ts-expect-error types optional
+// pdfjs in browser (no worker import; run on main thread)
 import * as pdfjsLib from "pdfjs-dist";
-// @ts-expect-error worker path (pdfjs 4.x)
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
-/** =============== Types =============== */
 type AipRow = {
   sku?: string;
   name?: string;
@@ -36,7 +31,6 @@ type DiffRow = {
   note?: string;
 };
 
-/** =============== Helpers =============== */
 function normReg(v: any) {
   return String(v ?? "").toUpperCase().replace(/[.\s]/g, "").trim();
 }
@@ -101,20 +95,14 @@ function downloadXlsx(filename: string, rows: any[], sheet = "Sheet1") {
   URL.revokeObjectURL(a.href);
 }
 
-/** =============== Targeted PDF scan =============== */
-/**
- * We scannen paginagewijs:
- *  - Zoeken 1 prijsregel op de pagina: /([\d.,]+)\s*per\s+\w+/i
- *  - Vinden alle tokens die lijken op REGNR / EU/... etc en die in onze AIP-set zitten
- *  - Voor die REGNR’s koppelen we de prijs van die pagina
- *  - Stoppen zodra alle REGNR’s gevonden zijn (of alle pagina’s zijn geweest)
- */
+/** ===== Targeted PDF scan (no worker) ===== */
 const PRICE_RE = /([\d.,]+)\s*per\s+([A-Za-z]+)/i;
 const REG_RE = /\b([A-Z0-9/\.]+(?:\/\/[A-Z0-9/\.]+)?)\b/g;
 
 async function scanPdfForRegs(file: File, targetRegs: Set<string>, onProgress?: (done: number, total: number)=>void) {
   const buf = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: buf });
+  // Run pdf.js on main thread to avoid worker import issues
+  const loadingTask = (pdfjsLib as any).getDocument({ data: buf, disableWorker: true });
   const pdf = await loadingTask.promise;
   const total = pdf.numPages;
 
@@ -124,41 +112,35 @@ async function scanPdfForRegs(file: File, targetRegs: Set<string>, onProgress?: 
   for (let p = 1; p <= total; p++) {
     const page = await pdf.getPage(p);
     const content = await page.getTextContent();
-    const text = (content.items as any[]).map((it) => it.str || "").join(" ");
-    // 1) prijs (laatste match op de pagina wint; vaak staat er 1)
-    let price: number | null = null;
-    let mPrice: RegExpExecArray | null;
-    let scan = PRICE_RE.exec(text);
-    if (scan) {
-      const val = parseFloat(scan[1].replace(/\./g, "").replace(",", "."));
-      if (Number.isFinite(val)) price = val;
+    const text = (content.items as any[]).map((it) => (it as any).str || "").join(" ");
+
+    // prijs op pagina zoeken
+    let unit: number | null = null;
+    const m = PRICE_RE.exec(text);
+    if (m) {
+      const val = parseFloat(m[1].replace(/\./g, "").replace(",", "."));
+      if (Number.isFinite(val)) unit = val;
     }
-    // reset regex state (safety in some runtimes)
     PRICE_RE.lastIndex = 0;
 
-    // 2) REGNR’s op de pagina die in remaining zitten
-    let anyOnPage = false;
-    let m: RegExpExecArray | null;
-    while ((m = REG_RE.exec(text)) !== null) {
-      const reg = normReg(m[1]);
-      if (remaining.has(reg)) {
-        anyOnPage = true;
-        if (price !== null) {
-          found.set(reg, { unit: price, page: p });
-          remaining.delete(reg);
-        }
+    // REGNR’s die wij nodig hebben
+    let match: RegExpExecArray | null;
+    while ((match = REG_RE.exec(text)) !== null) {
+      const reg = normReg(match[1]);
+      if (unit !== null && remaining.has(reg)) {
+        found.set(reg, { unit, page: p });
+        remaining.delete(reg);
       }
     }
     REG_RE.lastIndex = 0;
 
     onProgress?.(p, total);
-    if (remaining.size === 0) break; // klaar
+    if (remaining.size === 0) break;
   }
 
   return { found, totalPages: total };
 }
 
-/** =============== Page =============== */
 export default function WgpCompareTargeted() {
   const [aip, setAip] = useState<AipRow[]>([]);
   const [diffs, setDiffs] = useState<DiffRow[]>([]);
@@ -180,7 +162,6 @@ export default function WgpCompareTargeted() {
       setErr(e?.message || "AIP kon niet worden gelezen.");
     } finally { setBusy(false); }
   }
-
   function onPickPdf(e: React.ChangeEvent<HTMLInputElement>) {
     pdfFileRef.current = e.target.files?.[0] ?? null;
     e.currentTarget.value = "";
@@ -196,7 +177,6 @@ export default function WgpCompareTargeted() {
       const targetRegs = new Set(aip.map(r => r.reg).filter(Boolean));
       const { found, totalPages } = await scanPdfForRegs(f, targetRegs, (done, total) => setProgress({done,total}));
 
-      // bouw diffs
       const out: DiffRow[] = aip.map(r => {
         const m = found.get(r.reg);
         const unit = m ? m.unit : null;
@@ -249,6 +229,18 @@ export default function WgpCompareTargeted() {
     }
   }
 
+  function exportXlsx(filename: string, rows: any[], sheet = "Sheet1") {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, sheet);
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename.endsWith(".xlsx") ? filename : filename + ".xlsx";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
   function exportDiffs() {
     if (!diffs.length) return;
     const rows = diffs.map(r => ({
@@ -266,7 +258,7 @@ export default function WgpCompareTargeted() {
       Bijwerken: r.update ? "JA" : "NEE",
       Opmerking: r.note ?? "",
     }));
-    downloadXlsx("wgp_aip_diffs_targeted.xlsx", rows, "Diffs");
+    exportXlsx("wgp_aip_diffs_targeted.xlsx", rows, "Diffs");
   }
 
   const nMatched = useMemo(() => diffs.filter(d => d.unit_price_eur !== null).length, [diffs]);
@@ -274,7 +266,6 @@ export default function WgpCompareTargeted() {
 
   return (
     <div className="mx-auto max-w-6xl px-3 sm:px-4 lg:px-6 py-6 space-y-6">
-      {/* Header */}
       <header className="rounded-2xl border bg-white p-4 sm:p-5">
         <div className="flex items-center gap-2">
           <h1 className="text-xl sm:text-2xl font-semibold">Wgp Compare — gericht scannen (client-only)</h1>
@@ -290,7 +281,6 @@ export default function WgpCompareTargeted() {
         </p>
       </header>
 
-      {/* Inputs */}
       <section className="rounded-2xl border bg-white p-4 space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm block">
@@ -346,7 +336,6 @@ export default function WgpCompareTargeted() {
         </div>
       </section>
 
-      {/* Result */}
       <section className="rounded-2xl border bg-white p-3 sm:p-4">
         <div className="text-sm font-medium">
           Resultaat: {diffs.length ? `${nMatched}/${diffs.length} matched • ${nUpdate} bijwerken` : "nog geen vergelijking"}
