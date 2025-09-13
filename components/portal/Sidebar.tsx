@@ -1,4 +1,3 @@
-// components/portal/Sidebar.tsx
 "use client";
 
 import Link from "next/link";
@@ -192,9 +191,10 @@ export default function Sidebar() {
     { href: "/templates", label: "Templates", icon: "template" },
   ];
 
-  // ✅ Nieuw: Pricing-sectie
+  // ✅ Pricing-sectie met nieuwe benchmark-tool
   const PRICING: Item[] = [
     { href: "/app/pricing", label: "Prijsbeheer", icon: "template" },
+    { href: "/app/benchmark", label: "Kortingsbenchmark (NL)", icon: "scatter", badge: "nieuw" }, // <— toegevoegd
   ];
 
   const SETTINGS_SUPPORT: Item[] = [
@@ -209,7 +209,16 @@ export default function Sidebar() {
         <div className="ml-auto flex items-center gap-3">
           <span className="hidden md:inline text-xs text-gray-400">Sectie:</span>
           <span className="text-xs font-medium text-gray-700">{crumb}</span>
-          <button ref={btnRef} className="md:hidden text-xs px-2 py-1 border rounded hover:bg-gray-50" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls="portal-mobile-menu" aria-label="Zijbalk tonen/verbergen">Menu</button>
+          <button
+            ref={btnRef}
+            className="md:hidden text-xs px-2 py-1 border rounded hover:bg-gray-50"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-controls="portal-mobile-menu"
+            aria-label="Zijbalk tonen/verbergen"
+          >
+            Menu
+          </button>
         </div>
       </div>
 
@@ -222,7 +231,12 @@ export default function Sidebar() {
       </div>
 
       {/* Mobiel */}
-      <nav id="portal-mobile-menu" ref={panelRef} className={cx("md:hidden border-t overflow-hidden transition-[max-height] duration-300 ease-in-out", open ? "max-h-[80vh]" : "max-h-0")} aria-hidden={!open}>
+      <nav
+        id="portal-mobile-menu"
+        ref={panelRef}
+        className={cx("md:hidden border-t overflow-hidden transition-[max-height] duration-300 ease-in-out", open ? "max-h-[80vh]" : "max-h-0")}
+        aria-hidden={!open}
+      >
         <div className="p-3 space-y-4">
           <Section title="Analyses"><NavList pathname={pathname} items={ANALYSES} onItemClick={() => setOpen(false)} /></Section>
           <Section title="Pricing"><NavList pathname={pathname} items={PRICING} onItemClick={() => setOpen(false)} /></Section> {/* ✅ nieuw blok */}
