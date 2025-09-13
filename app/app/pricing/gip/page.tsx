@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import Link from "next/link";
 
@@ -16,14 +16,16 @@ type AIPRow = {
   caseQty: number;
 };
 
-type Discounts = Record<string, number>; // key = wholesaler.id, value = discount fraction (0.17 = 17%)
+type Discount = { distFee: number; extra: number }; // fracties (0.07 = 7%)
+type Discounts = Record<string, Discount>;          // key = wholesaler.id
 type GIPRow = AIPRow & { discounts: Discounts };
 
 type Wholesaler = { id: string; label: string };
 
 /** ---------------- Helpers ---------------- */
 const eur = (n: number) =>
-  new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(isFinite(n) ? n : 0);
+  new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 2 })
+    .format(isFinite(n) ? n : 0);
 
 function coerceNum(v: any, def = 0) {
   if (typeof v === "number") return v;
@@ -76,43 +78,6 @@ function normalizeHeaders(o: Record<string, any>) {
     aip: pick("aip", "apotheekinkoopprijs", "lijstprijs"),
     moq: pick("minimale bestelgrootte", "min order", "moq"),
     caseQty: pick("doosverpakking", "case", "doos", "caseqty", "case_qty"),
-    rest: Object.fromEntries(
-      [...map.entries()].filter(
-        ([k]) =>
-          ![
-            "sku",
-            "sku nummer",
-            "sku_nummer",
-            "productcode",
-            "product naam",
-            "productnaam",
-            "naam",
-            "standaard verpakk. grootte",
-            "verpakking",
-            "pack",
-            "standaard verpakking",
-            "standaard verpakkingsgrootte",
-            "registratienummer",
-            "rvg",
-            "rvgnr",
-            "registratie",
-            "zi-nummer",
-            "zi",
-            "zinummer",
-            "aip",
-            "apotheekinkoopprijs",
-            "lijstprijs",
-            "minimale bestelgrootte",
-            "min order",
-            "moq",
-            "doosverpakking",
-            "case",
-            "doos",
-            "caseqty",
-            "case_qty",
-          ].includes(k)
-      )
-    ),
   };
 }
 
@@ -131,17 +96,19 @@ function toAipRow(r: any): AIPRow {
   };
 }
 
-function net(aip: number, discount: number) {
-  const d = Math.min(Math.max(discount, 0), 0.9999);
-  return Math.max(0, (aip || 0) * (1 - d));
+/** Netto prijs:
+ *   netto = AIP × (1 − distributiefee) × (1 − extra korting)
+ */
+function net(aip: number, d: Discount) {
+  const df = Math.min(Math.max(d?.distFee ?? 0, 0), 0.9999);
+  const ex = Math.min(Math.max(d?.extra ?? 0, 0), 0.9999);
+  return Math.max(0, (aip || 0) * (1 - df) * (1 - ex));
 }
 
 /** ---------------- Page ---------------- */
 export default function GIPPage() {
   const [rows, setRows] = useState<GIPRow[]>([]);
-  const [whs, setWhs] = useState<Wholesaler[]>([
-    { id: "WHS1", label: "Groothandel 1" },
-  ]);
+  const [whs, setWhs] = useState<Wholesaler[]>([{ id: "WHS1", label: "Groothandel 1" }]);
   const [filter, setFilter] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -197,13 +164,22 @@ export default function GIPPage() {
   }
 
   /** ------- Mutations ------- */
-  function setDiscount(rowIdx: number, wholesalerId: string, pctAsFraction: number) {
+  function setDisc(rowIdx: number, wholesalerId: string, patch: Partial<Discount>) {
     setRows((cur) =>
-      cur.map((r, i) => (i === rowIdx ? { ...r, discounts: { ...r.discounts, [wholesalerId]: pctAsFraction } } : r))
+      cur.map((r, i) => {
+        if (i !== rowIdx) return r;
+        const prev = r.discounts[wholesalerId] ?? { distFee: 0, extra: 0 };
+        return { ...r, discounts: { ...r.discounts, [wholesalerId]: { ...prev, ...patch } } };
+      })
     );
   }
-  function bulkApply(whId: string, pctAsFraction: number) {
-    setRows((cur) => cur.map((r) => ({ ...r, discounts: { ...r.discounts, [whId]: pctAsFraction } })));
+  function bulkApply(whId: string, patch: Partial<Discount>) {
+    setRows((cur) =>
+      cur.map((r) => {
+        const prev = r.discounts[whId] ?? { distFee: 0, extra: 0 };
+        return { ...r, discounts: { ...r.discounts, [whId]: { ...prev, ...patch } } };
+      })
+    );
   }
 
   function addWholesaler() {
@@ -216,10 +192,12 @@ export default function GIPPage() {
   }
   function removeWholesaler(id: string) {
     setWhs((cur) => cur.filter((w) => w.id !== id));
-    setRows((cur) => cur.map((r) => {
-      const { [id]: _, ...rest } = r.discounts;
-      return { ...r, discounts: rest };
-    }));
+    setRows((cur) =>
+      cur.map((r) => {
+        const { [id]: _, ...rest } = r.discounts;
+        return { ...r, discounts: rest };
+      })
+    );
   }
 
   /** ------- Export: één tab per groothandel ------- */
@@ -232,7 +210,7 @@ export default function GIPPage() {
 
     for (const w of whs) {
       const data = rows.map((r) => {
-        const d = r.discounts[w.id] ?? 0;
+        const d = r.discounts[w.id] ?? { distFee: 0, extra: 0 };
         const netPrice = net(r.aip, d);
         return {
           SKU: r.sku,
@@ -241,7 +219,8 @@ export default function GIPPage() {
           Registratie: r.reg,
           "ZI-nummer": r.zi,
           "AIP (EUR)": r.aip,
-          "Korting %": pctToText(d),
+          "Distributiefee %": pctToText(d.distFee),
+          "Extra korting %": pctToText(d.extra),
           "Netto EUR": Math.round(netPrice * 100) / 100,
           MOQ: r.moq,
           Doos: r.caseQty,
@@ -270,11 +249,10 @@ export default function GIPPage() {
     return s;
   }
 
-  /** ------- Derived KPIs ------- */
+  /** ------- KPIs ------- */
   const kpis = useMemo(() => {
     const nSkus = rows.length;
-    const avgAip =
-      nSkus ? rows.reduce((s, r) => (isFinite(r.aip) ? s + r.aip : s), 0) / nSkus : 0;
+    const avgAip = nSkus ? rows.reduce((s, r) => (isFinite(r.aip) ? s + r.aip : s), 0) / nSkus : 0;
     return { nSkus, avgAip };
   }, [rows]);
 
@@ -291,7 +269,7 @@ export default function GIPPage() {
           </span>
         </div>
         <p className="text-sm text-gray-700 mt-1">
-          Beheer <b>kortingen per SKU per groothandel</b>. Laad AIP automatisch uit de portal, pas kortingen aan en exporteer per groothandel.
+          Beheer <b>distributiefee</b> en <b>extra korting</b> per SKU per groothandel. Laad AIP automatisch en exporteer per groothandel.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <label className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:opacity-95 cursor-pointer">
@@ -337,7 +315,8 @@ export default function GIPPage() {
                 onChange={(e) => renameWholesaler(w.id, e.target.value)}
                 className="border rounded px-2 py-1 text-sm"
               />
-              <button onClick={() => bulkApply(w.id, 0)} className="text-xs underline">Reset alle kortingen</button>
+              <button onClick={() => bulkApply(w.id, { distFee: 0 })} className="text-xs underline">Reset fee</button>
+              <button onClick={() => bulkApply(w.id, { extra: 0 })} className="text-xs underline">Reset extra</button>
               <button onClick={() => removeWholesaler(w.id)} className="text-xs text-rose-600 underline">Verwijder</button>
             </div>
           ))}
@@ -355,7 +334,7 @@ export default function GIPPage() {
       {/* Tabel (desktop) */}
       <section className="rounded-2xl border bg-white p-3 sm:p-4">
         <div className="overflow-auto hidden md:block">
-          <table className="min-w-[1000px] w-full text-sm border-collapse">
+          <table className="min-w-[1200px] w-full text-sm border-collapse">
             <thead className="bg-slate-50 border-b sticky top-0 z-10">
               <tr>
                 <Th>SKU</Th>
@@ -366,7 +345,7 @@ export default function GIPPage() {
                 <Th className="text-right">AIP (EUR)</Th>
                 {whs.map((w) => (
                   <Th key={w.id} className="text-right">
-                    {w.label} – Korting / Netto
+                    {w.label} – Fee / Extra / Netto
                   </Th>
                 ))}
               </tr>
@@ -383,11 +362,20 @@ export default function GIPPage() {
                     <Td><Input value={r.zi}  onChange={(v) => setRows(cur => cur.map((x,i)=> i===idx? {...x, zi:v}:x))} placeholder="12345678" /></Td>
                     <Td className="text-right"><Num value={r.aip} onChange={(v) => setRows(cur => cur.map((x,i)=> i===idx? {...x, aip:v}:x))} /></Td>
                     {whs.map((w) => {
-                      const d = r.discounts[w.id] ?? 0;
+                      const d = r.discounts[w.id] ?? { distFee: 0, extra: 0 };
                       return (
                         <Td key={w.id} className="text-right">
-                          <Pct value={d} onChange={(v) => setDiscount(idx, w.id, v)} />
-                          <div className="text-xs text-gray-500 mt-1">{eur(net(r.aip, d))}</div>
+                          <div className="grid gap-1">
+                            <div className="flex items-center justify-end gap-2">
+                              <span className="text-xs text-gray-500">Fee</span>
+                              <Pct value={d.distFee} onChange={(v) => setDisc(idx, w.id, { distFee: v })} />
+                            </div>
+                            <div className="flex items-center justify-end gap-2">
+                              <span className="text-xs text-gray-500">Extra</span>
+                              <Pct value={d.extra} onChange={(v) => setDisc(idx, w.id, { extra: v })} />
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">Netto: {eur(net(r.aip, d))}</div>
+                          </div>
                         </Td>
                       );
                     })}
@@ -422,14 +410,20 @@ export default function GIPPage() {
                   <Field label="ZI-nummer"><Input value={r.zi} onChange={(v)=>setRows(cur=>cur.map((x,i)=>i===idx?{...x,zi:v}:x))} /></Field>
                   <Field label="AIP (EUR)"><Num value={r.aip} onChange={(v)=>setRows(cur=>cur.map((x,i)=>i===idx?{...x,aip:v}:x))} /></Field>
                   {whs.map((w) => {
-                    const d = r.discounts[w.id] ?? 0;
+                    const d = r.discounts[w.id] ?? { distFee: 0, extra: 0 };
                     return (
-                      <Field key={w.id} label={`${w.label} korting / netto`}>
-                        <div className="flex items-center gap-2">
-                          <Pct value={d} onChange={(v)=>setDiscount(idx, w.id, v)} />
-                          <span className="text-xs text-gray-500">{eur(net(r.aip, d))}</span>
+                      <div key={w.id} className="rounded-lg border p-2">
+                        <div className="text-xs text-gray-600 mb-1">{w.label}</div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-gray-500">Fee</span>
+                          <Pct value={d.distFee} onChange={(v)=>setDisc(idx, w.id, { distFee: v })} />
                         </div>
-                      </Field>
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <span className="text-xs text-gray-500">Extra</span>
+                          <Pct value={d.extra} onChange={(v)=>setDisc(idx, w.id, { extra: v })} />
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500 text-right">Netto: {eur(net(r.aip, d))}</div>
+                      </div>
                     );
                   })}
                 </div>
