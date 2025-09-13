@@ -96,7 +96,7 @@ function toAipRow(o: Record<string, any>): AipRow {
 /** Flexibele mapper voor Staatscourant eenheidsprijzen */
 function toScUnitRow(o: Record<string, any>): ScUnitRow {
   const lower: Record<string, any> = {};
-  for (const [k, v] of Object.entries(o)) lower[k.toLowerCase()] = v;
+  for (const [k, v] of Object.entries(o)) lower[String(k).toLowerCase()] = v;
 
   const reg =
     lower["reg"] ??
@@ -106,12 +106,15 @@ function toScUnitRow(o: Record<string, any>): ScUnitRow {
     lower["rvg_nr"] ??
     lower["rvg nr"] ??
     "";
+
   const unit =
     lower["unit_price_eur"] ??
     lower["eenheidsprijs"] ??
     lower["unitprice"] ??
     lower["prijs_per_eenheid"] ??
     lower["eenheidsprijs(€)"] ??
+    lower["eenheidsprijs (€)"] ??
+    lower["eenheidsprijs eur"] ??
     "";
 
   const valid_from = String(
@@ -173,12 +176,13 @@ export default function WgpBuilderPage() {
     setErr(null);
     setBusy(true);
     try {
-      const ext = f.name.toLowerCase().split(".").pop() || "";
+      const ext = (f.name.toLowerCase().split(".").pop() || "").trim();
 
       if (ext === "pdf") {
+        // ✅ GEBRUIK DIT ENDPOINT (server parse met pdfjs-dist)
         const fd = new FormData();
         fd.append("file", f);
-        const res = await fetch("/api/wgp/parse-pdf", { method: "POST", body: fd });
+        const res = await fetch("/api/wgp/parse", { method: "POST", body: fd });
         const js = await res.json();
         if (!res.ok) throw new Error(js?.error || "PDF niet verwerkt.");
         setScUnits(js.rows as ScUnitRow[]);
