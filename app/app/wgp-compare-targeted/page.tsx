@@ -4,16 +4,18 @@
 import React, { useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import Link from "next/link";
-// pdfjs in browser (no worker import; run on main thread)
-import * as pdfjsLib from "pdfjs-dist";
+
+// ✅ Gebruik de legacy build en zet de worker uit
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf";
+GlobalWorkerOptions.workerSrc = ""; // we draaien zonder worker
 
 type AipRow = {
   sku?: string;
   name?: string;
   zi?: string;
-  reg: string;   // genormaliseerd REGNR
-  pack: number;  // integer >0
-  aip?: number;  // huidige AIP
+  reg: string;
+  pack: number;
+  aip?: number;
 };
 type DiffRow = {
   reg: string;
@@ -49,7 +51,7 @@ function toAipRow(o: Record<string, any>): AipRow {
     for (const k of keys) {
       if (o[k] !== undefined && o[k] !== null && String(o[k]).trim() !== "") return o[k];
       const kk = Object.keys(o).find(
-        (x) => x.toLowerCase().replace(/\s|\./g, "") === k.toLowerCase().replace(/\s|\./g, "")
+        x => x.toLowerCase().replace(/\s|\./g, "") === k.toLowerCase().replace(/\s|\./g, "")
       );
       if (kk) return o[kk];
     }
@@ -95,14 +97,19 @@ function downloadXlsx(filename: string, rows: any[], sheet = "Sheet1") {
   URL.revokeObjectURL(a.href);
 }
 
-/** ===== Targeted PDF scan (no worker) ===== */
+/** ===== Targeted PDF scan (disable worker) ===== */
 const PRICE_RE = /([\d.,]+)\s*per\s+([A-Za-z]+)/i;
 const REG_RE = /\b([A-Z0-9/\.]+(?:\/\/[A-Z0-9/\.]+)?)\b/g;
 
 async function scanPdfForRegs(file: File, targetRegs: Set<string>, onProgress?: (done: number, total: number)=>void) {
   const buf = await file.arrayBuffer();
-  // Run pdf.js on main thread to avoid worker import issues
-  const loadingTask = (pdfjsLib as any).getDocument({ data: buf, disableWorker: true });
+  const loadingTask = getDocument({
+    data: buf,
+    disableWorker: true,       // <-- sleutel
+    isEvalSupported: false,    // kleine optimalisaties voor bundlers/CSP
+    useWorkerFetch: false,
+    disableFontFace: true,
+  });
   const pdf = await loadingTask.promise;
   const total = pdf.numPages;
 
@@ -114,7 +121,6 @@ async function scanPdfForRegs(file: File, targetRegs: Set<string>, onProgress?: 
     const content = await page.getTextContent();
     const text = (content.items as any[]).map((it) => (it as any).str || "").join(" ");
 
-    // prijs op pagina zoeken
     let unit: number | null = null;
     const m = PRICE_RE.exec(text);
     if (m) {
@@ -123,7 +129,6 @@ async function scanPdfForRegs(file: File, targetRegs: Set<string>, onProgress?: 
     }
     PRICE_RE.lastIndex = 0;
 
-    // REGNR’s die wij nodig hebben
     let match: RegExpExecArray | null;
     while ((match = REG_RE.exec(text)) !== null) {
       const reg = normReg(match[1]);
@@ -146,7 +151,7 @@ export default function WgpCompareTargeted() {
   const [diffs, setDiffs] = useState<DiffRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [thresholdPct, setThresholdPct] = useState<number>(0.001); // 0.1%
+  const [thresholdPct, setThresholdPct] = useState<number>(0.001);
   const [progress, setProgress] = useState<{done:number,total:number}|null>(null);
   const pdfFileRef = useRef<File | null>(null);
 
