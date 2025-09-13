@@ -146,7 +146,7 @@ export default function GIPPage() {
     try {
       setBusy(true);
       setMsg(null);
-      const res = await fetch("/api/pricing/products", { method: "GET" });
+      const res = await fetch("/api/pricing/products", { method: "GET", cache: "no-store" });
       const j = await res.json();
       if (!res.ok || !Array.isArray(j?.rows)) throw new Error(j?.error || "Laden mislukt");
       const base: AIPRow[] = j.rows.map((p: any) => ({
@@ -170,22 +170,45 @@ export default function GIPPage() {
 
   /** ------- Portal opslag (NIEUW) ------- */
   async function saveDiscountsToPortal() {
+    function clamp01(x: any) {
+      const n = Number.isFinite(x) ? Number(x) : 0;
+      return Math.min(Math.max(n, 0), 0.9999);
+    }
+    function sanitizeDiscounts(d: Partial<Discount> | undefined): Discount {
+      return {
+        distFee: clamp01(d?.distFee),
+        extra: clamp01(d?.extra),
+      };
+    }
+
     try {
       setBusy(true);
       setMsg(null);
       const payload: GIPStore = {
-        wholesalers: whs,
+        wholesalers: whs.map(w => ({ id: String(w.id), label: String(w.label || "").trim() })),
         rows: rows
           .filter((r) => !!r.sku)
-          .map((r) => ({ sku: r.sku, discounts: r.discounts })),
+          .map((r) => {
+            const discounts: Record<string, Discount> = {};
+            for (const [wid, d] of Object.entries(r.discounts || {})) {
+              discounts[wid] = sanitizeDiscounts(d);
+            }
+            return { sku: String(r.sku), discounts };
+          }),
       };
+
       const res = await fetch("/api/pricing/gip", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
+        cache: "no-store",
       });
-      const j = await res.json();
-      if (!res.ok || j?.ok === false) throw new Error(j?.error || "Opslaan mislukt");
+
+      let j: any = null;
+      try { j = await res.json(); } catch {}
+      if (!res.ok || j?.ok === false) {
+        throw new Error(j?.error || `Opslaan mislukt (HTTP ${res.status})`);
+      }
       setMsg(`Kortingen opgeslagen (${j.rowsCount} rijen, ${j.wholesalersCount} groothandels).`);
     } catch (e: any) {
       setMsg(e?.message || "Opslaan mislukt");
@@ -198,7 +221,7 @@ export default function GIPPage() {
     try {
       setBusy(true);
       setMsg(null);
-      const res = await fetch("/api/pricing/gip", { method: "GET" });
+      const res = await fetch("/api/pricing/gip", { method: "GET", cache: "no-store" });
       const j = (await res.json()) as { ok: boolean } & GIPStore;
       if (!res.ok || j?.ok === false) throw new Error((j as any)?.error || "Laden mislukt");
 
@@ -287,7 +310,7 @@ export default function GIPPage() {
           Verpakking: r.pack,
           Registratie: r.reg,
           "ZI-nummer": r.zi,
-          "AIP (EUR)": r.aip,
+          "AIP (EUR)": Number.isFinite(r.aip) ? r.aip : 0,
           "Distributiefee %": pctToText(d.distFee),
           "Extra korting %": pctToText(d.extra),
           "Netto EUR": Math.round(netPrice * 100) / 100,
