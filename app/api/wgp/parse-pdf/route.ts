@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 // Belangrijk: Node-runtime (pdf-parse werkt niet op Edge)
 export const runtime = "nodejs";
-// Niet cachen op build; elke upload moet server-side draaien
+// Niet cachen; elke upload moet server-side draaien
 export const dynamic = "force-dynamic";
 
 // pdf-parse is CJS; gebruik esModuleInterop of require
@@ -14,7 +14,7 @@ type ScUnitRow = {
   unit_price_eur: number;   // eenheidsprijs uit Staatscourant
   artikelnaam?: string;     // optioneel
   eenheid?: string;         // bijv. STUK / ML / G
-  valid_from?: string;      // niet altijd aanwezig in het document
+  valid_from?: string;      // optioneel
 };
 
 function normReg(v: unknown) {
@@ -47,13 +47,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Kon geen tekst uit PDF halen." }, { status: 422 });
     }
 
-    // PDF regels als tekst
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
-    // Voorbeelden (zoals in je PDF):
+    // Voorbeelden:
     // "117120  ABACAVIR ACCORD TABLET FILMOMHULD 300MG 3,575915 STUK"
     // "EU/1/14/944/007  ABASAGLAR INJVLST 100E/ML PEN 3ML 2,502257 ML"
-    // Regex: [REGNR]  [NAAM ...]  [PRIJS] [EENHEID]
     const rowRe =
       /^(?<reg>(?:EU\/\d+(?:\/\d+)+|\d{5,8}))\s{2,}(?<name>.+?)\s(?<price>\d{1,3}(?:\.\d{3})*,\d{2,6}|\d+,\d{2,6})\s(?<unit>[A-Zµ/().%+\-]+)$/;
 
@@ -71,7 +69,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // Dedup (veiligheid)
+    // Dedup
     const seen = new Set<string>();
     const dedup = rows.filter(r => {
       const k = `${r.reg}::${r.unit_price_eur}::${r.artikelnaam ?? ""}::${r.eenheid ?? ""}`;
@@ -83,7 +81,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       meta: { pages: data.numpages ?? null, count: dedup.length },
-      rows: dedup,                      // ← keys: reg, unit_price_eur, artikelnaam?, eenheid?
+      rows: dedup,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "PDF kon niet worden verwerkt." }, { status: 500 });
