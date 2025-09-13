@@ -1,368 +1,209 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import * as XLSX from "xlsx";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
-/** ================= Types ================= */
+type WgpRow = { regnr: string; artikelnaam: string; maxprijs_eur: number; eenheid: string; };
 type AipRow = {
-  sku: string;
-  name: string;
-  pack: number;     // stuks per standaardverpakking
-  reg: string;      // REGNR / RVG (genormaliseerd)
-  zi: string;
-  aip?: number;     // bestaande AIP (optioneel)
-  moq?: number;     // minimale bestelgrootte
-  caseQty?: number; // doosverpakking
+  sku: string; name: string; pack: string; reg: string; zi: string; aip: number; moq?: number; caseQty?: number;
+  unitsPerPack?: number; ppu?: number; packUnits?: number; custom?: Record<string, string | number>;
+};
+type MatchRow = {
+  regnr: string; artikelnaamWgp: string; eenheid: string; maxprijs_eur: number;
+  sku?: string; artikelnaamAip?: string; pack?: string; unitsPerPack: number;
+  aip_pack_eur?: number; aip_per_eenheid?: number; delta_eur?: number; delta_pct?: number;
 };
 
-type ScUnitRow = {
-  reg: string;             // REGNR / RVG (genormaliseerd)
-  unit_price_eur: number;  // eenheidsprijs uit Staatscourant
-  valid_from?: string;
-};
+function eur(n: number) { return new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 6 }).format(Number.isFinite(n) ? n : 0); }
+function pct(n: number) { return new Intl.NumberFormat("nl-NL", { style: "percent", maximumFractionDigits: 1 }).format(Number.isFinite(n) ? n : 0); }
+function normReg(v: unknown) { return String(v ?? "").toUpperCase().replace(/[.\s]/g, "").trim(); }
+function coerceNum(v: any, def = 0) { if (typeof v === "number") return v; const s = String(v ?? "").replace(/\./g,"").replace(",",".").replace(/[^\d.-]/g,""); const n = parseFloat(s); return isFinite(n)?n:def; }
 
-type Joined = {
-  reg: string;
-  sku: string;
-  name: string;
-  zi: string;
-  pack: number | null;
-  unit_price_eur: number | null;
-  aip_calc: number | null; // unit × pack
-  valid_from?: string;
-  status: "OK" | "ONVOLLEDIG";
-  note?: string;
-};
-
-/** ================= Helpers ================= */
-function normReg(v: any) {
-  return String(v ?? "").toUpperCase().replace(/[.\s]/g, "").trim();
-}
-function toNumEU(v: any, fallback = NaN) {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  const s = String(v ?? "")
-    .replace(/\./g, "")
-    .replace(",", ".")
-    .replace(/[^\d.-]/g, "")
-    .trim();
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : fallback;
-}
-function downloadXlsx(filename: string, rows: any[], sheet = "Sheet1") {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, sheet);
-  const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-  const blob = new Blob([buf], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename.endsWith(".xlsx") ? filename : filename + ".xlsx";
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
-/** Flexibele mapper voor AIP-master */
-function toAipRow(o: Record<string, any>): AipRow {
-  const pick = (...keys: string[]) => {
-    for (const k of keys) {
-      if (o[k] !== undefined && o[k] !== null && String(o[k]).trim() !== "") return o[k];
-      const kk = Object.keys(o).find(
-        (x) => x.toLowerCase().replace(/\s|\./g, "") === k.toLowerCase().replace(/\s|\./g, "")
-      );
-      if (kk) return o[kk];
-    }
-    return "";
-  };
-  const str = (v: any) => String(v ?? "").trim();
-  const num = (v: any, fb = NaN) => toNumEU(v, fb);
-
-  return {
-    sku: str(pick("sku", "productcode")),
-    name: str(pick("product", "productnaam", "product naam", "naam")),
-    pack: Math.max(
-      0,
-      Math.round(
-        num(pick("pack", "verpakking", "standaard verpakk. grootte", "standaard verpakking"), 0)
-      )
-    ),
-    reg: normReg(pick("reg", "registratienummer", "rvg", "rvg nr", "rvg_nr", "regnr", "reg.nr")),
-    zi: str(pick("zi", "zi-nummer", "zinummer")),
-    aip: num(pick("aip", "lijstprijs", "apotheekinkoopprijs"), NaN),
-    moq: Math.max(0, Math.round(num(pick("moq", "minimale bestelgrootte"), 0))),
-    caseQty: Math.max(0, Math.round(num(pick("caseqty", "doosverpakking"), 0))),
-  };
-}
-
-/** Flexibele mapper voor Staatscourant eenheidsprijzen */
-function toScUnitRow(o: Record<string, any>): ScUnitRow {
-  const lower: Record<string, any> = {};
-  for (const [k, v] of Object.entries(o)) lower[k.toLowerCase()] = v;
-
-  const reg =
-    lower["reg"] ??
-    lower["regnr"] ??
-    lower["registratienummer"] ??
-    lower["rvg"] ??
-    lower["rvg_nr"] ??
-    lower["rvg nr"] ??
-    "";
-  const unit =
-    lower["unit_price_eur"] ??
-    lower["eenheidsprijs"] ??
-    lower["unitprice"] ??
-    lower["prijs_per_eenheid"] ??
-    lower["eenheidsprijs(€)"] ??
-    "";
-
-  const valid_from = String(
-    lower["valid_from"] ?? lower["geldig_vanaf"] ?? lower["ingangsdatum"] ?? ""
-  ).trim();
-
-  return {
-    reg: normReg(reg),
-    unit_price_eur: toNumEU(unit, NaN),
-    valid_from,
-  };
-}
-
-/** ================= Page ================= */
-export default function WgpBuilderPage() {
-  const [aipMaster, setAipMaster] = useState<AipRow[]>([]);
-  const [scUnits, setScUnits] = useState<ScUnitRow[]>([]);
+export default function WgpPage() {
+  const [wgp, setWgp] = useState<WgpRow[]>([]);
+  const [aip, setAip] = useState<AipRow[]>([]);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [onlyUnmatched, setOnlyUnmatched] = useState(false);
+  const [q, setQ] = useState("");
 
-  async function parseSheetToJson(file: File): Promise<any[]> {
-    const ext = (file.name.toLowerCase().split(".").pop() || "").trim();
-    if (ext === "xlsx" || ext === "xls") {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      return XLSX.utils.sheet_to_json(ws, { defval: "" });
-    } else if (ext === "csv") {
-      const txt = await file.text();
-      const wb = XLSX.read(txt, { type: "string" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      return XLSX.utils.sheet_to_json(ws, { defval: "" });
-    }
-    throw new Error("Ondersteund: .xlsx, .xls, .csv");
+  useEffect(() => { try { const raw = localStorage.getItem("aip_master_rows"); if (raw) setAip(JSON.parse(raw)); } catch {} }, []);
+  const importAipFromApi = useCallback(async () => { alert("AIP wordt nu uit localStorage geladen. Vervang dit met een API-call als je serveropslag hebt."); }, []);
+
+  const onUploadPdf = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return; setBusy(true);
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const r = await fetch("/api/wgp/parse-pdf", { method: "POST", body: fd });
+      const js = await r.json(); if (!r.ok) throw new Error(js?.error || "Upload/parsen mislukt");
+      const rows: WgpRow[] = (js.rows || []).map((x: any) => ({
+        regnr: String(x.reg || x.regnr || "").trim(),
+        artikelnaam: String(x.artikelnaam || x.name || "").trim(),
+        maxprijs_eur: Number(x.unit_price_eur || x.maxprijs_eur),
+        eenheid: String(x.eenheid || x.unit || "").trim()
+      }));
+      setWgp(rows); localStorage.setItem("wgp_last_rows", JSON.stringify(rows));
+    } catch (err: any) {
+      alert(err?.message || "Kon PDF niet verwerken.");
+    } finally { setBusy(false); e.currentTarget.value = ""; }
+  }, []);
+  const loadLastWgp = useCallback(() => { try { const raw = localStorage.getItem("wgp_last_rows"); if (raw) setWgp(JSON.parse(raw)); } catch {} }, []);
+
+  function unitsPerPack(r: AipRow): number {
+    const explicit = r.unitsPerPack ?? r.ppu ?? r.packUnits ?? (typeof r.custom?.unitsPerPack === "number" ? (r.custom!.unitsPerPack as number) : undefined);
+    if (typeof explicit === "number" && explicit > 0) return explicit;
+    const s = (r.pack || "").toLowerCase();
+    const mMulti = s.match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/i);
+    if (mMulti) { const a = coerceNum(mMulti[1], NaN), b = coerceNum(mMulti[2], NaN); if (Number.isFinite(a) && Number.isFinite(b)) return Math.round(a * b); }
+    const mUnits = s.match(/\b(\d{1,4})\s*(?:st(?:uk|uks|.)|tabl|tabletten?|caps?|amp|sachet|pcs)/i);
+    if (mUnits) return parseInt(mUnits[1], 10);
+    return 1;
   }
 
-  async function onUploadAip(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    e.currentTarget.value = "";
-    if (!f) return;
-    setErr(null);
-    setBusy(true);
-    try {
-      const json = await parseSheetToJson(f);
-      const rows = json.map(toAipRow).filter((r) => r.reg);
-      setAipMaster(rows);
-    } catch (e: any) {
-      setErr(e?.message || "AIP-master kon niet worden gelezen.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onUploadSc(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    e.currentTarget.value = "";
-    if (!f) return;
-    setErr(null);
-    setBusy(true);
-    try {
-      const ext = (f.name.toLowerCase().split(".").pop() || "").trim();
-      if (ext === "pdf") {
-        // Server-side parsing (Node runtime) -> verwacht JSON: { rows: ScUnitRow[] }
-        const fd = new FormData();
-        fd.append("file", f);
-        const res = await fetch("/api/wgp/parse-pdf", { method: "POST", body: fd });
-        const js = await res.json();
-        if (!res.ok) throw new Error(js?.error || "PDF niet verwerkt.");
-        setScUnits((js?.rows || []).map(toScUnitRow));
-      } else {
-        const json = await parseSheetToJson(f);
-        const rows = json.map(toScUnitRow).filter((r) => r.reg && Number.isFinite(r.unit_price_eur));
-        setScUnits(rows);
+  const joined = useMemo<MatchRow[]>(() => {
+    if (!wgp.length) return [];
+    const idx = new Map<string, AipRow[]>(); for (const r of aip) { const k = normReg(r.reg); if (!k) continue; const list = idx.get(k) || []; list.push(r); idx.set(k, list); }
+    const out: MatchRow[] = [];
+    for (const w of wgp) {
+      const matches = idx.get(normReg(w.regnr)) || [];
+      if (!matches.length) { out.push({ regnr:w.regnr, artikelnaamWgp:w.artikelnaam, eenheid:w.eenheid, maxprijs_eur:w.maxprijs_eur, unitsPerPack:1 }); continue; }
+      for (const a of matches) {
+        const u = unitsPerPack(a);
+        const aipPerUnit = Number.isFinite(a.aip) && u > 0 ? a.aip / u : NaN;
+        const delta = Number.isFinite(aipPerUnit) ? (aipPerUnit - w.maxprijs_eur) : NaN;
+        const deltaPct = Number.isFinite(delta) && w.maxprijs_eur > 0 ? delta / w.maxprijs_eur : NaN;
+        out.push({
+          regnr:w.regnr, artikelnaamWgp:w.artikelnaam, eenheid:w.eenheid, maxprijs_eur:w.maxprijs_eur,
+          sku:a.sku, artikelnaamAip:a.name, pack:a.pack, unitsPerPack:u, aip_pack_eur:a.aip,
+          aip_per_eenheid:aipPerUnit, delta_eur:delta, delta_pct:deltaPct
+        });
       }
-    } catch (e: any) {
-      setErr(e?.message || "Staatscourant-eenheidsprijzen konden niet worden gelezen.");
-    } finally {
-      setBusy(false);
     }
-  }
+    return out;
+  }, [wgp, aip]);
 
-  const joined: Joined[] = useMemo(() => {
-    if (!scUnits.length) return [];
-    const byReg = new Map(aipMaster.map((r) => [r.reg, r]));
-    return scUnits.map((s) => {
-      const m = byReg.get(s.reg);
-      const pack = m?.pack ?? null;
-      const unit = Number.isFinite(s.unit_price_eur) ? s.unit_price_eur : null;
-      const aip_calc = unit !== null && pack !== null && pack > 0 ? +(unit * pack).toFixed(2) : null;
-      const ok = unit !== null && pack !== null && pack > 0;
-      return {
-        reg: s.reg,
-        sku: m?.sku ?? "",
-        name: m?.name ?? "",
-        zi: m?.zi ?? "",
-        pack,
-        unit_price_eur: unit,
-        aip_calc,
-        valid_from: s.valid_from,
-        status: ok ? "OK" : "ONVOLLEDIG",
-        note: !m
-          ? "Geen match in AIP-master"
-          : pack === null || !(pack > 0)
-          ? "Pack ontbreekt/ongeldig"
-          : undefined,
-      };
-    });
-  }, [aipMaster, scUnits]);
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase(); if (!s) return joined;
+    return joined.filter(r =>
+      r.regnr.toLowerCase().includes(s) ||
+      (r.sku||"").toLowerCase().includes(s) ||
+      (r.artikelnaamAip||"").toLowerCase().includes(s) ||
+      (r.artikelnaamWgp||"").toLowerCase().includes(s)
+    );
+  }, [joined, q]);
 
-  const rowsToShow = onlyUnmatched ? joined.filter((r) => r.status !== "OK") : joined;
+  const kpis = useMemo(() => {
+    const nW = wgp.length, nA = aip.length;
+    const matched = joined.filter(r => !!r.sku).length;
+    const overCap = joined.filter(r => Number.isFinite(r.delta_eur) && (r.delta_eur as number) > 0).length;
+    return { nW, nA, matched, overCap };
+  }, [wgp, aip, joined]);
 
-  function exportResult() {
-    if (!joined.length) return;
-    downloadXlsx("wgp_aip_berekening.xlsx", joined, "WgpAIP");
-  }
+  const exportCsv = useCallback(() => {
+    const headers = ["regnr","sku","artikelnaamAip","pack","unitsPerPack","aip_pack_eur","aip_per_eenheid","artikelnaamWgp","eenheid","wgp_max_eur","delta_eur","delta_pct"];
+    const rows = filtered.map(r => [r.regnr, r.sku ?? "", r.artikelnaamAip ?? "", r.pack ?? "", r.unitsPerPack, r.aip_pack_eur ?? "", r.aip_per_eenheid ?? "", r.artikelnaamWgp, r.eenheid, r.maxprijs_eur, r.delta_eur ?? "", r.delta_pct ?? ""]);
+    const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "wgp_vs_aip.csv"; a.click(); URL.revokeObjectURL(a.href);
+  }, [filtered]);
 
   return (
-    <div className="mx-auto max-w-6xl px-3 sm:px-4 lg:px-6 py-6 space-y-6">
-      {/* Header */}
-      <header className="rounded-2xl border bg-white p-4 sm:p-5">
-        <h1 className="text-xl sm:text-2xl font-semibold">Wgp Builder — AIP uit eenheidsprijzen</h1>
-        <p className="mt-1 text-sm text-gray-700">
-          Upload je <b>AIP-master</b> (REGNR + pack) en een <b>Staatscourant-lijst</b> met eenheidsprijzen.
-          We berekenen <b>AIP = eenheidsprijs × pack</b> en tonen matches/hiaten.
-        </p>
+    <div className="mx-auto max-w-7xl px-3 sm:px-4 py-6 space-y-6">
+      <header className="flex items-center justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-semibold">Wgp-builder</h1>
+          <p className="mt-1 text-sm text-gray-600">Upload PDF met <b>eenheidsprijzen</b>, match op <b>regnr</b> en vergelijk met jouw <b>AIP per eenheid</b>.</p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/app/pricing" className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">← Terug naar Pricing</Link>
+        </div>
       </header>
 
-      {/* Uploads */}
-      <section className="rounded-2xl border bg-white p-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm">
-            <div className="font-medium">1) AIP-master (.xlsx/.xls/.csv)</div>
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={onUploadAip}
-              className="mt-1 block w-full rounded-md border px-3 py-2"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Vereist: <code>reg / regnr / rvg</code> en <code>pack</code>. Optioneel: SKU, naam, zi, AIP, MOQ, caseQty.
-            </p>
+      <section className="rounded-2xl border bg-white p-3 sm:p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:opacity-95 cursor-pointer">
+            PDF uploaden
+            <input type="file" accept=".pdf" onChange={onUploadPdf} className="hidden" />
           </label>
-
-          <label className="block text-sm">
-            <div className="font-medium">2) Staatscourant eenheidsprijzen (.xlsx/.xls/.csv/.pdf)</div>
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv,.pdf"
-              onChange={onUploadSc}
-              className="mt-1 block w-full rounded-md border px-3 py-2"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Vereist: <code>reg / rvg / regnr</code> en <code>unit_price_eur</code>. Optioneel <code>valid_from</code>. Bij PDF wordt server-side tekstextractie gebruikt.
-            </p>
-          </label>
-        </div>
-
-        {busy && <div className="mt-3 text-sm text-gray-600">Bezig…</div>}
-        {err && (
-          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            {err}
+          <button onClick={loadLastWgp} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">Laatste PDF-resultaat laden</button>
+          <button onClick={importAipFromApi} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">AIP automatisch laden</button>
+          <div className="ml-auto">
+            <input placeholder="Zoek regnr/SKU/naam…" value={q} onChange={(e)=>setQ(e.target.value)} className="rounded-lg border px-3 py-2 text-sm w-56 sm:w-72" />
           </div>
-        )}
+        </div>
+        {busy && <div className="mt-2 text-sm text-gray-600">PDF verwerken…</div>}
       </section>
 
-      {/* Resultaten */}
-      <section className="rounded-2xl border bg-white p-3 sm:p-4">
-        <div className="flex flex-wrap items-center gap-2 justify-between">
-          <div className="text-sm font-medium">
-            Resultaat ({rowsToShow.length}/{joined.length})
-          </div>
-          <div className="flex items-center gap-3">
-            <label className="text-xs inline-flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={onlyUnmatched}
-                onChange={(e) => setOnlyUnmatched(e.target.checked)}
-              />
-              Toon alleen onvolledig / geen match
-            </label>
-            <button
-              onClick={exportResult}
-              disabled={!joined.length}
-              className="text-sm rounded-lg border px-3 py-1.5 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Exporteer naar Excel
-            </button>
-          </div>
-        </div>
+      <section className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+        <Kpi title="WGP regels" value={String(kpis.nW)} />
+        <Kpi title="AIP regels" value={String(kpis.nA)} />
+        <Kpi title="Matches (regnr)" value={String(kpis.matched)} />
+        <Kpi title="Boven cap" value={String(kpis.overCap)} help="AIP/eenheid > WGP-max" />
+      </section>
 
-        <div className="mt-3 overflow-x-auto">
-          <table className="min-w-full text-sm border-collapse">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="px-2 py-2 text-left">REGNR</th>
-                <th className="px-2 py-2 text-left">SKU</th>
-                <th className="px-2 py-2 text-left">Product</th>
-                <th className="px-2 py-2 text-left">ZI</th>
-                <th className="px-2 py-2 text-right">Pack</th>
-                <th className="px-2 py-2 text-right">Unit (€)</th>
-                <th className="px-2 py-2 text-right">AIP (= unit × pack)</th>
-                <th className="px-2 py-2 text-left">Geldig vanaf</th>
-                <th className="px-2 py-2 text-left">Status</th>
+      <section className="rounded-2xl border bg-white p-3 sm:p-4">
+        <div className="overflow-auto">
+          <table className="min-w-[1024px] w-full text-sm border-collapse">
+            <thead className="bg-slate-50 border-b">
+              <tr>
+                <Th>Regnr</Th><Th>SKU</Th><Th>Product (AIP)</Th><Th>Pack</Th>
+                <Th className="text-right">Eenh/pack</Th>
+                <Th className="text-right">AIP/pack</Th>
+                <Th className="text-right">AIP/eenh</Th>
+                <Th>Product (WGP)</Th><Th>Eenh</Th>
+                <Th className="text-right">WGP max/eenh</Th>
+                <Th className="text-right">Δ €/eenh</Th>
+                <Th className="text-right">Δ %</Th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rowsToShow.map((r) => (
-                <tr key={`${r.reg}-${r.zi}-${r.valid_from ?? ""}`}>
-                  <td className="px-2 py-1">{r.reg}</td>
-                  <td className="px-2 py-1">{r.sku}</td>
-                  <td className="px-2 py-1">{r.name}</td>
-                  <td className="px-2 py-1">{r.zi}</td>
-                  <td className="px-2 py-1 text-right">{r.pack !== null ? r.pack : "-"}</td>
-                  <td className="px-2 py-1 text-right">
-                    {r.unit_price_eur !== null ? r.unit_price_eur.toFixed(4) : "-"}
-                  </td>
-                  <td className="px-2 py-1 text-right">
-                    {r.aip_calc !== null ? r.aip_calc.toFixed(2) : "-"}
-                  </td>
-                  <td className="px-2 py-1">{r.valid_from || "-"}</td>
-                  <td className="px-2 py-1">
-                    {r.status === "OK" ? (
-                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 ring-1 ring-emerald-200">
-                        OK
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 ring-1 ring-amber-200">
-                        {r.note || "Onvolledig"}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {!rowsToShow.length && (
-                <tr>
-                  <td colSpan={9} className="px-2 py-6 text-center text-gray-500">
-                    Nog geen rijen.
-                  </td>
-                </tr>
+              {filtered.map((r, i) => {
+                const over = Number.isFinite(r.delta_eur) && (r.delta_eur as number) > 0;
+                return (
+                  <tr key={i} className={over ? "bg-rose-50" : ""}>
+                    <Td>{r.regnr}</Td>
+                    <Td>{r.sku || <span className="text-gray-400">—</span>}</Td>
+                    <Td className="max-w-[280px]">{r.artikelnaamAip || <span className="text-gray-400">—</span>}</Td>
+                    <Td>{r.pack || <span className="text-gray-400">—</span>}</Td>
+                    <Td className="text-right">{r.unitsPerPack}</Td>
+                    <Td className="text-right">{r.aip_pack_eur != null ? eur(r.aip_pack_eur) : "—"}</Td>
+                    <Td className="text-right">{r.aip_per_eenheid != null ? eur(r.aip_per_eenheid) : "—"}</Td>
+                    <Td className="max-w-[320px]">{r.artikelnaamWgp}</Td>
+                    <Td>{r.eenheid}</Td>
+                    <Td className="text-right">{eur(r.maxprijs_eur)}</Td>
+                    <Td className={"text-right " + (over ? "text-rose-700 font-medium" : "")}>{r.delta_eur != null ? eur(r.delta_eur) : "—"}</Td>
+                    <Td className="text-right">{r.delta_pct != null && Number.isFinite(r.delta_pct) ? pct(r.delta_pct) : "—"}</Td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr><td colSpan={12} className="text-center text-sm text-gray-500 py-6">Geen rijen. Upload PDF en laad AIP.</td></tr>
               )}
             </tbody>
           </table>
         </div>
 
-        <p className="mt-3 text-xs text-gray-500">
-          Tip: controleer altijd een steekproef. Bij afwijkende header-namen kun je kolommen hernoemen voor een perfecte mapping.
-        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button onClick={() => {
+            const headers = ["regnr","sku","artikelnaamAip","pack","unitsPerPack","aip_pack_eur","aip_per_eenheid","artikelnaamWgp","eenheid","wgp_max_eur","delta_eur","delta_pct"];
+            const rows = filtered.map(r => [r.regnr, r.sku ?? "", r.artikelnaamAip ?? "", r.pack ?? "", r.unitsPerPack, r.aip_pack_eur ?? "", r.aip_per_eenheid ?? "", r.artikelnaamWgp, r.eenheid, r.maxprijs_eur, r.delta_eur ?? "", r.delta_pct ?? ""]);
+            const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "wgp_vs_aip.csv"; a.click(); URL.revokeObjectURL(a.href);
+          }} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">Exporteer CSV</button>
+          <button onClick={() => { localStorage.setItem("wgp_compare_rows", JSON.stringify(joined)); alert("Opgeslagen (lokaal)."); }} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">Opslaan in portal</button>
+        </div>
       </section>
     </div>
   );
 }
+
+function Kpi({ title, value, help }: { title: string; value: string; help?: string }) {
+  return (
+    <div className="rounded-2xl border bg-white p-3 sm:p-4">
+      <div className="text-[12px] text-gray-600">{title}</div>
+      <div className="text-lg sm:text-xl font-semibold mt-1">{value}</div>
+      {help ? <div className="text-[11px] sm:text-xs text-gray-500 mt-1">{help}</div> : null}
+    </div>
+  );
+}
+function Th(props: React.HTMLAttributes<HTMLTableCellElement>) { return <th {...props} className={"text-left px-2 py-2 " + (props.className || "")} />; }
+function Td(props: React.HTMLAttributes<HTMLTableCellElement>) { return <td {...props} className={"align-top px-2 py-1 " + (props.className || "")} />; }
