@@ -106,7 +106,7 @@ async function scanPdfForRegs(
 ) {
   const buf = await file.arrayBuffer();
 
-  const pdfjs: any = await import("pdfjs-dist/build/pdf");
+  const mod: any = await import("pdfjs-dist");
   const loadingTask = pdfjs.getDocument({
     data: buf,
     disableWorker: true,
