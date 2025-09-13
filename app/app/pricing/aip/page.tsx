@@ -14,7 +14,7 @@ type Row = {
   aip: number;        // lijstprijs (EUR)
   moq: number;        // Minimale bestelgrootte
   caseQty: number;    // Doosverpakking
-  purchaseQty: number; // Inkoophoeveelheid per verpakking
+  purchaseQty: number; // Inkoophoeveelheid per verpakking (NIEUW)
   // custom fields: generiek object
   custom?: Record<string, string | number>;
 };
@@ -35,7 +35,7 @@ function trimStr(v: any) {
   return String(v ?? "").trim();
 }
 
-function parseXlsxOrCsv(file: File): Promise<ImportRow[]> {
+function parseXlsxOrCsv(file: File): Promise[ImportRow[]] {
   return new Promise(async (resolve, reject) => {
     try {
       const buf = await file.arrayBuffer();
@@ -281,8 +281,7 @@ export default function AIPPage() {
   }
 
   /** ---- Portal opslag: gebruikt bestaande /api/pricing/products ----
-   * We sturen 'purchaseQty' mee in custom.purchaseQty om de bestaande
-   * servertypes niet te breken. Laden leest het terug uit custom.
+   * purchaseQty zetten we in custom.purchaseQty om serverside types niet te wijzigen.
    */
   async function saveToPortal() {
     try {
@@ -541,3 +540,49 @@ function Td(props: React.HTMLAttributes<HTMLTableCellElement>) {
 function Input({
   value,
   onChange,
+  invalid,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  invalid?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <input
+      value={value || ""}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={"w-full rounded-md border px-2 py-1.5 " + (invalid ? "border-rose-300 bg-rose-50" : "")}
+    />
+  );
+}
+function Num({
+  value,
+  onChange,
+  invalid,
+  integer = false,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  invalid?: boolean;
+  integer?: boolean;
+}) {
+  const [raw, setRaw] = useState<string>(Number.isFinite(value) ? String(value) : "");
+  useEffect(() => {
+    setRaw(Number.isFinite(value) ? String(value) : "");
+  }, [value]);
+  return (
+    <input
+      inputMode="decimal"
+      value={raw}
+      onChange={(e) => {
+        setRaw(e.target.value);
+        const n = coerceNum(e.target.value, NaN);
+        onChange(integer ? Math.max(0, Math.round(n)) : n);
+      }}
+      className={"w-full text-right rounded-md border px-2 py-1.5 " + (invalid ? "border-rose-300 bg-rose-50" : "")}
+      placeholder="0"
+    />
+  );
+}
