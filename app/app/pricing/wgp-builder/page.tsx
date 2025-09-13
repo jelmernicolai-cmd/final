@@ -1,3 +1,4 @@
+// app/app/wgp-builder/page.tsx
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -144,6 +145,47 @@ async function parseSheetToJson(file: File): Promise<any[]> {
   throw new Error("Ondersteund: .xlsx, .xls, .csv");
 }
 
+/** ====== API helpers (robuuste JSON parsing) ====== */
+async function parsePdfByUrl(pdfUrl: string) {
+  const res = await fetch("/api/wgp/parse", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: pdfUrl }),
+    cache: "no-store",
+  });
+  const txt = await res.text();
+  let data: any;
+  try {
+    data = JSON.parse(txt);
+  } catch {
+    throw new Error(`Onverwachte serverrespons (status ${res.status}): ${txt.slice(0, 160)}`);
+  }
+  if (!res.ok || data?.ok === false) {
+    throw new Error(data?.error || `Parsing failed (HTTP ${res.status})`);
+  }
+  return data as { ok: true; rows: ScUnitRow[] };
+}
+
+async function parsePdfFile(fd: FormData) {
+  const res = await fetch("/api/wgp/parse", { method: "POST", body: fd, cache: "no-store" });
+  const txt = await res.text();
+  let data: any;
+  try {
+    data = JSON.parse(txt);
+  } catch {
+    // Hier landen o.a. 413 "Request Entity Too Large" meldingen
+    const hint =
+      res.status === 413 || /Request Entity Too Large/i.test(txt)
+        ? "PDF te groot (413). Gebruik de URL-parser of upload een kleiner document."
+        : `Onverwachte serverrespons (status ${res.status}).`;
+    throw new Error(`${hint}${txt ? ` • Server zei: ${txt.slice(0, 160)}` : ""}`);
+  }
+  if (!res.ok || data?.ok === false) {
+    throw new Error(data?.error || `PDF verwerken mislukt (HTTP ${res.status})`);
+  }
+  return data as { ok: true; rows: ScUnitRow[] };
+}
+
 /** ================= Page ================= */
 export default function WgpBuilderPage() {
   const [aipMaster, setAipMaster] = useState<AipRow[]>([]);
@@ -151,6 +193,7 @@ export default function WgpBuilderPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [onlyUnmatched, setOnlyUnmatched] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState("");
 
   async function onUploadAip(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -179,20 +222,34 @@ export default function WgpBuilderPage() {
       const ext = (f.name.toLowerCase().split(".").pop() || "").trim();
 
       if (ext === "pdf") {
-        // ✅ GEBRUIK DIT ENDPOINT (server parse met pdfjs-dist)
+        // ✅ Optie 1: bestand uploaden (kan 413 geven bij grote PDF's)
         const fd = new FormData();
         fd.append("file", f);
-        const res = await fetch("/api/wgp/parse", { method: "POST", body: fd });
-        const js = await res.json();
-        if (!res.ok) throw new Error(js?.error || "PDF niet verwerkt.");
-        setScUnits(js.rows as ScUnitRow[]);
+        const js = await parsePdfFile(fd);
+        setScUnits(js.rows);
       } else {
+        // ✅ Excel/CSV client-side
         const json = await parseSheetToJson(f);
         const rows = json.map(toScUnitRow).filter((r) => r.reg && Number.isFinite(r.unit_price_eur));
         setScUnits(rows);
       }
     } catch (e: any) {
       setErr(e?.message || "Staatscourant-eenheidsprijzen konden niet worden gelezen.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onParseUrl() {
+    if (!pdfUrl.trim()) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      // ✅ Aanrader: laat de server de PDF ophalen via URL (omzeilt 413)
+      const js = await parsePdfByUrl(pdfUrl.trim());
+      setScUnits(js.rows);
+    } catch (e: any) {
+      setErr(e?.message || "URL kon niet verwerkt worden.");
     } finally {
       setBusy(false);
     }
@@ -246,8 +303,8 @@ export default function WgpBuilderPage() {
         </p>
       </header>
 
-      {/* Uploads */}
-      <section className="rounded-2xl border bg-white p-4">
+      {/* Uploads + URL-parse */}
+      <section className="rounded-2xl border bg-white p-4 space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm block">
             <div className="font-medium">1) AIP-master (.xlsx/.csv)</div>
@@ -261,8 +318,9 @@ export default function WgpBuilderPage() {
               Verwacht kolommen: <code>reg / regnr / rvg</code> en <code>pack</code>. Optioneel: SKU, naam, zi, AIP, MOQ, caseQty.
             </p>
           </label>
+
           <label className="text-sm block">
-            <div className="font-medium">2) Staatscourant eenheidsprijzen (.pdf/.xlsx/.csv)</div>
+            <div className="font-medium">2) Staatscourant eenheidsprijzen — upload (.pdf/.xlsx/.csv)</div>
             <input
               type="file"
               accept=".pdf,.xlsx,.xls,.csv"
@@ -274,9 +332,25 @@ export default function WgpBuilderPage() {
             </p>
           </label>
         </div>
-        {busy && <div className="mt-3 text-sm text-gray-600">Bezig…</div>}
+
+        <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+          <input
+            placeholder="Of plak hier een directe Staatscourant PDF-URL…"
+            value={pdfUrl}
+            onChange={(e) => setPdfUrl(e.target.value)}
+            className="rounded-md border px-3 py-2 text-sm"
+          />
+          <button
+            onClick={onParseUrl}
+            className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+          >
+            Parseer via URL
+          </button>
+        </div>
+
+        {busy && <div className="text-sm text-gray-600">Bezig…</div>}
         {err && (
-          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             {err}
           </div>
         )}
@@ -364,7 +438,7 @@ export default function WgpBuilderPage() {
         </div>
 
         <p className="mt-3 text-xs text-gray-500">
-          Tip: controleer altijd een steekproef. Pas eventueel regex/mapping aan je Staatscourant-opmaak aan.
+          Tip: gebruik bij grote Staatscourant-PDFs de <b>URL</b>-optie hierboven om uploads te vermijden.
         </p>
       </section>
     </div>
