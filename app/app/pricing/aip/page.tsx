@@ -14,7 +14,7 @@ type Row = {
   aip: number;        // lijstprijs (EUR)
   moq: number;        // Minimale bestelgrootte
   caseQty: number;    // Doosverpakking
-  purchaseQty: number; // Inkoophoeveelheid per verpakking (NIEUW)
+  purchaseQty: number; // Inkoophoeveelheid per verpakking
   // custom fields: generiek object
   custom?: Record<string, string | number>;
 };
@@ -35,8 +35,8 @@ function trimStr(v: any) {
   return String(v ?? "").trim();
 }
 
-function parseXlsxOrCsv(file: File): Promise[ImportRow[]] {
-  return new Promise(async (resolve, reject) => {
+function parseXlsxOrCsv(file: File): Promise<ImportRow[]> {
+  return new Promise<ImportRow[]>(async (resolve, reject) => {
     try {
       const buf = await file.arrayBuffer();
       let rows: any[] = [];
