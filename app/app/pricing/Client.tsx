@@ -198,7 +198,7 @@ export default function PricingAdminClient() {
           title="Wgp-builder"
           desc="Parseer Staatscourant-PDFs en update AIP’s via registratienummer-mapping. Handig voor periodieke wijzigingen."
           ctaLabel="Openen"
-          href="/app/wgp"
+          href="/app/pricing/wgp-builder"
           tone="info"
           footer={<div className="text-xs text-gray-500">Bèta – PDF → regels → AIP update</div>}
         />
