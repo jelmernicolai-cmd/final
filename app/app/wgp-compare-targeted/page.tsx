@@ -359,4 +359,51 @@ export default function Page(): JSX.Element {
             <thead>
               <tr className="border-b bg-gray-50">
                 <th className="px-2 py-2 text-left">REGNR</th>
-                <th
+                <th className="px-2 py-2 text-left">SKU</th>
+                <th className="px-2 py-2 text-left">Product</th>
+                <th className="px-2 py-2 text-left">ZI</th>
+                <th className="px-2 py-2 text-right">Pack</th>
+                <th className="px-2 py-2 text-right">AIP huidig (€)</th>
+                <th className="px-2 py-2 text-right">Unit (€)</th>
+                <th className="px-2 py-2 text-right">AIP voorgesteld (€)</th>
+                <th className="px-2 py-2 text-right">Δ €</th>
+                <th className="px-2 py-2 text-right">Δ %</th>
+                <th className="px-2 py-2 text-left">Bijwerken?</th>
+                <th className="px-2 py-2 text-left">Pagina</th>
+                <th className="px-2 py-2 text-left">Opmerking</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {diffs.map((r) => (
+                <tr key={r.reg}>
+                  <td className="px-2 py-1">{r.reg}</td>
+                  <td className="px-2 py-1">{r.sku ?? ""}</td>
+                  <td className="px-2 py-1">{r.name ?? ""}</td>
+                  <td className="px-2 py-1">{r.zi ?? ""}</td>
+                  <td className="px-2 py-1 text-right">{r.pack ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">{r.aip_current ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">{r.unit_price_eur ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">{r.aip_suggested ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">{r.diff_eur ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">
+                    {r.diff_pct !== null && r.diff_pct !== undefined ? `${+(r.diff_pct * 100).toFixed(3)}%` : "-"}
+                  </td>
+                  <td className="px-2 py-1">{r.update ? "JA" : "NEE"}</td>
+                  <td className="px-2 py-1">{r.page ?? "-"}</td>
+                  <td className="px-2 py-1">{r.note ?? ""}</td>
+                </tr>
+              ))}
+              {!diffs.length && (
+                <tr>
+                  <td colSpan={13} className="px-2 py-6 text-center text-gray-500">
+                    Upload AIP + PDF en klik “Scan & Vergelijk”.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
