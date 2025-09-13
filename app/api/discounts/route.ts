@@ -1,13 +1,5 @@
 import { NextResponse } from "next/server";
 import pdf from "pdf-parse";
-import { ofetch } from "ofetch";
-
-/**
- * Verwacht een PDF met tabellen:
- *  - "Uitgaven zonder arrangement" en "Gerealiseerde uitgaven" per geneesmiddel (in mln €)
- * Parser zoekt regels: <NAAM>  <zonder>  <gerealiseerd>
- * en zet komma/ puntnotatie NL → getal.
- */
 
 export const revalidate = 86400; // 24h
 
@@ -18,23 +10,18 @@ export async function POST(req: Request) {
     if (!src) return new NextResponse("Geef 'url' of stel VWS_BIJLAGE_URL in.", { status: 400 });
     if (!/^https?:\/\/.+\.pdf$/i.test(src)) return new NextResponse("URL moet naar een PDF wijzen.", { status: 400 });
 
-    // Download PDF
-    const ab = await ofetch<ArrayBuffer>(src, { responseType: "arrayBuffer", headers: { "user-agent": "PharmGtN/1.0" } });
+    const res = await fetch(src, { headers: { "user-agent": "PharmGtN/1.0" } });
+    if (!res.ok) return new NextResponse(`Download mislukt (${res.status})`, { status: 502 });
+    const ab = await res.arrayBuffer();
     const data = await pdf(Buffer.from(ab));
 
-    // Heuristisch jaartal
     const yearMatch = data.text.match(/20\d{2}/g);
     const year = yearMatch ? parseInt(yearMatch.slice(-1)[0], 10) : new Date().getFullYear();
 
     const lines = data.text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-
-    // Zoek heading posities (robust voor variaties)
     const headerIdx = lines.findIndex((l) =>
       /geneesmiddel/i.test(l) && /uitgaven/i.test(l) && /zonder/i.test(l) && /gerealiseerd/i.test(l)
     );
-
-    // Regex: <Naam...> <zonder> <gerealiseerd>
-    // Bedragen kunnen "1.234,5" of "123,4" zijn; soms met "€" of "mln"
     const rowRegex = /^(.+?)\s+([\d\.\,]+)\s+([\d\.\,]+)(?:\s*(?:mln|€|euro))?$/i;
 
     const rows: { name: string; withoutArr: number; realized: number }[] = [];
@@ -54,14 +41,9 @@ export async function POST(req: Request) {
       }
     }
 
-    if (!rows.length) {
-      return new NextResponse("Geen rijen gevonden. Controleer of dit de juiste bijlage is.", { status: 422 });
-    }
+    if (!rows.length) return new NextResponse("Geen rijen gevonden. Is dit de juiste bijlage?", { status: 422 });
 
-    return NextResponse.json(
-      { year, rows },
-      { headers: { "cache-control": "public, max-age=600, s-maxage=86400" } }
-    );
+    return NextResponse.json({ year, rows }, { headers: { "cache-control": "public, max-age=600, s-maxage=86400" } });
   } catch (e: any) {
     return new NextResponse(e?.message ?? "Parserfout", { status: 500 });
   }
