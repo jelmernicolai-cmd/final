@@ -1,3 +1,4 @@
+// app/app/pricing/gip/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -21,6 +22,12 @@ type Discounts = Record<string, Discount>;          // key = wholesaler.id
 type GIPRow = AIPRow & { discounts: Discounts };
 
 type Wholesaler = { id: string; label: string };
+
+type GIPStore = {
+  wholesalers: Wholesaler[];
+  rows: { sku: string; discounts: Record<string, Discount> }[];
+  updatedAt?: string;
+};
 
 /** ---------------- Helpers ---------------- */
 const eur = (n: number) =>
@@ -96,9 +103,7 @@ function toAipRow(r: any): AIPRow {
   };
 }
 
-/** Netto prijs:
- *   netto = AIP × (1 − distributiefee) × (1 − extra korting)
- */
+/** Netto = AIP × (1 − fee) × (1 − extra) */
 function net(aip: number, d: Discount) {
   const df = Math.min(Math.max(d?.distFee ?? 0, 0), 0.9999);
   const ex = Math.min(Math.max(d?.extra ?? 0, 0), 0.9999);
@@ -156,6 +161,70 @@ export default function GIPPage() {
       }));
       setRows(base.map((r) => ({ ...r, discounts: {} })));
       setMsg(`Geladen uit portal: ${base.length} rijen`);
+    } catch (e: any) {
+      setMsg(e?.message || "Laden mislukt");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** ------- Portal opslag (NIEUW) ------- */
+  async function saveDiscountsToPortal() {
+    try {
+      setBusy(true);
+      setMsg(null);
+      const payload: GIPStore = {
+        wholesalers: whs,
+        rows: rows
+          .filter((r) => !!r.sku)
+          .map((r) => ({ sku: r.sku, discounts: r.discounts })),
+      };
+      const res = await fetch("/api/pricing/gip", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await res.json();
+      if (!res.ok || j?.ok === false) throw new Error(j?.error || "Opslaan mislukt");
+      setMsg(`Kortingen opgeslagen (${j.rowsCount} rijen, ${j.wholesalersCount} groothandels).`);
+    } catch (e: any) {
+      setMsg(e?.message || "Opslaan mislukt");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadDiscountsFromPortal() {
+    try {
+      setBusy(true);
+      setMsg(null);
+      const res = await fetch("/api/pricing/gip", { method: "GET" });
+      const j = (await res.json()) as { ok: boolean } & GIPStore;
+      if (!res.ok || j?.ok === false) throw new Error((j as any)?.error || "Laden mislukt");
+
+      // Update groothandelslijst
+      if (Array.isArray(j.wholesalers) && j.wholesalers.length) {
+        setWhs(j.wholesalers);
+      }
+
+      // Merge per SKU
+      const map = new Map<string, Record<string, Discount>>();
+      (j.rows || []).forEach((r) => {
+        if (r?.sku) map.set(String(r.sku), r.discounts || {});
+      });
+
+      setRows((cur) =>
+        cur.map((r) => {
+          const found = map.get(r.sku);
+          if (!found) return r;
+          return { ...r, discounts: { ...r.discounts, ...found } };
+        })
+      );
+
+      setMsg(
+        `Kortingen geladen (${j.rows?.length || 0} rijen${j.updatedAt ? ` • snapshot: ${new Date(j.updatedAt).toLocaleString("nl-NL")}` : ""
+        }).`
+      );
     } catch (e: any) {
       setMsg(e?.message || "Laden mislukt");
     } finally {
@@ -269,7 +338,7 @@ export default function GIPPage() {
           </span>
         </div>
         <p className="text-sm text-gray-700 mt-1">
-          Beheer <b>distributiefee</b> en <b>extra korting</b> per SKU per groothandel. Laad AIP automatisch en exporteer per groothandel.
+          Beheer <b>distributiefee</b> en <b>extra korting</b> per SKU per groothandel. Laad AIP automatisch, sla kortingen op en exporteer per groothandel.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <label className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white text-sm px-4 py-2 hover:opacity-95 cursor-pointer">
@@ -278,6 +347,12 @@ export default function GIPPage() {
           </label>
           <button onClick={loadAIPFromPortal} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
             AIP laden uit portal
+          </button>
+          <button onClick={loadDiscountsFromPortal} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
+            Kortingen laden
+          </button>
+          <button onClick={saveDiscountsToPortal} className="rounded-lg bg-emerald-600 text-white px-3 py-2 text-sm hover:opacity-95">
+            Opslaan in portal
           </button>
           <button onClick={exportWorkbook} className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
             Exporteer Excel (per groothandel)
