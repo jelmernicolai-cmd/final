@@ -1,109 +1,91 @@
-// app/api/wgp/parse/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import * as XLSX from "xlsx";
-import { extractTextFromPdf } from "@/lib/pdf/readText";
+import { NextResponse } from "next/server";
+// Server-side PDF parsing met pdfjs-dist (geen pdf-parse nodig)
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 
-type Row = { reg: string; unit_price_eur: number; valid_from?: string };
+// Worker is niet nodig server-side, maar property moet bestaan
+// @ts-ignore
+pdfjs.GlobalWorkerOptions.workerSrc = "pdf.worker.mjs";
 
-function normReg(v: any) {
-  return String(v ?? "").toUpperCase().replace(/[.\s]/g, "").trim();
-}
-function toNumEU(v: any) {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  const s = String(v ?? "").replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : NaN;
-}
+// Heel simpele heuristische extractor: pakt tekst en zoekt REG/RVG + prijs
+function extractRowsFromText(text: string) {
+  const rows: { reg: string; unit_price_eur: number; valid_from?: string }[] = [];
 
-function parsePdfTextToRows(text: string): Row[] {
-  // Eenvoudige heuristiek: zoek patronen als "RVG 12345" of "REGNR 12-345"
-  // en prijzen "€ 1,2345" of "1,2345".
-  const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
-  const rows: Row[] = [];
-  let currentReg = "";
+  // normaliseer whitespace
+  const norm = text.replace(/\r/g, "").replace(/[ \t]+/g, " ");
+  const lines = norm.split("\n").map((l) => l.trim()).filter(Boolean);
 
-  const regRe = /\b(?:RVG|REG(?:NR)?)[\s:]*([0-9.\-\s]{3,})\b/i;
-  const priceRe = /(?:€\s*)?(\d{1,3}(?:\.\d{3})*(?:,\d+)|\d+(?:\.\d+)?)/;
+  // Regex-varianten: REGNR / RVG
+  const regRe = /(RVG|REG(?:\.?|NR)?)[\s:]*([A-Z0-9.\- ]{3,})/i;
+  // Eenheidsprijs, bv "0,1234", "1.234,56", "12.34"
+  const eurRe = /(\d{1,3}(?:[.\s]\d{3})*(?:[.,]\d{2,4})|\d+[.,]\d{2,4})\s*(?:€|eur)?/i;
+  // Geldig vanaf
+  const validRe = /(geldig vanaf|ingangsdatum|valid from)[:\s]*([0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4}|[0-9]{4}-[0-9]{2}-[0-9]{2})/i;
 
-  for (const ln of lines) {
-    const mReg = ln.match(regRe);
-    if (mReg) currentReg = normReg(mReg[1]);
+  let currentValid: string | undefined = undefined;
+  for (const line of lines) {
+    const v = validRe.exec(line);
+    if (v) currentValid = v[2];
 
-    const mPrice = ln.match(priceRe);
-    if (currentReg && mPrice) {
-      const val = toNumEU(mPrice[1]);
-      if (Number.isFinite(val)) {
-        rows.push({ reg: currentReg, unit_price_eur: val });
-        currentReg = ""; // 1 prijs per reg lijn (pas aan indien nodig)
-      }
+    const r = regRe.exec(line);
+    if (!r) continue;
+
+    // Zoek prijs op dezelfde regel of in de volgende regel(s) dichtbij
+    let priceLine = line;
+    let priceMatch = eurRe.exec(priceLine);
+
+    // fallback: kijk in een window van 2 volgende regels
+    // (veilig: lines[i+1], lines[i+2] – maar we hebben i hier niet.
+    // simpele benadering: niks; vaak staat prijs op dezelfde regel)
+    if (!priceMatch) continue;
+
+    const regRaw = r[2].toUpperCase().replace(/[.\s]/g, "").trim();
+    const priceStr = priceMatch[1];
+
+    // EU getal naar float
+    const n = Number(
+      priceStr
+        .replace(/\s/g, "")
+        .replace(/\./g, "")
+        .replace(",", ".")
+    );
+    if (Number.isFinite(n)) {
+      rows.push({ reg: regRaw, unit_price_eur: n, valid_from: currentValid });
     }
   }
-  // de-dupliceren (laatste wint)
-  const byKey = new Map<string, Row>();
-  for (const r of rows) byKey.set(r.reg, r);
-  return Array.from(byKey.values());
+
+  // de-dupliceren op reg + valid_from, laatste wint
+  const dedup = new Map<string, { reg: string; unit_price_eur: number; valid_from?: string }>();
+  for (const r of rows) {
+    dedup.set(`${r.reg}::${r.valid_from ?? ""}`, r);
+  }
+  return Array.from(dedup.values());
 }
 
-function parseSheetToRows(buf: ArrayBuffer): Row[] {
-  const wb = XLSX.read(buf, { type: "array" });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const json = XLSX.utils.sheet_to_json<any>(ws, { defval: "" });
-
-  return json.map((o) => {
-    const lower: Record<string, any> = {};
-    for (const [k, v] of Object.entries(o)) lower[String(k).toLowerCase()] = v;
-    const reg =
-      lower["reg"] ??
-      lower["regnr"] ??
-      lower["registratienummer"] ??
-      lower["rvg"] ??
-      lower["rvg_nr"] ??
-      lower["rvg nr"] ??
-      "";
-    const unit =
-      lower["unit_price_eur"] ??
-      lower["eenheidsprijs"] ??
-      lower["unitprice"] ??
-      lower["prijs_per_eenheid"] ??
-      lower["eenheidsprijs(€)"] ??
-      "";
-    const valid_from = String(
-      lower["valid_from"] ?? lower["geldig_vanaf"] ?? lower["ingangsdatum"] ?? ""
-    ).trim();
-
-    return {
-      reg: normReg(reg),
-      unit_price_eur: toNumEU(unit),
-      valid_from,
-    };
-  }).filter(r => r.reg && Number.isFinite(r.unit_price_eur));
-}
-
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const form = await req.formData();
-    const file = form.get("file") as File | null;
-    if (!file) {
-      return NextResponse.json({ error: "Upload veld 'file' ontbreekt." }, { status: 400 });
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "Upload ontbreekt (field: file)" }, { status: 400 });
+    }
+    const buf = Buffer.from(await file.arrayBuffer());
+
+    const loadingTask = pdfjs.getDocument({ data: buf });
+    const pdf = await loadingTask.promise;
+
+    let fullText = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items
+        .map((it: any) => ("str" in it ? it.str : (it as any).toString?.() ?? ""))
+        .join(" ");
+      fullText += pageText + "\n";
     }
 
-    const ext = (file.name.split(".").pop() || "").toLowerCase();
-
-    if (ext === "pdf") {
-      const buf = await file.arrayBuffer();
-      const text = await extractTextFromPdf(buf);
-      const rows = parsePdfTextToRows(text);
-      return NextResponse.json({ rows });
-    }
-
-    if (ext === "xlsx" || ext === "xls" || ext === "csv") {
-      const buf = await file.arrayBuffer();
-      const rows = parseSheetToRows(buf);
-      return NextResponse.json({ rows });
-    }
-
-    return NextResponse.json({ error: "Ondersteund: .pdf, .xlsx, .xls, .csv" }, { status: 415 });
+    const rows = extractRowsFromText(fullText);
+    return NextResponse.json({ rows });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Verwerken mislukt" }, { status: 500 });
+    return NextResponse.json({ error: e?.message || "Parserfout" }, { status: 500 });
   }
 }
