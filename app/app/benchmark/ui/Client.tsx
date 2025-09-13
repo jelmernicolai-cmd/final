@@ -157,4 +157,143 @@ export default function Client() {
           <h3 className="font-semibold">Scenario · naar mediaan band</h3>
           <div className="mt-2 flex flex-wrap gap-2">
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" check
+              <input type="checkbox" checked={isIntra} onChange={(e)=>setIsIntra(e.target.checked)} />
+              Intramuraal
+            </label>
+            <input className="border rounded-xl px-3 py-2 flex-1 min-w-[140px]" placeholder="Referentie (AIP/Wgp) €"
+                   value={ref} onChange={(e)=>setRef(e.target.value)} />
+            <input className="border rounded-xl px-3 py-2 flex-1 min-w-[140px]" placeholder="Jouw netto €"
+                   value={cur} onChange={(e)=>setCur(e.target.value)} />
+            <input className="border rounded-xl px-3 py-2 flex-1 min-w-[120px]" placeholder="Volume (stuks)"
+                   value={vol} onChange={(e)=>setVol(e.target.value)} />
+          </div>
+          <div className="mt-3 rounded-xl bg-slate-50 border p-3 text-sm">
+            {!isFinite(refN) || !isFinite(curN) || !isFinite(volN) ? (
+              <span className="text-slate-600">Vul referentie, jouw prijs en volume in.</span>
+            ) : (
+              <div className="space-y-1">
+                <div><b>{isIntra?"Intramuraal":"Extramuraal"}</b> mediaan: <span className="rounded bg-emerald-100 text-emerald-700 px-2 py-0.5">{fmtPct(d.median,0)}</span></div>
+                <div>Huidige korting: <b>{fmtPct((currentDisc||0)*100,0)}</b></div>
+                <div>Doel-nettoprijs: <b>{fmtEUR(targetPrice,2)}</b></div>
+                <div>Potentiële marge: <b className={(deltaTot??0)>=0 ? "text-emerald-700":"text-red-700"}>
+                  {fmtEUR(deltaTot,2)}</b> bij volume {isFinite(volN)? volN.toLocaleString("nl-NL"):"—"}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* VWS parser */}
+      <section className="rounded-2xl border p-4 bg-white shadow-sm mt-6">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+          <div>
+            <h3 className="font-semibold">Publieke korting per middel (VWS-bijlage)</h3>
+            <p className="text-sm text-slate-600">Plak de PDF-link naar “Uitgaven per geneesmiddel” (jaarbasis) of laat ENV-URL gebruiken.</p>
+          </div>
+          <div className="flex gap-2">
+            <input className="border rounded-xl px-3 py-2 min-w-[260px]" placeholder="https://…/Bijlage_Uitgaven_per_geneesmiddel_2023.pdf"
+                   value={vwsUrl} onChange={(e)=>setVwsUrl(e.target.value)} />
+            <button onClick={runVwsParse} className="rounded-xl bg-slate-900 text-white px-4 py-2">Parse</button>
+          </div>
+        </div>
+        {vwsError && <p className="mt-2 text-sm text-red-600">{vwsError}</p>}
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="text-slate-600">
+                <th className="text-left py-2">Geneesmiddel</th>
+                <th className="text-right py-2">Zonder arr. (€m)</th>
+                <th className="text-right py-2">Gerealiseerd (€m)</th>
+                <th className="text-right py-2">Publieke korting</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!vwsLoading && publicRows.length === 0 && (
+                <tr><td colSpan={4} className="py-6 text-center text-slate-500">
+                  Geen data (voer een PDF-link in of stel VWS_BIJLAGE_URL in).
+                </td></tr>
+              )}
+              {vwsLoading && <tr><td colSpan={4} className="py-6 text-center">Bezig met parsen…</td></tr>}
+              {publicRows.length>0 && [...publicRows]
+                .map(r => ({...r, disc:(r.withoutArr - r.realized)/r.withoutArr}))
+                .sort((a,b)=>b.disc-a.disc)
+                .slice(0,20)
+                .map((r,i)=>(
+                <tr key={i} className="border-t">
+                  <td className="py-2 font-medium">{r.name}</td>
+                  <td className="text-right py-2">{fmtEUR(r.withoutArr*1_000_000,0)}</td>
+                  <td className="text-right py-2">{fmtEUR(r.realized*1_000_000,0)}</td>
+                  <td className="text-right py-2">{fmtPct(((r.withoutArr-r.realized)/r.withoutArr)*100,0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Add-on monitor (Farmatec) */}
+      <section className="grid gap-4 md:grid-cols-2 mt-6">
+        <div className="rounded-2xl border p-4 bg-white shadow-sm">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">Add-on geneesmiddelen · Monitor</h3>
+            <span className="text-xs rounded-full bg-emerald-100 text-emerald-700 px-2 py-1">Publiek</span>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <input className="border rounded-xl px-3 py-2 w-full" placeholder="Zoek op ZI / naam / indicatie…"
+                   value={qAddOn} onChange={(e)=>setQAddOn(e.target.value)} />
+            <button onClick={()=>setQAddOn("")} className="rounded-xl border px-3 py-2">Reset</button>
+          </div>
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-slate-600">
+                  <th className="text-left py-2">ZI / Naam</th>
+                  <th className="text-left py-2">Indicatie</th>
+                  <th className="text-right py-2">Max. tarief</th>
+                  <th className="text-left py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {addonLoading && <tr><td colSpan={4} className="py-6 text-center">Laden…</td></tr>}
+                {addonError && <tr><td colSpan={4} className="py-6 text-center text-red-600">{addonError}</td></tr>}
+                {!addonLoading && !addonError && addOnFiltered.map((r)=>(
+                  <tr key={r.zi} className="border-t">
+                    <td className="py-2">
+                      <div className="font-medium">{r.zi}</div>
+                      <div className="text-xs text-slate-500">{r.name}</div>
+                    </td>
+                    <td className="py-2">{r.indication}</td>
+                    <td className="text-right py-2">{typeof r.maxTariff==="number" ? fmtEUR(r.maxTariff,2) : "—"}</td>
+                    <td className="py-2">
+                      <span className="text-xs rounded-full px-2 py-1
+                        bg-slate-100 text-slate-700">{r.status}</span>
+                    </td>
+                  </tr>
+                ))}
+                {!addonLoading && !addonError && addOnFiltered.length===0 && (
+                  <tr><td colSpan={4} className="py-6 text-center text-slate-500">Geen resultaten.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            NZa-maximumtarief is AIP-gebaseerd en ≤ Wgp-maximum.
+          </p>
+        </div>
+
+        {/* Snelle uitleg / bronnen */}
+        <div className="rounded-2xl border p-4 bg-white shadow-sm">
+          <h3 className="font-semibold">Bronnen & transparantie</h3>
+          <ul className="mt-2 text-sm list-disc pl-5 space-y-1">
+            <li><b>VWS-bijlage</b> “Uitgaven per geneesmiddel” (jaarlijks). Parser accepteert iedere PDF-link.</li>
+            <li><b>Farmatec add-ons</b> (maandelijks). Scraper zoekt laatste Excel en parse’t ZI/naam/indicatie/tarief.</li>
+            <li><b>Domeinbanden</b> zijn <i>afgeleid</i> uit VWS-totalen (extramuraal ±36%, intramuraal ±32%).</li>
+            <li><b>Z-Index verzekeraarstarieven</b> (licentie) kun je naadloos toevoegen via /api/zindex.</li>
+          </ul>
+          <p className="text-xs text-slate-500 mt-3">Laatst bijgewerkt: {new Date().toLocaleDateString("nl-NL")}</p>
+        </div>
+      </section>
+    </div>
+  );
+}
